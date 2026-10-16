@@ -15,6 +15,13 @@ int Bot::choose_group() {
         (opening.assault ? policy::early_gold_value : policy::spread_gold_value) * (1 - progress) +
         policy::late_gold_value * progress;
     const float reserve = std::max(max_health * policy::casualty_margin, incoming(position) * 2);
+    // Squad assembly: count living allies. After a wipe a lone respawn must not
+    // walk straight back into a grouped enemy and feed one champion at a time.
+    int alive_allies = 0;
+    for (const auto &ally_champion : roster)
+        if (ally_champion.is_alive())
+            ++alive_allies;
+    const bool depleted = float(alive_allies) <= float(roster.size()) * policy::depleted_alive_fraction;
     for (std::size_t i = 0; i < groups.size(); ++i) {
         if (bc::fuel_remaining() < 28000)
             break;
@@ -73,8 +80,14 @@ int Bot::choose_group() {
         value /= 1 + risk * 4 + (claims - partners) * 0.55f + partners * policy::partner_penalty;
         if (enemy_on)
             value *= 1.4f;
+        // While the squad is depleted, converge on the allies still on the map
+        // instead of spreading out and feeding into a grouped enemy one at a
+        // time. Avoiding contested camps alone measured worse: it concedes the
+        // map, so the bias here is toward the team, not away from the enemy.
         if (g.enemy_distance <= g.home_distance + 8)
-            value *= 1 + policy::contest_bonus;
+            value *= depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
+        if (depleted && claims > 0)
+            value *= policy::depleted_rally_bonus;
         if (int(i) == target)
             value *= policy::commit_bonus;
         if (g.status == CampGroup::capture && g.tiles.is_set(position))

@@ -47,9 +47,24 @@ inline constexpr float spread_gold_value = 0.26f;
 inline constexpr float partner_penalty = 0.35f;
 inline constexpr bool adaptive_formation = true;
 inline constexpr float squad_spacing = 15.0f;
-inline constexpr float spread_bank_base = 95.0f;
+inline constexpr float spread_bank_base = 130.0f;
 inline constexpr float spread_bank_distance = 1.0f;
 inline constexpr int spread_shopping_shards = 5;
+// Cassi and Issac share one fate: one death drops both bags, so the pair banks
+// smaller amounts more often than a solo champion. 1.0 disables the adjustment.
+inline constexpr float twin_bank_scale = 0.6f;
+// Spread-mode draft bonus for field shopping. The job-rate table only scores
+// clear speed, so without this Tavi's remote_shop (never walk home to spend
+// gold) counts for nothing on a pure farming map. 1.0 disables it.
+inline constexpr float spread_field_shop_bonus = 1.25f;
+// Squad assembly. Avoiding contested camps when depleted measured harmful (it
+// concedes the map); converging on surviving allies is the real regroup.
+// depleted_penalty 1.0 disables the avoid-contest variant.
+inline constexpr float depleted_penalty = 1.0f;
+inline constexpr float depleted_rally_bonus = 3.0f;
+// Fraction of the team that must still be alive for the squad to count as
+// assembled. Below it the rally bias turns on. 0.0 disables regrouping entirely.
+inline constexpr float depleted_alive_fraction = 0.5f;
 inline constexpr std::uint64_t planning_reserve = 30000;
 inline constexpr std::uint64_t action_reserve = 12000;
 inline constexpr std::uint64_t ward_reserve = 15000;
@@ -208,6 +223,11 @@ inline float spell_dps(const std::array<Spell, 2> &spells, float strength, float
     }
     return result;
 }
+
+
+
+
+
 
 
 
