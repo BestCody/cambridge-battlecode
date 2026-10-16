@@ -12,7 +12,9 @@
 param(
     [string]$Bot = 'dumb-bot-6',
     [string[]]$Opponent = @('dumb-bot-3'),
-    [string[]]$Maps = @('collision', 'corners', 'elkring', 'expanse', 'interlock', 'lanes', 'monolith', 'packs', 'rows'),
+    # Empty = every map in the current pool (maps/*.map26a). The published pool
+    # changes during the competition, so it is read rather than hard-coded.
+    [string[]]$Maps = @(),
     [string]$Out = (Join-Path $env:TEMP 'bench'),
     # Optional grid spec: "name:type=v1,v2;name2:type=v1,v2" (type defaults to float).
     # When empty, the $grid literal below is used.
@@ -26,6 +28,11 @@ $root = (Get-Location).Path
 $strategyPath = "$root\bots\$Bot\src\strategy.h"
 $original = Get-Content $strategyPath -Raw
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
+
+if ($Maps.Count -eq 0) {
+    $Maps = @(Get-ChildItem (Join-Path $root 'maps') -Filter *.map26a | ForEach-Object { $_.BaseName })
+    Write-Host "pool: $($Maps.Count) maps"
+}
 
 # ---------------------------------------------------------------- grid ----
 # Each entry: @(name, type, value1, value2, ...) -> cartesian product.
