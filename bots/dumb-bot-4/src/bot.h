@@ -79,6 +79,9 @@ class Bot {
     int contact_group = -1;
     unsigned contact_force = 0;
     std::vector<float> roster_power;
+    std::vector<bc::champion> enemy_roster;
+    std::vector<int> enemy_respawn;
+    float enemy_average_power = 0;
 
     void initialise();
     void refresh_self();
@@ -93,6 +96,7 @@ class Bot {
     float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
     float friendly_power(vec2 at) const;
     float enemy_power(vec2 at) const;
+    float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
     float clear_loss(const CampGroup &g, float clear_time) const;
     int choose_group();

@@ -116,6 +116,13 @@ void Bot::initialise() {
                 hp += design.base_focus * spell.modifier;
         roster_power.push_back(std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus)));
     }
+    float ally_power_sum = 0;
+    for (auto p : roster_power)
+        ally_power_sum += p;
+    enemy_average_power = roster_power.empty() ? 0.0f : ally_power_sum / float(roster_power.size());
+    enemy_roster = bc::champions(bc::team::enemy);
+    std::sort(enemy_roster.begin(), enemy_roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
+    enemy_respawn.assign(enemy_roster.size(), -1);
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
             slot = i;
@@ -189,6 +196,20 @@ void Bot::observe() {
     for (auto c : bc::vision::champions(bc::team::ally))
         if (c != bc::self() && c.is_alive())
             allies.emplace_back(c);
+    // Track enemy death timers across turns so an engagement beside their
+    // spawn can price in a fresh body arriving at full strength.
+    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_respawn.size(); ++i) {
+        bool alive = false;
+        try {
+            alive = enemy_roster[i].is_alive();
+        } catch (...) {
+            continue;
+        }
+        if (alive)
+            enemy_respawn[i] = -1;
+        else if (enemy_respawn[i] < 0)
+            enemy_respawn[i] = int(round) + bc::constants::respawn_time;
+    }
     for (const auto &a : allies)
         if (distance(position, a.position) <= 6)
             nearby_healing += a.healing_rate;
@@ -388,6 +409,26 @@ float Bot::enemy_power(vec2 at) const {
              (1 + arrival * 0.3f);
     }
     return p;
+}
+
+float Bot::respawn_threat(vec2 at) const {
+    if (enemy_respawn.empty() || enemy_average_power <= 0)
+        return 0;
+    const auto spawn = bc::map::spawn_region(bc::team::enemy);
+    int spawn_dist = 100000;
+    for (auto p : spawn.positions())
+        spawn_dist = std::min(spawn_dist, distance(at, p));
+    if (spawn_dist > 9)
+        return 0; // Too far from their base for a fresh body to reach the fight.
+    float bodies = 0;
+    for (std::size_t i = 0; i < enemy_respawn.size(); ++i)
+        if (enemy_respawn[i] >= 0 && enemy_respawn[i] - int(round) <= 5)
+            bodies += 1;
+    if (bodies <= 0)
+        return 0;
+    // A respawn is a full-health body arriving from their spawn; discount it by
+    // how far away the fight is so a gank beside the base is priced correctly.
+    return bodies * enemy_average_power * (1.0f - float(spawn_dist) / 10.0f);
 }
 
 void Bot::report() {

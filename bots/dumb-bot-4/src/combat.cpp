@@ -295,6 +295,9 @@ bool Bot::skirmish() {
     const auto victim = enemies[selected];
     float ours = friendly_power(victim.position), theirs = enemy_power(victim.position);
     float danger = incoming(position);
+    // Price in imminent enemy respawns: a fight beside their base can be joined
+    // by a full-health body, so the effective enemy power must reflect it.
+    theirs += respawn_threat(position);
     float spell_burst = 0;
     for (unsigned i = 0; i < 2; ++i)
         if (abilities[i].is_ready()) {
@@ -308,8 +311,16 @@ bool Bot::skirmish() {
         }
     float burst = spell_burst + (distance(position, victim.position) <= range ? strength : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
+    // A sliver of enemy health is a kill we can secure next turn. Finishing
+    // removes their damage and any carried gems, so do not recall out of a
+    // winning duel because the one-turn health math looks unfavourable. Only
+    // chase a *channeling* sliver (recalling/depositing): interrupting it is
+    // high-value and it is not fighting back, whereas a sliver still trading
+    // has teammates behind it that punish an over-extend.
+    bool nearly_dead = victim.health + victim.shield <= victim.max_health * 0.2f;
+    bool finish = nearly_dead && victim.channel && health > danger * 1.5f;
     bool favourable = ours * policy::aggression >= theirs;
-    if ((health < danger * 2.2f || !favourable) && !kill) {
+    if ((health < danger * 2.2f || !favourable) && !kill && !finish) {
         if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
             retreating = health < max_health * 0.45f;
             if (retreating)
