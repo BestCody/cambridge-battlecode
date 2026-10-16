@@ -1,8 +1,0 @@
-[
-  {
-    "command": "C:\\Users\\AlexY\\AppData\\Local\\cambc\\wasi-sdk-33\\bin\\clang++.exe --target=wasm32-wasip1 --sysroot=C:/Users/AlexY/AppData/Local/cambc/wasi-sdk-33/share/wasi-sysroot -IC:/Users/AlexY/Documents/Github_p/cambc/sdk/cpp -isystem C:/Users/AlexY/AppData/Local/cambc/wasi-sdk-33/share/cmake/../../share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1 -O3 -DNDEBUG -std=c++20 -msimd128 -fwasm-exceptions -mllvm -wasm-use-legacy-eh=false -o CMakeFiles\\bot.dir\\C_\\Users\\AlexY\\Documents\\Github_p\\cambc\\bots\\mapdump\\src\\main.cpp.obj -c C:\\Users\\AlexY\\Documents\\Github_p\\cambc\\bots\\mapdump\\src\\main.cpp --sysroot=\"C:/Users/AlexY/AppData/Local/cambc/wasi-sdk-33/share/wasi-sysroot\" -isystem \"C:/Users/AlexY/AppData/Local/cambc/wasi-sdk-33/share/wasi-sysroot/include/wasm32-wasip1/eh/c++/v1\"",
-    "directory": "C:/Users/AlexY/Documents/Github_p/cambc/bots/mapdump/.cambc/build",
-    "file": "C:\\Users\\AlexY\\Documents\\Github_p\\cambc\\bots\\mapdump\\src\\main.cpp",
-    "output": "CMakeFiles\\bot.dir\\C_\\Users\\AlexY\\Documents\\Github_p\\cambc\\bots\\mapdump\\src\\main.cpp.obj"
-  }
-]
