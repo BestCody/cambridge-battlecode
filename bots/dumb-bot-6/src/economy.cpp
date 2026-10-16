@@ -61,6 +61,12 @@ void Bot::shop() {
         bool need_health = spawn && me.max_health() < me.strength() * 9;
         if (need_health)
             item = bc::item_type::bruiser_shard_of_health;
+        else if (!opening.assault && !has(bc::item_passive::monster))
+            // Sparse maps are a pure farming race with little or no PvP: camp
+            // damage compounds into more clears, so take Monster ahead of the
+            // gold economy instead of after it.
+            item = focus_build ? bc::item_type::monster_shard_of_focus
+                               : bc::item_type::monster_shard_of_strength;
         else if (policy::treasure_first && !has(bc::item_passive::treasure) &&
                  round < bc::constants::max_rounds / 4)
             item = focus_build ? bc::item_type::treasure_shard_of_focus
@@ -223,6 +229,10 @@ bool Bot::tribute() {
         std::min(policy::bank_cap, opening.assault
                                        ? policy::bank_base + closest * policy::bank_distance
                                        : policy::spread_bank_base + closest * policy::spread_bank_distance);
+    // Cassi and Issac share one fate: either death drops both bags, so the pair
+    // banks smaller amounts more often than a solo champion does.
+    if (type == bc::champion_type::cassi || type == bc::champion_type::issac)
+        threshold *= policy::twin_bank_scale;
     // Near victory, each champion should bank its share of the remaining score.
     threshold = std::min(threshold, float(remaining) / std::max(std::size_t(1), roster.size()));
     bool capture_combo = false;

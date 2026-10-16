@@ -232,6 +232,12 @@ void play_draft() {
             float score = first.first;
             if (physical == bc::champion_type::cassi)
                 score += state.job_rate(bc::champion_type::issac, first.second).first;
+            // The job-rate table only measures clear speed and ignores the
+            // economy loop, which on a farming map is the whole game. Tavi buys
+            // in the field, so she never spends five recall turns plus a walk
+            // back to spawn to turn gold into stats. Score that uptime.
+            if (physical == bc::champion_type::tavi)
+                score *= policy::spread_field_shop_bonus;
             if (score > best) {
                 best = score;
                 pick = candidate;

@@ -11,9 +11,14 @@
 # The original strategy.h is restored afterwards.
 param(
     [string]$Bot = 'dumb-bot-6',
-    [string]$Opponent = 'dumb-bot-3',
+    [string[]]$Opponent = @('dumb-bot-3'),
     [string[]]$Maps = @('collision', 'corners', 'elkring', 'expanse', 'interlock', 'lanes', 'monolith', 'packs', 'rows'),
-    [string]$Out = (Join-Path $env:TEMP 'bench')
+    [string]$Out = (Join-Path $env:TEMP 'bench'),
+    # Optional grid spec: "name:type=v1,v2;name2:type=v1,v2" (type defaults to float).
+    # When empty, the $grid literal below is used.
+    # NOTE: must NOT be named $Grid -- PowerShell variable names are case-insensitive,
+    # so it would collide with the $grid literal below.
+    [string]$GridSpec = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -25,9 +30,24 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 # ---------------------------------------------------------------- grid ----
 # Each entry: @(name, type, value1, value2, ...) -> cartesian product.
 $grid = @(
-    @('commit_bonus', 'float', '0.98f', '1.03f', '1.08f'),
-    @('bank_base',    'float', '30.0f', '42.0f', '56.0f')
+    ,@('late_gold_value', 'float', '0.10f', '0.25f', '0.40f')
 )
+
+$types = @{}
+if ($GridSpec.Trim()) {
+    $grid = @()
+    foreach ($part in ($GridSpec -split ';')) {
+        if (-not $part.Trim()) { continue }
+        $kv = $part -split '=', 2
+        $head = $kv[0] -split ':'
+        $name = $head[0].Trim()
+        $type = if ($head.Count -gt 1) { $head[1].Trim() } else { 'float' }
+        $entry = @($name, $type)
+        foreach ($v in ($kv[1] -split ',')) { $entry += $v.Trim() }
+        $grid += ,$entry
+    }
+}
+foreach ($e in $grid) { $types[$e[0]] = $e[1] }
 
 function Set-Constant([string]$content, [string]$name, [string]$type, [string]$value) {
     $p = "inline constexpr $type $([regex]::Escape($name))\s*=\s*[^;]+;"
@@ -51,7 +71,8 @@ foreach ($entry in $grid) {
     $combos = $next
 }
 
-Write-Host "grid: $($combos.Count) combos x $($Maps.Count) maps = $($combos.Count * $Maps.Count) matches"
+$total = $Maps.Count * $Opponent.Count
+Write-Host "grid: $($combos.Count) combos x $($Maps.Count) maps x $($Opponent.Count) opponents = $($combos.Count * $total) matches"
 
 $results = @()
 $i = 0
@@ -61,7 +82,7 @@ try {
         $content = $original
         $label = ''
         foreach ($k in $combo.Keys) {
-            $content = Set-Constant $content $k 'float' $combo[$k]
+            $content = Set-Constant $content $k $types[$k] $combo[$k]
             $label += "$k=$($combo[$k]) "
         }
         $label = $label.Trim()
@@ -70,17 +91,28 @@ try {
         Write-Host "[$i/$($combos.Count)] $label : building..."
         & cambc build $Bot 2>$null | Out-Null
 
-        $wins = 0; $gemsUs = 0; $gemsThem = 0
-        foreach ($m in $Maps) {
-            $stat = Join-Path $Out "$($label -replace ' ','_')-$m.json"
-            & cambc run $Bot $Opponent --map $m --statistics $stat -o $Out 2>$null | Out-Null
-            $j = Get-Content $stat -Raw | ConvertFrom-Json
-            if ($j.outcome -eq 'teamA') { $wins++ }
-            $gemsUs += $j.teams[0].submittedGems
-            $gemsThem += $j.teams[1].submittedGems
+        $wins = 0; $gemsUs = 0; $gemsThem = 0; $detail = @(); $oppWins = @()
+        foreach ($o in $Opponent) {
+            $oWins = 0
+            foreach ($m in $Maps) {
+                $stat = Join-Path $Out "$($label -replace ' ','_')-$o-$m.json"
+                & cambc run $Bot $o --map $m --statistics $stat -o $Out 2>$null | Out-Null
+                $j = Get-Content $stat -Raw | ConvertFrom-Json
+                if ($j.outcome -eq 'teamA') { $wins++; $oWins++ }
+                $gemsUs += $j.teams[0].submittedGems
+                $gemsThem += $j.teams[1].submittedGems
+            }
+            $oppWins += $oWins
+            $detail += "$($o -replace 'dumb-bot-','db'):$oWins/$($Maps.Count)"
         }
-        $results += [pscustomobject]@{ combo = $label; wins = $wins; ourGems = $gemsUs; theirGems = $gemsThem }
-        Write-Host ("  -> wins {0}/{1}  gems {2} vs {3}" -f $wins, $Maps.Count, $gemsUs, $gemsThem)
+        $detailStr = $detail -join ' '
+        # The event format is 5 maps best-of-5 from the fixed pool, so the metric
+        # that matters is the per-map rate, and the binding constraint is the
+        # WORST opponent. minWins is that worst-case per-map win count.
+        $minWins = ($oppWins | Measure-Object -Minimum).Minimum
+        $maxWins = ($oppWins | Measure-Object -Maximum).Maximum
+        $results += [pscustomobject]@{ combo = $label; minWins = $minWins; maxWins = $maxWins; wins = $wins; total = $total; ourGems = $gemsUs; theirGems = $gemsThem; detail = $detailStr }
+        Write-Host ("  -> wins {0}/{1}  worst {2}/{3}  gems {4} vs {5}   [{6}]" -f $wins, $total, $minWins, $Maps.Count, $gemsUs, $gemsThem, $detailStr)
     }
 }
 finally {
@@ -89,5 +121,5 @@ finally {
 }
 
 Write-Host ""
-Write-Host "================= RESULTS (sorted by wins desc) ================="
-$results | Sort-Object wins, ourGems -Descending | Format-Table -AutoSize
+Write-Host "============ RESULTS (sorted by worst-opponent per-map wins, then total) ============"
+$results | Sort-Object minWins, wins, ourGems -Descending | Format-Table -AutoSize
