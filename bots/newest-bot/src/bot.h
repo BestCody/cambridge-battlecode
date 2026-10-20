@@ -103,7 +103,7 @@ class Bot {
     bc::bitboard known_camp_obstacles;
     std::vector<float> roster_power;
     std::vector<bc::champion> enemy_roster;
-    std::vector<int> enemy_respawn;
+    std::vector<int> enemy_respawn, enemy_spawned;
     float enemy_average_power = 0;
 
     bool squad_member() const { return squad.contains(slot); }
@@ -121,8 +121,10 @@ class Bot {
     void begin_recovery();
     void enter_selection();
     void supervise_progress();
+    void detect_material_events();
     int work_window() const;
     bool relevant_enemy(const ObservedUnit &enemy) const;
+    int relevant_threats() const;
     float control_value(const ObservedUnit &enemy) const;
     FiringOpportunity firing(const ObservedUnit &member, const ObservedUnit &enemy,
                              bool next_turn = false) const;
@@ -132,6 +134,7 @@ class Bot {
     // selection.cpp, objectives.cpp: job choice and estimates.
     Selection select_squad_job();
     JobEstimate estimate_job(int index, ObjectiveSearch &search);
+    int hidden_interference(const CampGroup &group) const;
     FiringPosition firing_position(unsigned member, int camp, bool siege, bc::bitboard reserved,
                                    FiringSearch &search);
     float position_output(const ObservedUnit &member, vec2 tile, const CampGroup &group,

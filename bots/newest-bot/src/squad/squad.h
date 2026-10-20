@@ -37,9 +37,16 @@ struct FiringPosition {
 
 struct JobEstimate {
     int camp = -1, travel = 0, reward_time = 0, delivery = 0, assessed = -1;
+    // Earliest round offset at which any enemy, seen or hidden, could reach
+    // the capture region. Larger than reward_time means an uncontested clear.
+    int interference = bc::distance_field::unreachable;
     float rate = 0, loss = 0, clear = 0, output = 0;
     bool pressure = false, siege = false, complete = false, control = true;
     unsigned participants = 0;
+    // Material state at assessment. A change invalidates the plan; age alone
+    // only expires it after policy::plan_lifetime_windows.
+    unsigned revision = ~0u;
+    int status = -1, threats = 0;
     vec2 staging{-1, -1};
     std::array<FiringPosition, TeamMemory::slots> firing;
 };
@@ -117,6 +124,11 @@ struct SquadState {
     std::array<int, TeamMemory::slots> cargo_since{-1, -1, -1, -1, -1, -1};
     std::array<unsigned, TeamMemory::slots> cargo_seen{};
     int cargo_deadline = -1;
+    // Material events observed by the coordinator. Each one forces a review of
+    // the current job instead of waiting for the next scheduled window.
+    unsigned last_alive = 0, capture_resets = 0;
+    int last_threats = -1;
+    bool was_holding = false;
 };
 
 struct JobSearch {

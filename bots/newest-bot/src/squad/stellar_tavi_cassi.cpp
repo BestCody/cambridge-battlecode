@@ -59,7 +59,11 @@ void Bot::squad_resource_turn() {
     }
     // Keep executing while a replacement estimate is being resumed. A fuel
     // deferral must not discard the current assignment or a legal camp shot.
-    if (squad.plan.camp != squad.camp || !squad.plan.complete || !(squad.plan.participants & (1u << slot)))
+    // A move deferred last turn runs before any new estimate this turn; the
+    // refresh at the end of the turn still gets the surplus.
+    const bool resume_motion = squad.motion.status == MoveStatus::deferred;
+    if (!resume_motion &&
+        (squad.plan.camp != squad.camp || !squad.plan.complete || !(squad.plan.participants & (1u << slot))))
         prepare_objective();
     if (bc::fuel_remaining() < policy::planning_reserve)
         return;
@@ -96,8 +100,12 @@ void Bot::squad_resource_turn() {
         else
             ready &= member->position == at.tile;
     }
-    const bool clear =
-        (!threatened || ready || group.health < group.max_health) && (!squad.siege || !fire.is_set(position));
+    // Clear at once when the reward lands before anyone can interfere.
+    // Otherwise hold cooldowns for denial until the squad is in position.
+    // Damage already on the camp is sunk cost and is not a reason to continue.
+    const bool uncontested =
+        squad.plan.interference > squad.plan.reward_time && relevant_threats() <= squad.plan.threats;
+    const bool clear = (!threatened || ready || uncontested) && (!squad.siege || !fire.is_set(position));
     if (clear) {
         const auto &me = bc::self();
         int ready_reach = me.can_attack() ? range : 0;

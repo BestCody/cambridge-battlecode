@@ -179,6 +179,7 @@ void Bot::initialise() {
     std::sort(enemy_roster.begin(), enemy_roster.end(),
               [](const auto &a, const auto &b) { return id(a) < id(b); });
     enemy_respawn.assign(enemy_roster.size(), -1);
+    enemy_spawned.assign(enemy_roster.size(), 0);
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
             slot = i;
@@ -329,9 +330,12 @@ void Bot::observe() {
         } catch (...) {
             continue;
         }
-        if (alive)
+        if (alive) {
+            // Hidden enemies cannot have walked further than this from spawn.
+            if (enemy_respawn[i] >= 0)
+                enemy_spawned[i] = std::min(int(round), enemy_respawn[i]);
             enemy_respawn[i] = -1;
-        else if (enemy_respawn[i] < 0)
+        } else if (enemy_respawn[i] < 0)
             enemy_respawn[i] = int(round) + bc::constants::respawn_time;
     }
     for (const auto &a : allies)
@@ -415,7 +419,17 @@ void Bot::observe() {
         // Splash accelerates only the health shared by surviving targets.
         // Eight 500-HP clusters beside one 20,000-HP boss are not a 9x clear.
         g.splash = std::max(1.0f, std::min(g.shape_splash, g.health / toughest));
-        if (squad_member() && int(i) == squad.camp && g.health < previous_health)
+        // Only our damage is clear progress. An enemy wearing the camp down
+        // gives us no capture control, so it must not keep the job alive.
+        if (squad_member() && int(i) == squad.camp && g.health < previous_health &&
+            std::none_of(
+                enemies.begin(), enemies.end(),
+                [&](const auto &enemy) {
+                    return std::any_of(g.camps.begin(), g.camps.end(), [&](const auto &camp) {
+                        return distance(enemy.position, camp.position) <=
+                               std::max(enemy.range, enemy.spell_reach);
+                    });
+                }))
             squad.progress = round;
     }
     if (squad_member()) {

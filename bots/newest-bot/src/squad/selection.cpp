@@ -20,6 +20,14 @@ Selection Bot::select_squad_job() {
                                bc::constants::capture_time + 1;
             const bool pressure = g.unit.gem_value() && g.enemy_distance != bc::distance_field::unreachable &&
                                   g.enemy_distance <= g.home_distance + 2 * opening.spacing;
+            // Home camps a worker is already farming stay with that worker.
+            // The squad only displaces it for a contested objective.
+            bool worked = false;
+            for (unsigned member = 0; member < roster.size(); ++member)
+                worked |= !squad.contains(member) && roster[member].is_alive() &&
+                          TeamMemory::objective(shared.get(member), groups.size()) == int(i);
+            if (worked && !pressure && int(i) != squad.camp)
+                continue;
             ranked.push_back({{pressure, reward / cost}, i});
         }
         if (bc::fuel_remaining() < policy::planning_reserve)
@@ -54,21 +62,38 @@ Selection Bot::select_squad_job() {
         return Selection::deferred;
     if (pending && job_search.assessed.empty())
         return Selection::deferred;
-    JobEstimate pressure, gather, current;
+    // Contested gem camps first, then other gem camps. Gold-only camps are a
+    // fallback; upgrade detours reach them through the preparation check below.
+    enum Category { contest, gems_only, gold_only, categories };
+    auto category = [&](const JobEstimate &estimate) {
+        if (estimate.pressure)
+            return contest;
+        return groups[estimate.camp].unit.gem_value() ? gems_only : gold_only;
+    };
+    std::array<JobEstimate, categories> best;
+    JobEstimate current;
     for (const auto &estimate : job_search.assessed) {
         if (groups[estimate.camp].status == CampGroup::cooling &&
             groups[estimate.camp].respawn > int(round) + estimate.travel + bc::constants::capture_time)
             continue;
-        auto &best = estimate.pressure ? pressure : gather;
-        if (estimate.rate > best.rate)
-            best = estimate;
+        auto &leader = best[category(estimate)];
+        if (estimate.rate > leader.rate)
+            leader = estimate;
         if (estimate.camp == squad.camp)
             current = estimate;
     }
-    JobEstimate choice = pressure.camp >= 0 ? pressure : gather;
-    if (current.camp >= 0 && current.pressure == choice.pressure &&
-        groups[current.camp].status != CampGroup::cooling &&
-        current.rate * policy::commit_bonus >= choice.rate)
+    JobEstimate choice;
+    for (const auto &leader : best)
+        if (leader.camp >= 0) {
+            choice = leader;
+            break;
+        }
+    // Repeatedly lost captures forfeit the commitment bonus: the current job
+    // must then beat the alternatives on its own estimate.
+    const float commitment =
+        squad.capture_resets >= policy::capture_reset_limit ? 1.0f : policy::commit_bonus;
+    if (current.camp >= 0 && choice.camp >= 0 && category(current) == category(choice) &&
+        groups[current.camp].status != CampGroup::cooling && current.rate * commitment >= choice.rate)
         choice = current;
     bool preparation = false;
     if (choice.camp >= 0 && choice.pressure && choice.siege && !squad.access_preparation) {
@@ -136,6 +161,7 @@ Selection Bot::select_squad_job() {
         squad.changed = squad.progress = round;
         squad.route_best = bc::distance_field::unreachable;
         squad.participants = living_core();
+        squad.capture_resets = 0;
         if constexpr (policy::diagnostic)
             std::printf("SQUAD_JOB r=%u owner=%u camp=%d role=%s rate=%.2f siege=%d\n", round, slot, target,
                         choice.pressure ? "attack" : "gather", choice.rate, choice.siege);

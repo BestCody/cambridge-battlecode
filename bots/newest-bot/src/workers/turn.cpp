@@ -124,16 +124,16 @@ void Bot::worker_priority() {
     if (!initialised || bc::fuel_remaining() < policy::planning_reserve)
         return;
     auto &me = bc::self();
-    int priority = passive == bc::passive_type::splash_attack ? 1200
-                   : type == bc::champion_type::willow        ? 1600
-                                                              : 1000 - static_cast<int>(slot);
+    int priority = passive == bc::passive_type::splash_attack ? priority_tier::idle + 200
+                   : type == bc::champion_type::willow        ? priority_tier::idle + 600
+                                                              : priority_tier::idle - static_cast<int>(slot);
     if (me.is_alive() && !me.is_recalling() && !me.is_submitting_gems() && !me.is_teleporting() &&
         !enemies.empty()) {
         const auto abilities = me.abilities();
         std::array<bool, 2> ready{};
         for (unsigned i = 0; i < ready.size(); ++i)
             ready[i] = abilities[i].cooldown() <= 1;
-        float best = 0;
+        int best = 0;
         for (const auto &e : enemies) {
             if (!e.unit().is_visible())
                 continue;
@@ -154,13 +154,16 @@ void Bot::worker_priority() {
                     d <= s.range + s.radius)
                     spell = std::max(spell, focus * s.modifier);
             }
-            float burst = (basic + spell) * e.mitigation;
-            if (burst >= hp + e.shield)
-                burst += 200 + e.gems * 7;
-            best = std::max(best, burst);
+            const float burst = (basic + spell) * e.mitigation;
+            if (burst <= 0)
+                continue;
+            const bool lethal = burst >= hp + e.shield;
+            const int tier = lethal ? priority_tier::finish : priority_tier::damage;
+            const float value = lethal ? burst + 200 + e.gems * 7 : burst;
+            best = std::max(best, tier + std::min(int(value), priority_tier::span));
         }
         if (best > 0)
-            priority = 2000 + int(std::min(best, 10000.0f));
+            priority = best;
     }
     if (me.priority() != priority)
         me.set_priority(priority);

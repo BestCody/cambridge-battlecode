@@ -44,6 +44,8 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         travel_route.field.compute_to(obstacles, goals, around(position, 0), visited);
         travel_route.goals = goals;
         travel_route.revision = terrain_revision;
+        // Distances to different goals are not comparable: restart the best.
+        squad.route_best = travel_route.field.get(position);
     }
     if (bc::fuel_remaining() < policy::planning_reserve)
         return finish(MoveStatus::deferred, MoveReason::fuel);
@@ -182,8 +184,10 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         const auto before = position;
         if (move_step(best)) {
             squad.last_step = before;
-            if (route.get(position) < original || yield_to >= 0) {
-                squad.route_best = route.get(position);
+            // Only a new best distance is progress. Stepping away and back
+            // around an obstacle must not keep extending the deadline.
+            if (route.get(position) < squad.route_best || yield_to >= 0) {
+                squad.route_best = std::min(squad.route_best, int(route.get(position)));
                 squad.progress = round;
             }
             return finish(MoveStatus::moved, yield_to >= 0 ? MoveReason::occupancy : MoveReason::none,

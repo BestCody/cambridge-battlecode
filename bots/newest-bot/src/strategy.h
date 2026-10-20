@@ -69,7 +69,30 @@ inline constexpr float siege_gem_weight = 2.0f;
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
 inline constexpr float siege_risk_weight = 0.06f;
+// Squad job planning. A plan is refreshed on any material change; without one
+// it expires after this many work windows. 1 restores the old age-only refresh.
+inline constexpr int plan_lifetime_windows = 3;
+// Expected delay per round of overlap between a hidden enemy's earliest arrival
+// and our reward. Hidden enemies may be elsewhere, so this is below 1.
+// 0 ignores hidden enemies entirely.
+inline constexpr float hidden_interference_weight = 0.5f;
+// Capture timers lost to contest before the current job loses its commitment
+// bonus and must win the comparison against other jobs on its own merit.
+inline constexpr unsigned capture_reset_limit = 2;
+// Control credit multiplier for stunning an enemy other than the shared focus
+// target while it threatens a member. 1.0 disables the preference.
+inline constexpr float secondary_control_bonus = 1.25f;
 } // namespace policy
+
+// Next-round action order. Tiers are disjoint so an enabling stun never
+// outranks a finishing blow, whatever the raw damage values.
+namespace priority_tier {
+inline constexpr int idle = 1000;
+inline constexpr int damage = 2000;
+inline constexpr int control = 3000;
+inline constexpr int finish = 4000;
+inline constexpr int span = 999;
+} // namespace priority_tier
 
 // Published mechanics not exposed in the SDK settings structure.
 namespace rules {

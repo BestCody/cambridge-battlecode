@@ -108,7 +108,9 @@ bool Bot::attack_combo(bool escaping) {
         return mask;
     };
     std::uint64_t eligible = 0;
-    std::vector<float> original, remaining, weights, follow_up, control;
+    std::vector<float> original, remaining, weights, follow_up, ready_follow_up, control;
+    std::vector<bool> lethal_threat;
+    int focus = -1;
     // Camp exposure is the same for every prospective victim. Compute it once
     // per committed core ally; repeating it inside the enemy/ally product can
     // exceed an entire turn's fuel on dense maps before sequence search starts.
@@ -149,25 +151,42 @@ bool Bot::attack_combo(bool escaping) {
             (e.damage_rate + e.burst * 0.5f) / std::max(1.0f, e.health + e.shield + e.ready_shield);
         weight *= std::sqrt(density / std::max(0.001f, typical_density));
         if (squad_member() && shared.focus() && shared.focus() <= enemy_roster.size() &&
-            std::get<bc::champion>(e.ref) == enemy_roster[shared.focus() - 1])
+            std::get<bc::champion>(e.ref) == enemy_roster[shared.focus() - 1]) {
             weight *= policy::commit_bonus;
+            focus = int(i);
+        }
         weights.push_back(weight);
-        float assistance = 0;
+        // Ready assistance excludes allies who have finished this round: an
+        // enemy turn may interleave before they act, so it cannot be promised.
+        float assistance = 0, ready_assistance = 0;
+        bool threatens_kill = false;
         for (const auto &ally : allies) {
+            const int reach = std::max(e.range, e.spell_reach) + e.move_speed;
+            threatens_kill |= !e.stunned && distance(ally.position, e.position) <= reach &&
+                              (e.strength + e.burst) * ally.mitigation >= ally.health;
             if (ally.stunned || ally.channel)
                 continue;
+            float damage = 0;
             if (squad_member()) {
                 if (support[&ally - allies.data()])
-                    assistance += firing(ally, e).damage / std::max(0.01f, e.mitigation);
-                continue;
+                    damage = firing(ally, e).damage / std::max(0.01f, e.mitigation);
+            } else {
+                const int d = distance(ally.position, e.position);
+                if (d <= ally.range)
+                    damage += ally.strength;
+                if (d <= std::max(ally.range, ally.spell_reach))
+                    damage += ally.burst;
             }
-            const int d = distance(ally.position, e.position);
-            if (d <= ally.range)
-                assistance += ally.strength;
-            if (d <= std::max(ally.range, ally.spell_reach))
-                assistance += ally.burst;
+            assistance += damage;
+            if (!ally.completed)
+                ready_assistance += damage;
         }
+        threatens_kill |= !e.stunned &&
+                          distance(position, e.position) <= std::max(e.range, e.spell_reach) + e.move_speed &&
+                          (e.strength + e.burst) * mitigation >= health;
         follow_up.push_back(assistance * e.mitigation);
+        ready_follow_up.push_back(ready_assistance * e.mitigation);
+        lethal_threat.push_back(threatens_kill);
         control.push_back(squad_member() ? control_value(e) : (e.strength + e.burst) * (escaping ? 3 : 1));
         if (useful[i])
             eligible |= std::uint64_t{1} << i;
@@ -381,11 +400,25 @@ bool Bot::attack_combo(bool escaping) {
             if (own_health <= 0)
                 score -= (200 + gems * 7 + strength * 3) * linked_risk();
         }
-        // Stun only earns credit if the opponent survives the whole combo.
+        // Stun only earns credit if the opponent survives the whole combo and
+        // the stun opens a window someone uses: an interruption, a member it
+        // saves, or follow-up damage from an ally who can still act.
         for (std::size_t i = 0; i < enemies.size(); ++i) {
             if ((stunned & (std::uint64_t{1} << i)) && remaining[i] > 0) {
                 const auto &e = enemies[i];
-                score += control[i] + follow_up[i] * policy::stun_followup_credit;
+                // The focus target is already dying to ready allies; control
+                // there is wasted while a secondary enemy still threatens.
+                const bool redundant = int(i) == focus && !e.channel && remaining[i] <= ready_follow_up[i];
+                // Walking to stun spends the movement allowance, so it needs
+                // a concrete payoff before the enemy's next turn.
+                const bool walked_for_it =
+                    origin && !e.channel && !lethal_threat[i] && ready_follow_up[i] <= 0;
+                if (!redundant && !walked_for_it) {
+                    float credit = control[i] + follow_up[i] * policy::stun_followup_credit;
+                    if (focus >= 0 && int(i) != focus && control[i] > 0)
+                        credit *= policy::secondary_control_bonus;
+                    score += credit;
+                }
                 if (e.channel)
                     score += 120 + e.gems * 3;
             }

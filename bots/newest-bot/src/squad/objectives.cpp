@@ -443,6 +443,12 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
         search.next_action = {};
         search.interference_work = search.exchange_loss = 0;
         result.control = true;
+        // Hidden enemies are a bound, not an observation: price only part of
+        // the overlap, and never let them veto the job outright.
+        result.interference = hidden_interference(group);
+        if (result.interference < search.clear_reward_time)
+            search.interference_work +=
+                (search.clear_reward_time - result.interference) * policy::hidden_interference_weight;
         for (const auto &enemy : enemies)
             search.control_enemies.push_back(id(std::get<bc::champion>(enemy.ref)));
         if (!enemies.empty())
@@ -478,6 +484,7 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
                 return result;
             const int arrival =
                 (path + enemy.move_speed - 1) / enemy.move_speed + std::max(0, enemy.stun_time);
+            result.interference = std::min(result.interference, arrival);
             if (arrival > search.clear_reward_time)
                 return result;
             bc::distance_field enemy_route;
@@ -627,6 +634,9 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
     }
     result.staging = group.approach;
     result.assessed = round;
+    result.revision = terrain_revision;
+    result.status = int(group.status);
+    result.threats = relevant_threats();
     result.complete = true;
     const auto completed = result;
     search = {};
@@ -636,9 +646,14 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
 bool Bot::prepare_objective() {
     if (squad.camp < 0)
         return false;
-    if (squad.plan.camp == squad.camp && squad.plan.complete &&
-        int(round) - squad.plan.assessed < work_window() &&
-        (squad.plan.participants & living_core()) == squad.plan.participants)
+    // Keep a plan until something it depends on changes: membership, terrain,
+    // the camp's phase or a new threat. Age alone is only a long backstop.
+    const auto &current = squad.plan;
+    if (current.camp == squad.camp && current.complete && current.assessed >= 0 &&
+        int(round) - current.assessed < work_window() * policy::plan_lifetime_windows &&
+        current.revision == terrain_revision && current.status == int(groups[squad.camp].status) &&
+        relevant_threats() <= current.threats &&
+        (current.participants & living_core()) == current.participants)
         return true;
     if (bc::fuel_remaining() < policy::planning_reserve)
         return false;

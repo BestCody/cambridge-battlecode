@@ -140,6 +140,8 @@ void Bot::enter_selection() {
     squad.plan = {};
     squad.arrival_deadline = squad.crossing_deadline = -1;
     squad.crossed = 0;
+    squad.capture_resets = 0;
+    squad.was_holding = false;
     travel_route.revision = ~0u;
     publish_squad(true);
 }
@@ -221,6 +223,7 @@ void Bot::adopt_job(unsigned code) {
             active_search = {};
             squad.plan = {};
             squad.arrival_deadline = -1;
+            squad.capture_resets = 0;
             travel_route.revision = ~0u;
         }
         squad.camp = target = camp;
@@ -315,6 +318,53 @@ void Bot::reconcile_squad() {
     }
 }
 
+int Bot::relevant_threats() const {
+    return int(std::count_if(enemies.begin(), enemies.end(),
+                             [&](const auto &enemy) { return !enemy.channel && relevant_enemy(enemy); }));
+}
+
+int Bot::hidden_interference(const CampGroup &group) const {
+    int earliest = bc::distance_field::unreachable;
+    if (group.enemy_distance == bc::distance_field::unreachable)
+        return earliest;
+    for (unsigned i = 0; i < enemy_roster.size(); ++i) {
+        const auto &enemy = enemy_roster[i];
+        if (std::any_of(enemies.begin(), enemies.end(),
+                        [&](const auto &seen) { return std::get<bc::champion>(seen.ref) == enemy; }))
+            continue; // Visible enemies are timed from their actual position.
+        // Champions walk one tile per round, and a dead one restarts at spawn.
+        // Once an enemy could already be anywhere the bound says nothing, so
+        // it stops contributing rather than taxing every job equally.
+        const int start = enemy_respawn[i] >= 0 ? enemy_respawn[i] : enemy_spawned[i];
+        const int remaining = group.enemy_distance - (int(round) - start);
+        if (remaining > 0)
+            earliest = std::min(earliest, remaining);
+    }
+    return earliest;
+}
+
+void Bot::detect_material_events() {
+    const unsigned alive = living_core();
+    const int threats = relevant_threats();
+    bool material = (squad.last_alive & ~alive) != 0;
+    material |= squad.last_threats >= 0 && threats > squad.last_threats;
+    squad.last_alive = alive;
+    squad.last_threats = threats;
+    const bool capturing = squad.camp >= 0 && groups[squad.camp].status == CampGroup::capture;
+    const bool holding = capturing && groups[squad.camp].holding_since >= 0;
+    if (squad.was_holding && capturing && !holding) {
+        ++squad.capture_resets;
+        material = true;
+    }
+    squad.was_holding = holding;
+    // Route obstructions already invalidate the plan through terrain_revision.
+    if (!material || squad.camp < 0 || squad.phase == SquadPhase::deposit ||
+        squad.phase == SquadPhase::recover)
+        return;
+    squad.plan.assessed = -1;
+    squad.next_job_review = round;
+}
+
 void Bot::supervise_progress() {
     const unsigned score = bc::global_submitted_gems(bc::team::enemy);
     if (score > squad.enemy_score) {
@@ -326,6 +376,7 @@ void Bot::supervise_progress() {
     }
     if (squad.coordinator != int(slot) || squad.phase == SquadPhase::recover)
         return;
+    detect_material_events();
     const bool scheduled_wait =
         squad.motion.status == MoveStatus::waiting && squad.motion.until >= int(round);
     const bool arriving = squad.phase == SquadPhase::deposit && squad.arrival_deadline >= int(round);
@@ -374,7 +425,7 @@ bool Bot::relevant_enemy(const ObservedUnit &enemy) const {
         enemy.gems + bc::global_submitted_gems(bc::team::enemy) >= bc::constants::winning_gems)
         return distance(position, enemy.position) <=
                std::max(spells[0].range, spells[1].range) + stats.base_move_speed;
-    const int reach = std::max(enemy.range, enemy.spell_reach) + int(stats.base_move_speed);
+    const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
     if (distance(position, enemy.position) <= reach)
         return true;
     for (unsigned i = 0; i < roster.size(); ++i)
@@ -396,7 +447,7 @@ float Bot::control_value(const ObservedUnit &enemy) const {
         return 0;
     float value = 0;
     if (!enemy.channel) {
-        const int reach = std::max(enemy.range, enemy.spell_reach) + int(stats.base_move_speed);
+        const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
         if (distance(enemy.position, position) <= reach)
             value = enemy.strength + enemy.burst;
         for (unsigned i = 0; i < roster.size(); ++i)
@@ -451,9 +502,9 @@ void Bot::squad_priority() {
     auto &me = bc::self();
     if (!me.is_alive() || bc::fuel_remaining() < policy::planning_reserve)
         return;
-    int priority = 1000 - int(slot);
+    int priority = priority_tier::idle - int(slot);
     if (me.is_submitting_gems())
-        priority += int(gems); // Completion can resolve before an enemy lock.
+        priority += std::min(int(gems), priority_tier::span); // Complete before an enemy lock.
     else if (!me.is_recalling() && !me.is_teleporting()) {
         const ObservedUnit self(*this);
         for (const auto &enemy : enemies) {
@@ -462,12 +513,28 @@ void Bot::squad_priority() {
             if (!relevant_enemy(enemy))
                 continue;
             const auto next = firing(self, enemy, true);
+            const auto &unit = std::get<bc::champion>(enemy.ref);
+            // Damage cancels a recall; only a stun stops a tribute or crossing.
+            const bool interrupt =
+                (next.control > 0 && enemy.channel) || (next.damage > 0 && unit.is_recalling());
+            int tier = priority_tier::damage;
             float value = next.damage;
-            if (next.damage >= enemy.health + enemy.shield)
-                value += kill_value(enemy);
-            if (next.control > 0)
-                value += control_value(enemy);
-            priority = std::max(priority, 2000 + int(value));
+            if (next.damage >= enemy.health + enemy.shield || interrupt) {
+                tier = priority_tier::finish;
+                value +=
+                    next.damage >= enemy.health + enemy.shield ? kill_value(enemy) : control_value(enemy);
+            } else if (next.control > 0 && control_value(enemy) > 0) {
+                // A stun only enables something if a member can act on it.
+                const bool exploited = std::any_of(allies.begin(), allies.end(), [&](const auto &ally) {
+                    return !ally.channel && firing(ally, enemy, true).damage > 0;
+                });
+                if (exploited) {
+                    tier = priority_tier::control;
+                    value += control_value(enemy);
+                }
+            }
+            if (value > 0)
+                priority = std::max(priority, tier + std::min(int(value), priority_tier::span));
         }
     }
     if (me.priority() != priority)
