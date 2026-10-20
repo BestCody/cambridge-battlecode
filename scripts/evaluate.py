@@ -78,11 +78,12 @@ def play(configs, opponents, fuels, args):
     bots, temporary = {}, []
     try:
         for name, source, assignments in configs:
+            # One build per config; the mirror config plays each opponent itself.
+            built = prepare_bot(name, source, assignments) if source else None
+            if built and assignments:
+                temporary.append(built)
             for opponent in opponents:
-                key = (name, opponent)
-                bots[key] = prepare_bot(name, source or opponent, assignments)
-                if assignments:
-                    temporary.append(bots[key])
+                bots[(name, opponent)] = built or prepare_bot(name, opponent, [])
         for opponent in opponents:
             cambc("build", opponent)
         games = []
