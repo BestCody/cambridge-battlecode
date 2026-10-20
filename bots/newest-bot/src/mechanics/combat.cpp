@@ -15,6 +15,9 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return false;
     if (!me.can_attack() && !me.can_cast())
         return false;
+    // A damaging dash (Heart of Ruin) engages first; the rest of the turn
+    // continues from the landing tile.
+    const bool dashed = !escaping && impact_dash(fighting_champions, farm_group);
     if (fighting_champions && attack_combo(escaping))
         return true;
     if (bc::fuel_remaining() < policy::action_reserve)
@@ -128,7 +131,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     if (!escaping || range <= 1)
         do_attack();
     if (!me.is_alive())
-        return acted;
+        return acted || dashed;
 
     int best_slot = -1, best_target = -1;
     vec2 best_tile{};
@@ -270,7 +273,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             do_attack();
         }
     }
-    return acted;
+    return acted || dashed;
 }
 
 float Bot::kill_value(const ObservedUnit &enemy) const {

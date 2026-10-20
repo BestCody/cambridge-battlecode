@@ -15,13 +15,10 @@ bool Bot::worker_tribute() {
     if (!reachable && !win)
         return false;
     bool deadline = int(bc::constants::max_rounds - round) <= closest + channel_duration(gems) + 5;
-    float threshold = std::min(policy::bank_cap, policy::bank_base + closest * policy::bank_distance);
-    // Cassi and Issac share one fate: either death drops both bags, so the pair
-    // banks smaller amounts more often than a solo champion does.
-    if (type == bc::champion_type::cassi || type == bc::champion_type::issac)
-        threshold *= policy::twin_bank_scale;
-    if (policy::worker_pure_resource)
-        threshold *= policy::worker_bank_scale; // Small bags are lost less often.
+    // Small bags banked often: the top team's carries bank around 28 gems and
+    // everyone else around 20, so a death rarely costs much.
+    const bool carry = type == bc::champion_type::stellar || type == bc::champion_type::heart_of_ruin;
+    float threshold = float(carry ? policy::fish_bag_carry : policy::fish_bag_other);
     // Near victory, each champion should bank its share of the remaining score.
     threshold = std::min(threshold, float(remaining) / std::max(std::size_t(1), roster.size()));
     bool capture_combo = false;
@@ -30,7 +27,8 @@ bool Bot::worker_tribute() {
         int remaining = bc::constants::capture_time + 1 - (int(round) - groups[target].holding_since);
         capture_combo = remaining > 0 && remaining <= channel_duration(gems);
     }
-    if (!banking && !win && !deadline && !capture_combo && gems < threshold && !(closest <= 2 && gems >= 20))
+    if (!banking && !win && !deadline && !capture_combo && gems < threshold &&
+        !(closest <= 2 && gems >= policy::fish_bag_nearby))
         return false;
     banking = true;
     publish(TeamMemory::bank);

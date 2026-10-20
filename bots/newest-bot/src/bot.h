@@ -124,6 +124,8 @@ class Bot {
     std::vector<int> enemy_respawn, enemy_spawned;
     float enemy_average_power = 0;
     LifeSnapshot last_life;
+    // Shards this champion has bought, by item type, for its build order.
+    std::array<unsigned, static_cast<unsigned>(bc::item_type::count)> bought{};
     // Per camp group: last round this worker saw an enemy close to it.
     std::vector<int> enemy_seen_near;
     std::vector<EnemyTrack> enemy_track;
@@ -227,6 +229,7 @@ class Bot {
     float linked_risk() const;
     bool attack_combo(bool escaping);
     bool attack_dash(vec2 victim);
+    bool impact_dash(bool fighting_champions, int farm_group);
     bool advance_attack(vec2 victim);
     bool follow_through();
     // economy.cpp

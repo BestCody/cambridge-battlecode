@@ -3,66 +3,70 @@
 
 namespace {
 using Item = bc::item_type;
-struct EquipmentPath {
-    std::array<Item, 4> prefix;
+// The top team's purchase order: a few single shards early, then one item
+// bought indefinitely. Every shard adds one growth of its stat; five identical
+// shards combine into an emblem automatically (a power emblem counts as six).
+struct BuildStep {
+    Item item;
+    unsigned count;
+};
+struct Build {
+    std::array<BuildStep, 4> steps;
     unsigned size;
     Item repeat;
 };
-EquipmentPath equipment_path(bc::champion_type type) {
+Build build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::stellar:
-            return {
-                {Item::power_shard_of_focus, Item::monster_shard_of_focus, Item::durability_shard_of_health},
-                3,
-                Item::power_shard_of_focus};
-        case bc::champion_type::tavi:
-            return {{Item::treasure_shard_of_focus, Item::monster_shard_of_focus,
-                     Item::durability_shard_of_focus, Item::bruiser_shard_of_health},
+        case bc::champion_type::heart_of_ruin: // Carries: damage after a little growth.
+            return {{{{Item::treasure_shard_of_focus, 1},
+                      {Item::power_shard_of_focus, 1},
+                      {Item::home_shard_of_health, 1},
+                      {Item::durability_shard_of_health, 1}}},
                     4,
                     Item::power_shard_of_focus};
-        case bc::champion_type::cassi:
-            return {{Item::bruiser_shard_of_health, Item::durability_shard_of_focus,
-                     Item::monster_shard_of_focus},
-                    3,
+        case bc::champion_type::ren: // Tank first, then focus for its stun.
+            return {{{{Item::bruiser_shard_of_health, 2}, {Item::durability_shard_of_health, 2}}},
+                    2,
                     Item::power_shard_of_focus};
-        case bc::champion_type::issac:
-            return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
-                     Item::durability_shard_of_health},
-                    3,
-                    Item::power_shard_of_strength};
         case bc::champion_type::ryth:
-            return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
-                     Item::bruiser_shard_of_health, Item::durability_shard_of_strength},
-                    4,
+            return {{{{Item::bruiser_shard_of_health, 1}, {Item::durability_shard_of_health, 1}}},
+                    2,
                     Item::power_shard_of_strength};
-        case bc::champion_type::vendetta: // Melee: kills reset its cooldowns.
-            return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
-                     Item::durability_shard_of_health},
-                    3,
-                    Item::power_shard_of_strength};
-        case bc::champion_type::vesper_vale: // Ranged, strong basic attacks.
-            return {{Item::monster_shard_of_strength, Item::durability_shard_of_health,
-                     Item::jungle_shard_of_strength},
-                    3,
-                    Item::power_shard_of_strength};
-        case bc::champion_type::varg:
-            return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
-                     Item::durability_shard_of_strength, Item::bruiser_shard_of_health},
+        case bc::champion_type::cassi: // Becomes tanky: a death also kills Issac.
+            return {{{{Item::power_shard_of_focus, 1}, {Item::durability_shard_of_focus, 2}}},
+                    2,
+                    Item::bruiser_shard_of_health};
+        case bc::champion_type::issac:
+            return {{{{Item::treasure_shard_of_strength, 1},
+                      {Item::power_shard_of_strength, 1},
+                      {Item::home_shard_of_health, 1},
+                      {Item::durability_shard_of_health, 1}}},
                     4,
                     Item::power_shard_of_strength};
         default:
-            return {{}, 0, Item::count};
+            return {{},
+                    0,
+                    type == bc::champion_type::tavi || type == bc::champion_type::prism ||
+                            type == bc::champion_type::willow
+                        ? Item::power_shard_of_focus
+                        : Item::power_shard_of_strength};
     }
 }
-Item next_item(bc::champion_type type, const bc::champion &unit = bc::self()) {
-    const auto path = equipment_path(type);
-    const auto inventory = unit.item_count();
-    for (unsigned stage = 0; stage < path.size; ++stage) {
-        const auto result = path.prefix[stage].result();
-        if (result && !inventory[*result])
-            return path.prefix[stage];
-    }
-    return path.repeat;
+using Bought = std::array<unsigned, static_cast<unsigned>(Item::count)>;
+Item next_item(bc::champion_type type, const Bought &bought) {
+    const auto build = build_for(type);
+    for (unsigned i = 0; i < build.size; ++i)
+        if (bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count)
+            return build.steps[i].item;
+    return build.repeat;
+}
+unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
+    const auto build = build_for(type);
+    for (unsigned i = 0; i < build.size; ++i)
+        if (build.steps[i].item == item && bought[static_cast<unsigned>(item)] < build.steps[i].count)
+            return build.steps[i].count - bought[static_cast<unsigned>(item)];
+    return ~0u; // The repeating item: as many as the gold allows.
 }
 } // namespace
 
@@ -93,27 +97,19 @@ void Bot::buy_equipment(bool crystal_required) {
     if (missing && me.can_buy(crystal))
         me.buy(crystal);
     const unsigned reserve = crystal_required && !me.consumables()[crystal].count() ? crystal.cost() : 0;
-    // Obstruction: squad members carry an altar lock before buying upgrades,
-    // so any of them can cancel an enemy tribute it reaches.
-    const auto altar_lock = bc::consumable_type::altar_lock;
-    if (policy::squad_obstruction && squad_member() && me.gold_count() >= reserve + altar_lock.cost() &&
-        me.can_buy(altar_lock))
-        me.buy(altar_lock);
     while (bc::fuel_remaining() > policy::planning_reserve) {
-        const auto item = next_item(type);
-        if (item == Item::count || me.gold_count() < reserve + item.cost())
+        const auto item = next_item(type, bought);
+        if (me.gold_count() < reserve + item.cost())
             break;
-        const unsigned remainder = me.item_count()[item];
         const unsigned count =
-            std::min((me.gold_count() - reserve) / item.cost(), item.combine_count() - remainder);
+            std::min((me.gold_count() - reserve) / item.cost(), step_left(type, bought, item));
         if (!count || !me.can_buy(item, count))
             break;
         me.buy(item, count);
-        // Emblems replace ingredients. Re-read inventory on the next iteration;
-        // the repeating Power stage deliberately never becomes 'completed'.
+        bought[static_cast<unsigned>(item)] += count;
     }
     const auto lock = bc::consumable_type::altar_lock;
-    if (me.gold_count() >= reserve + lock.cost() && me.can_buy(lock))
+    if (policy::buy_altar_locks && me.gold_count() >= reserve + lock.cost() && me.can_buy(lock))
         me.buy(lock);
     refresh_equipment();
     if (me.is_alive())
@@ -124,7 +120,7 @@ float Bot::upgrade_gain(bc::champion_type champion, float hp, float attack, floa
                         unsigned gold) const {
     if (champion != type || !gold)
         return 0; // Private wallets never enter another champion's estimate.
-    const auto item = next_item(champion);
+    const auto item = next_item(champion, bought);
     if (item == Item::count)
         return 0;
     const unsigned count = std::min(gold / item.cost(), item.combine_count());
@@ -145,7 +141,7 @@ float Bot::upgrade_output(unsigned member, unsigned reward, bool siege, float sp
         return 0;
     const auto champion = member == slot ? type : seen->type;
     const auto &unit = roster[member];
-    const auto item = next_item(champion, unit);
+    const auto item = next_item(champion, member == slot ? bought : Bought{});
     if (item == Item::count || reward < item.cost())
         return 0;
     const auto inventory = unit.item_count();

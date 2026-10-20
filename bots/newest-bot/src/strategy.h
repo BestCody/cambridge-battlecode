@@ -73,7 +73,7 @@ inline constexpr float siege_risk_weight = 0.06f;
 // they never start fights, step away from approaching enemies, avoid
 // contested camps and bank smaller bags. Offense and defense belong to the
 // squad. false restores the older aggressive worker loop entirely.
-inline constexpr bool worker_pure_resource = true;
+inline constexpr bool worker_pure_resource = false;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
 // A worker in danger range keeps farming unless an enemy can already hit it,
@@ -102,7 +102,7 @@ inline constexpr float worker_bank_scale = 0.5f;
 // interrupt enemy tributes and hunt carriers it can kill, and biases its camp
 // choice toward the enemy side and the altar enemies use. false restores the
 // farming-only squad.
-inline constexpr bool squad_obstruction = true;
+inline constexpr bool squad_obstruction = false;
 // Tiles from the coordinator within which an enemy can become a hunt target.
 inline constexpr int hunt_radius = 8;
 // Bag size that makes a lone enemy worth chasing even without a sure kill.
@@ -119,7 +119,7 @@ inline constexpr float squad_altar_bonus = 1.5f;
 inline constexpr int squad_altar_watch_radius = 10;
 // Whether Stellar, Tavi and Cassi run the coordinated squad controller. false
 // plays every champion with the independent worker policy.
-inline constexpr bool squad_enabled = true;
+inline constexpr bool squad_enabled = false;
 // Squad job planning. A plan is refreshed on any material change; without one
 // it expires after this many work windows. 1 restores the old age-only refresh.
 inline constexpr int plan_lifetime_windows = 3;
@@ -133,33 +133,22 @@ inline constexpr unsigned capture_reset_limit = 2;
 // Control credit multiplier for stunning an enemy other than the shared focus
 // target while it threatens a member. 1.0 disables the preference.
 inline constexpr float secondary_control_bonus = 1.25f;
-// Draft heuristic: draft the offensive team (Stellar/Tavi/Twins squad) or the
-// resource team. Each input adds a point toward offense when contact and
-// contesting will matter, or subtracts one when farming alone should win.
-// Thresholds come from game mechanics, not from the local map pool.
-// draft_mode forces a choice for evaluation: -1 heuristic, 0 resource, 1 offense.
-inline constexpr int draft_mode = -1;
-inline constexpr int offense_threshold = 1;  // Score at or above this drafts offense.
-inline constexpr int small_team_penalty = 2; // 3 picks: too few bodies to spare three.
-inline constexpr int large_team_bonus = 1;   // 5 picks: room for a squad and farmers.
-// Open tiles per champion (both teams): below crowded, contact is constant;
-// above sparse, teams can farm without meeting.
-inline constexpr float crowded_tiles = 150.0f;
-inline constexpr float sparse_tiles = 500.0f;
-// Walking distance between spawns: close spawns meet early and often.
-inline constexpr int close_spawns = 30;
-inline constexpr int far_spawns = 80;
-// Share of gem value in camps we reach first (closer to our spawn). Most of it
-// ours: farm it. Little of it: the gems must be contested.
-inline constexpr float own_gems_high = 0.5f;
-inline constexpr float own_gems_low = 0.25f;
-// Gems per round the map produces per champion (gem value / respawn time).
-// A wolf group alone yields about 0.5 gems a round.
-inline constexpr float scarce_supply = 0.5f;
-inline constexpr float plentiful_supply = 1.5f;
-// Share of gem value behind camps a lone champion cannot farm: a group is
-// needed to farm at all, so the squad pays for itself.
-inline constexpr float grouped_gems_high = 0.5f;
+// Replica of the top ladder team's play (see docs/design-notes.md): every
+// champion farms its own side and fights, banking small bags often.
+// Carries are Stellar and Heart of Ruin.
+// Gems carried before a champion walks to bank. They also bank on passing an
+// altar with policy::fish_bag_nearby or more.
+inline constexpr unsigned fish_bag_carry = 28;
+inline constexpr unsigned fish_bag_other = 20;
+inline constexpr unsigned fish_bag_nearby = 10;
+// Gold, in shards, that sends a champion home to shop. Carries earn about
+// three times the gold of the others and shop about every 100 rounds.
+inline constexpr int carry_shopping_shards = 10;
+// Heart of Ruin hits up to 50% harder at low health and shields itself, so it
+// stays in fights longer than the others.
+inline constexpr float heart_retreat_health = 0.15f;
+// The top team never buys altar locks.
+inline constexpr bool buy_altar_locks = false;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
@@ -334,8 +323,6 @@ struct DraftPlan {
     std::uint8_t cheap_gem_groups = 0;
     float spacing = 0;
     float mean_splash = 1, dangerous_fraction = 0;
-    // The draft heuristic chose the offensive team (with the squad).
-    std::uint8_t offense = 1;
 };
 static_assert(sizeof(DraftPlan) <= 1024);
 

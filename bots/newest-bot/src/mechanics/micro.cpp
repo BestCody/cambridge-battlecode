@@ -662,3 +662,78 @@ void Bot::observe_fight() {
     }
     enemies = std::move(current);
 }
+
+bool Bot::impact_dash(bool fighting_champions, int farm_group) {
+    // Heart of Ruin's dash lands up to two tiles away and hits everything
+    // within one tile of the landing. Choose the landing by what it hits.
+    auto &me = bc::self();
+    if (walked || !me.can_cast() || bc::fuel_remaining() < policy::planning_reserve)
+        return false;
+    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    auto abilities = me.abilities();
+    for (unsigned slot_index = 0; slot_index < spells.size(); ++slot_index) {
+        const auto &spell = spells[slot_index];
+        auto &ability = abilities[slot_index];
+        if (spell.kind != bc::ability_kind::dash || spell.modifier <= 0 || spell.radius <= 0 ||
+            !ability.is_ready())
+            continue;
+        const float damage = ability.damage_amount();
+        const auto &targets = fighting_champions ? enemies : camps;
+        auto occupied = static_blocked & ~bc::map::holes();
+        occupied |= bc::vision::camp_tiles() | bc::vision::champion_tiles() | bc::vision::teleport_tiles();
+        occupied.set(position, false);
+        const auto landings = occupied.reachable_tiles(position, unsigned(spell.range)) & ~blocked;
+        vec2 best{-1, -1};
+        float best_score = 0;
+        for (auto tile : landings.positions()) {
+            if (bc::fuel_remaining() < policy::action_reserve + 6000)
+                break;
+            if (tile == position || enemy_spawn.is_set(tile))
+                continue;
+            float score = 0;
+            int hits = 0;
+            for (const auto &unit : targets) {
+                if (unit.health <= 0 || distance(tile, unit.position) > spell.radius)
+                    continue;
+                if (fighting_champions ? enemy_spawn.is_set(unit.position) : unit.group != farm_group)
+                    continue;
+                const float multiplier = unit.enemy() ? unit.mitigation : camp_multiplier;
+                const float dealt = std::min(damage * multiplier, unit.health + unit.shield);
+                score += dealt;
+                ++hits;
+                if (!fighting_champions)
+                    continue;
+                if (dealt >= unit.health + unit.shield)
+                    score += kill_value(unit);
+                else if (!unit.immune && !(unit.stunned && unit.stun_time > 0))
+                    score += unit.strength + unit.burst + (unit.channel ? 120 + unit.gems * 3 : 0);
+            }
+            if (!hits)
+                continue;
+            // A bruiser wants to be in the fight; only refuse a landing it
+            // would not survive.
+            const float danger = incoming(tile, farm_group);
+            if (danger >= health)
+                continue;
+            score -= danger * 0.2f;
+            if (score > best_score) {
+                best_score = score;
+                best = tile;
+            }
+        }
+        // On camps, spend the dash only when it does real work.
+        if (best.x < 0 || (!fighting_champions && best_score < damage * 0.5f))
+            continue;
+        if (ability.use(best)) {
+            walked |= spell.exclusive;
+            refresh_self();
+            blocked = static_blocked | bc::vision::champion_tiles() | bc::vision::camp_tiles() |
+                      bc::vision::teleport_tiles();
+            blocked.set(position, false);
+            if (farm_group >= 0)
+                groups[farm_group].attacked = round;
+            return true;
+        }
+    }
+    return false;
+}

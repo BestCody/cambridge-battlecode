@@ -195,6 +195,8 @@ bool Bot::health_recovery_needed() const {
         threshold = type == bc::champion_type::cassi || type == bc::champion_type::issac
                         ? policy::twin_retreat_health
                         : policy::worker_retreat_health;
+    if (type == bc::champion_type::heart_of_ruin)
+        threshold = policy::heart_retreat_health; // Stronger when hurt, and it shields itself.
     if (policy::worker_pure_resource && !policy::worker_damage_retreat && !squad_member())
         return health < max_health * threshold;
     return health < max_health * threshold ||
