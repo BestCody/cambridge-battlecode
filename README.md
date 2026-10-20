@@ -1,5 +1,57 @@
-Lucky Gold Clusters
+# Lucky Gold Clusters
 
-Cambridge Battlecode Bot Code Base
+Our Cambridge Battlecode 2026 bot. The bot that is currently competing is [`bots/newest-bot`](bots/newest-bot).
 
-Current running bot: "bots/newest-bot"
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `bots/newest-bot/` | The competing C++ bot (see below) |
+| `bots/starter-cpp/` | The SDK starter bot, used as a sparring opponent |
+| `docs/GameRules.md`, `docs/BotAPICpp.md` | Exported game handbook and C++ API reference |
+| `docs/design-notes.md` | Squad design spec, with implementation status and archived rosters |
+| `docs/squad-controller.mmd` | Mermaid flowchart of the squad controller |
+| `scripts/ladder.ps1` | Per-map win-rate table against a list of opponents |
+| `scripts/benchmark.ps1` | Grid search over `policy::` constants in `strategy.h` |
+| `analysis/` | Exported match analytics |
+| `maps/` | Current map pool (`cambc maps pull` refreshes it) |
+| `sdk/`, `cmake/` | Vendored SDK and the CMake project `cambc` builds with |
+
+## Building and running
+
+```sh
+cambc build newest-bot
+cambc run newest-bot starter-cpp --map contest
+pwsh scripts/ladder.ps1 -Build                      # every map vs starter-cpp
+pwsh scripts/ladder.ps1 -Opponents starter-cpp,old  # any folders under bots/
+pwsh scripts/benchmark.ps1 -GridSpec "commit_bonus=1.0f,1.08f,1.2f"
+```
+
+Both scripts can be run from any directory.
+
+## How newest-bot is organised
+
+`src/` is grouped by controller. The CMake build compiles every `.cpp` file under `src/` recursively.
+
+| Folder | Role |
+| --- | --- |
+| `main.cpp`, `bot.h`, `bot.cpp` | Entry point, the `Bot` class, per-turn dispatch |
+| `strategy.h` | Tunable `policy::` constants, priority tiers, the shared-memory format and the draft-memory format |
+| `draft/` | Fixed roster per pick count, and the opening plan written to draft memory |
+| `squad/` | Stellar/Tavi/Cassi controller: coordination, job selection and estimates, travel, delivery |
+| `workers/` | Independent policy for Issac, Ryth and Varg |
+| `mechanics/` | Shared execution both controllers use: observation, movement, combat, combo micro, shopping |
+
+The squad shares one job through the 8-byte team memory: each member writes its claim into its own 10-bit slot. The member in the lowest available slot coordinates. Workers never take over squad decisions, and the squad never falls back to worker logic. See [docs/design-notes.md](docs/design-notes.md) for the decision rules.
+
+## Code conventions
+
+- **Formatting:** `bots/newest-bot/.clang-format` (LLVM base, 4-space indent, 110 columns). Format before committing:
+  `clang-format -i $(find bots/newest-bot/src -name '*.cpp' -o -name '*.h')`.
+  The `cambc` toolchain ships clang-format in `%LOCALAPPDATA%/cambc/wasi-sdk-33/bin`.
+- **Naming:** `snake_case` for functions and variables, `PascalCase` for types. `Bot` methods that belong to the worker controller start with `worker_`; squad methods start with `squad_` or live in `squad/`.
+- **Files:** each `.cpp` file opens with a one-line comment saying what it owns. A new controller or composition gets its own folder or file, not a branch inside an existing function.
+- **Tunables:** every heuristic coefficient goes in `policy::` in `strategy.h`, with a comment giving the value that disables it. Engine rules come from `bc::constants`; rules the SDK doesn't expose go in `rules::`.
+- **Fuel:** check `bc::fuel_remaining()` against `policy::*_reserve` before any loop that could be long. Long searches keep a cursor and resume next turn rather than restarting.
+- **Diagnostics:** guard logging with `if constexpr (policy::diagnostic)`. Log lines use an UPPER_CASE tag followed by `key=value` pairs (`SQUAD_JOB r=... camp=...`).
+- **Comments:** explain *why* a rule exists, especially the game mechanic or failure it guards against, not what the next line does.

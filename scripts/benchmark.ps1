@@ -1,17 +1,18 @@
 # benchmark.ps1 — parameter grid search over strategy.h `policy` constants.
 #
 # Usage:
-#   pwsh benchmark.ps1 -Bot dumb-bot-6 -Opponent dumb-bot-3 -Maps collision,corners,elkring
+#   pwsh scripts/benchmark.ps1 -Bot newest-bot -Opponent starter-cpp -Maps contest,elkring
+#   pwsh scripts/benchmark.ps1 -GridSpec "commit_bonus=1.0f,1.08f,1.2f"
 #
 # The grid is defined below. For every combination it:
-#   1. patches the constant(s) in <Bot>/src/strategy.h
+#   1. patches the constant(s) in bots/<Bot>/src/strategy.h
 #   2. runs `cambc build <Bot>`
 #   3. runs each map against <Opponent> with --statistics
 #   4. records win/loss + both gem totals
-# The original strategy.h is restored afterwards.
+# The original strategy.h is restored afterwards. Works from any directory.
 param(
-    [string]$Bot = 'dumb-bot-6',
-    [string[]]$Opponent = @('dumb-bot-3'),
+    [string]$Bot = 'newest-bot',
+    [string[]]$Opponent = @('starter-cpp'),
     # Empty = every map in the current pool (maps/*.map26a). The published pool
     # changes during the competition, so it is read rather than hard-coded.
     [string[]]$Maps = @(),
@@ -24,7 +25,9 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$root = (Get-Location).Path
+# cambc resolves bots and maps relative to the repository root.
+$root = Split-Path $PSScriptRoot -Parent
+Push-Location $root
 $strategyPath = "$root\bots\$Bot\src\strategy.h"
 $original = Get-Content $strategyPath -Raw
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
@@ -125,6 +128,7 @@ try {
 finally {
     Set-Content -Path $strategyPath -Value $original -Encoding ASCII
     Write-Host "restored $strategyPath"
+    Pop-Location
 }
 
 Write-Host ""

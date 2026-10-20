@@ -1,13 +1,12 @@
-#include "bot.h"
+// Single-turn attack and cast selection, plus kill and linked-fate values.
+#include "../bot.h"
 
 namespace {
-bool present(const ObservedUnit &u) {
-    return u.unit().is_visible() && u.unit().health() > 0;
-}
+bool present(const ObservedUnit &u) { return u.unit().is_visible() && u.unit().health() > 0; }
 } // namespace
 
 bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
-    if (bc::fuel_remaining() < policy::action_reserve)
+    if (bc::fuel_remaining() < (squad_member() ? policy::planning_reserve : policy::action_reserve))
         return false;
     auto &me = bc::self();
     if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
@@ -21,6 +20,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     if (bc::fuel_remaining() < policy::action_reserve)
         return false;
     auto &targets = fighting_champions ? enemies : camps;
+    const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    const auto forbidden_centres = bc::map::walls() | bc::map::holes() | bc::map::altars();
     const bool has_retaliation =
         fighting_champions &&
         std::any_of(targets.begin(), targets.end(), [](const auto &u) { return u.retaliation() > 0; });
@@ -31,9 +32,17 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return buffs.has_shield() ? buffs.get<bc::buff_shield>().value : 0.0f;
     };
     float own_shield = read_shield();
+    std::vector<bool> relevant(targets.size(), true);
+    std::vector<float> controls(targets.size());
+    for (unsigned i = 0; i < targets.size(); ++i) {
+        relevant[i] = !squad_member() || !fighting_champions || relevant_enemy(targets[i]);
+        controls[i] = squad_member() && fighting_champions
+                          ? control_value(targets[i])
+                          : (targets[i].strength + targets[i].burst) * (escaping ? 3 : 1);
+    }
     auto eligible = [&](const ObservedUnit &u) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
-               !(fighting_champions && bc::map::spawn_region(bc::team::enemy).is_set(u.position));
+               relevant[&u - targets.data()] && !(fighting_champions && enemy_spawn.is_set(u.position));
     };
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
@@ -41,7 +50,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         float effective = damage * (u.enemy() ? u.mitigation : camp_multiplier);
         float value = std::min(effective, u.health + u.shield);
         if (effective >= u.health + u.shield) {
-            value += u.enemy() ? 200 + u.gems * 7 + u.strength * 3 : u.strength * 8 + 20;
+            value += u.enemy() ? kill_value(u) : u.strength * 8 + 20;
             if (passive == bc::passive_type::reset_cooldowns_on_kill)
                 value += 60;
         }
@@ -53,7 +62,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         } else
             value += u.strength * effective / std::max(1.0f, u.health) * 3;
         if (cc && !u.stunned && !u.immune)
-            value += (u.strength + u.burst) * (escaping ? 3 : 1);
+            value += controls[&u - targets.data()];
         if (u.retaliation() > 0 && effective > 0) {
             const float recoil = u.retaliation() * mitigation;
             value -= recoil * (1 + std::min(2.0f, gems / 100.0f));
@@ -104,8 +113,12 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             if (eligible(t) &&
                 (t.position == struck ||
                  (passive == bc::passive_type::splash_attack &&
-                  distance(struck, t.position) <= bc::constants::passive_abilities::varg_splash_radius)))
+                  distance(struck, t.position) <= bc::constants::passive_abilities::varg_splash_radius))) {
+                const float before = t.health;
                 t.health = t.unit().is_visible() ? t.unit().health() : 0;
+                if (!fighting_champions)
+                    record_camp_damage(t.group, std::max(0.0f, before - t.health));
+            }
         refresh_self();
         own_shield = read_shield();
         return true;
@@ -189,12 +202,15 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                                 break;
                             vec2 tile = u.position + vec2{dx, dy};
                             if (!bc::map::is_in_bounds(tile) || distance(position, tile) > s.range ||
-                                (bc::map::walls() | bc::map::holes() | bc::map::altars()).is_set(tile))
+                                forbidden_centres.is_set(tile))
                                 continue;
                             float score = 0;
                             for (const auto &other : targets)
                                 if (distance(tile, other.position) <= s.radius)
                                     score += weight(other, damage, s.duration > 0);
+                            if (squad_member())
+                                score -=
+                                    collateral_risk(tile, s.radius, fighting_champions ? -1 : farm_group);
                             if (score > best_score) {
                                 best_score = score;
                                 best_slot = slot_index;
@@ -242,8 +258,12 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 if (eligible(u) && ((s.kind == bc::ability_kind::aoe_damage &&
                                      distance(u.position, best_tile) <= s.radius) ||
                                     ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
-                                     int(i) == best_target)))
+                                     int(i) == best_target))) {
+                    const float before = u.health;
                     u.health = u.unit().is_visible() ? u.unit().health() : 0;
+                    if (!fighting_champions)
+                        record_camp_damage(u.group, std::max(0.0f, before - u.health));
+                }
             }
             refresh_self();
             own_shield = read_shield();
@@ -253,112 +273,28 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     return acted;
 }
 
-bool Bot::skirmish() {
-    if (enemies.empty())
-        return false;
-    const auto abilities = bc::self().abilities();
-    int ready_reach = range;
-    for (unsigned i = 0; i < spells.size(); ++i)
-        if (abilities[i].is_ready() && spells[i].modifier > 0 &&
-            (spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
-             spells[i].kind == bc::ability_kind::aoe_damage))
-            ready_reach = std::max(ready_reach, int(spells[i].range + spells[i].radius));
-    int selected = -1;
-    float best = -1;
-    bool selected_contact = false;
-    const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
-    for (std::size_t i = 0; i < enemies.size(); ++i) {
-        const auto &e = enemies[i];
-        if (enemy_spawn.is_set(e.position))
-            continue;
-        int d = distance(position, e.position);
-        // Choose the current engagement among enemies we can actually damage.
-        // A wounded runner outside our reach must not redirect the whole fight
-        // while other enemies are already inside our firing line.
-        const bool contact = d <= ready_reach ||
-                             (range <= 1 && d <= range + int(stats.base_move_speed));
-        if (selected_contact && !contact)
-            continue;
-        float value = (150 + e.gems * 5 + e.strength * 2) / (std::max(100.0f, e.health + e.shield) * (d + 2));
-        if (e.channel)
-            value *= 2;
-        if (shared.focus() == id(std::get<bc::champion>(e.ref)) + 1)
-            value *= 1.6f;
-        if (value > best || (contact && !selected_contact)) {
-            best = value;
-            selected = i;
-            selected_contact = contact;
-        }
+float Bot::kill_value(const ObservedUnit &enemy) const {
+    float value = 200 + enemy.gems * 7 + enemy.strength * 3;
+    const bool twin = enemy.type == bc::champion_type::cassi || enemy.type == bc::champion_type::issac;
+    if (twin) {
+        // One kill reward, plus the known combat power and bag of the sibling.
+        const auto other =
+            enemy.type == bc::champion_type::cassi ? bc::champion_type::issac : bc::champion_type::cassi;
+        for (const auto &unit : enemies)
+            if (unit.type == other && unit.health > 0)
+                value += unit.strength * 3 + unit.burst + unit.gems * 7;
     }
-    if (selected < 0)
-        return false;
-    const auto victim = enemies[selected];
-    float ours = friendly_power(victim.position), theirs = enemy_power(victim.position);
-    float danger = incoming(position);
-    // Price in imminent enemy respawns: a fight beside their base can be joined
-    // by a full-health body, so the effective enemy power must reflect it.
-    theirs += respawn_threat(position);
-    float spell_burst = 0;
-    for (unsigned i = 0; i < 2; ++i)
-        if (abilities[i].is_ready()) {
-            if (spells[i].kind == bc::ability_kind::attack_reset &&
-                distance(position, victim.position) <= range)
-                spell_burst = std::max(spell_burst, strength);
-            else if ((spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
-                      spells[i].kind == bc::ability_kind::aoe_damage) &&
-                     distance(position, victim.position) <= spells[i].range + spells[i].radius)
-                spell_burst = std::max(spell_burst, focus * spells[i].modifier);
-        }
-    float burst = spell_burst + (distance(position, victim.position) <= range ? strength : 0);
-    bool kill = victim.health + victim.shield <= burst * victim.mitigation;
-    // A sliver of enemy health is a kill we can secure next turn. Finishing
-    // removes their damage and any carried gems, so do not recall out of a
-    // winning duel because the one-turn health math looks unfavourable. Only
-    // chase a *channeling* sliver (recalling/depositing): interrupting it is
-    // high-value and it is not fighting back, whereas a sliver still trading
-    // has teammates behind it that punish an over-extend.
-    bool nearly_dead = victim.health + victim.shield <= victim.max_health * 0.2f;
-    bool finish = nearly_dead && victim.channel && health > danger * 1.5f;
-    bool favourable = ours * policy::aggression >= theirs;
-    if ((health < danger * 2.2f || !favourable) && !kill && !finish) {
-        if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
-            retreating = health < max_health * 0.45f;
-            if (retreating)
-                return escape();
-            // Use a free ranged stun/poke on the way to the economic objective.
-            combat(true, -1, true);
-        }
-        return false;
-    }
-    int d = distance(position, victim.position);
-    if (!favourable && d > range && !kill)
-        return false;
-    shared.focus(id(std::get<bc::champion>(victim.ref)) + 1);
-    auto &me = bc::self();
-    bool moved = false;
-    if (range <= 1 && d > range) {
-        // Deliver available spell burst before a walk would consume the cast.
-        // The combo evaluator still chooses a basic/reset when already in range.
-        if (d <= ready_reach && combat(true))
-            return true;
-        moved = attack_dash(victim.position);
-        moved = advance_attack(victim.position) || moved;
-        if (bc::fuel_remaining() > policy::observation_reserve)
-            observe_fight();
-    } else if (range > 1 && d > range) {
-        if (d <= ready_reach && combat(true))
-            return true;
-        moved = attack_dash(victim.position);
-        moved = advance_attack(victim.position) || moved;
-        if (bc::fuel_remaining() > policy::observation_reserve)
-            observe_fight();
-    }
-    bool acted = combat(true);
-    if (acted && me.is_alive() && range <= 1 && me.can_move())
-        moved = follow_through() || moved;
-    // Melee retains movement after attacking. Chase after a kill and reposition
-    // out of splash clumps; ranged champions cannot walk after ordinary attacks.
-    if (!acted && !moved && me.can_move())
-        moved = advance_attack(victim.position);
-    return acted || moved;
+    return value;
+}
+
+float Bot::linked_risk() const {
+    if (type != bc::champion_type::cassi && type != bc::champion_type::issac)
+        return 1;
+    float risk = 1.5f; // Losing a second body matters even when its bag is unseen.
+    const auto sibling =
+        type == bc::champion_type::cassi ? bc::champion_type::issac : bc::champion_type::cassi;
+    for (const auto &ally : allies)
+        if (ally.type == sibling)
+            risk += std::min(2.0f, ally.gems / 100.0f);
+    return risk;
 }

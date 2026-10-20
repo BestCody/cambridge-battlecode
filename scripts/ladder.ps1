@@ -7,15 +7,13 @@
 # The pool is read from maps/*.map26a, so `cambc maps pull` is picked up
 # automatically -- the published pool changes during the competition.
 #
-# Usage:
-#   pwsh ladder.ps1 -Bot db6-1 -Build
-#   pwsh ladder.ps1 -Bot db6-1 -Opponents dumb-bot-6,dumb-bot-3
+# Usage (from any directory):
+#   pwsh scripts/ladder.ps1 -Build
+#   pwsh scripts/ladder.ps1 -Bot newest-bot -Opponents starter-cpp,baseline
+# Opponents are bot folder names under bots/.
 param(
-    [string]$Bot = 'db6-1',
-    [string[]]$Opponents = @(
-        'dumb-bot-6', 'dumb-bot-5', 'dumb-bot-4', 'dumb-bot-3',
-        'dumb-bot-9', 'db10-macro', 'db11-looter'
-    ),
+    [string]$Bot = 'newest-bot',
+    [string[]]$Opponents = @('starter-cpp'),
     # Empty = every map in the current pool.
     [string[]]$Maps = @(),
     [switch]$Build,
@@ -23,7 +21,9 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$root = (Get-Location).Path
+# cambc resolves bots and maps relative to the repository root.
+$root = Split-Path $PSScriptRoot -Parent
+Push-Location $root
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 if ($Maps.Count -eq 0) {
@@ -74,3 +74,5 @@ foreach ($m in $perMap.Keys) {
     $w = ($r | Where-Object { $_ -eq 'W' }).Count
     Write-Host ("  {0,-10} {1}/{2}  {3}" -f $m, $w, $r.Count, ($r -join ''))
 }
+
+Pop-Location

@@ -1,4 +1,5 @@
-#include "bot.h"
+// Champion fight micro: one-turn combo search, dashes and follow-through.
+#include "../bot.h"
 
 namespace {
 struct Strike {
@@ -11,11 +12,12 @@ struct Strike {
 struct Sequence {
     std::array<int, 3> actions{-1, -1, -1};
     float score = 0;
-    int focus = -1, origin = 0;
+    int origin = 0;
 };
 } // namespace
 
 bool Bot::attack_combo(bool escaping) {
+    const auto search_reserve = policy::planning_reserve;
     // Search one turn's attack/cast combinations. Host queries stay outside the
     // search; equivalent area centres collapse to one set of affected enemies.
     if (enemies.empty() || enemies.size() > std::numeric_limits<std::uint64_t>::digits ||
@@ -25,7 +27,7 @@ bool Bot::attack_combo(bool escaping) {
     const auto abilities = me.abilities();
     const bool attack_available = me.can_attack();
     const bool can_attack = attack_available && (!escaping || range <= 1);
-    const bool can_step = !escaping && !walked && range <= 1 && me.can_move();
+    const bool can_step = !escaping && !walked && me.can_move() && (range <= 1 || squad_member());
     int reach = can_attack ? range : 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
@@ -37,8 +39,12 @@ bool Bot::attack_combo(bool escaping) {
                  s.kind == bc::ability_kind::aoe_damage)
             reach = std::max(reach, int(s.range + s.radius));
     }
-    if (can_step)
+    if (can_step) {
         reach = std::max(reach, range + int(stats.base_move_speed));
+        for (unsigned i = 0; i < spells.size(); ++i)
+            if (abilities[i].is_ready() && !spells[i].exclusive)
+                reach = std::max(reach, int(spells[i].range + stats.base_move_speed));
+    }
     if (std::none_of(enemies.begin(), enemies.end(),
                      [&](const auto &e) { return e.health > 0 && distance(position, e.position) <= reach; }))
         return false;
@@ -46,18 +52,42 @@ bool Bot::attack_combo(bool escaping) {
     const float initial_shield = buffs.has_shield() ? buffs.get<bc::buff_shield>().value : 0;
     const bool initially_enhanced = buffs.has_enhanced_attack();
     const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    const auto forbidden_centres = bc::map::walls() | bc::map::holes() | bc::map::altars();
+    std::vector<bool> useful(enemies.size());
+    for (unsigned i = 0; i < enemies.size(); ++i)
+        useful[i] = enemies[i].health > 0 && !enemy_spawn.is_set(enemies[i].position) &&
+                    (!squad_member() || relevant_enemy(enemies[i]));
     std::vector<vec2> origins{position};
     std::vector<bc::bitboard> sight{bc::vision::visible_tiles()};
     std::vector<float> pressure{incoming(position)};
     if (can_step) {
         for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
+            if (bc::fuel_remaining() < search_reserve)
                 break;
             if (tile == position || origins.size() >= std::numeric_limits<std::uint64_t>::digits)
                 continue;
+            if (squad_member() && squad.phase == SquadPhase::capture && squad.camp >= 0 &&
+                groups[squad.camp].tiles.is_set(position) && !groups[squad.camp].tiles.is_set(tile) &&
+                std::none_of(allies.begin(), allies.end(), [&](const auto &ally) {
+                    return groups[squad.camp].tiles.is_set(ally.position);
+                }))
+                continue;
             const bool new_attack = std::any_of(enemies.begin(), enemies.end(), [&](const auto &e) {
-                return e.health > 0 && !enemy_spawn.is_set(e.position) &&
-                       distance(position, e.position) > range && distance(tile, e.position) <= range;
+                if (!useful[&e - enemies.data()])
+                    return false;
+                if (range <= 1)
+                    return distance(position, e.position) > range && distance(tile, e.position) <= range;
+                for (unsigned i = 0; i < spells.size(); ++i) {
+                    const auto &spell = spells[i];
+                    if (!abilities[i].is_ready() || spell.exclusive)
+                        continue;
+                    if (spell.kind == bc::ability_kind::attack_reset && distance(tile, e.position) <= range)
+                        return true;
+                    if (spell.kind == bc::ability_kind::cc && !e.immune && (!e.stunned || e.stun_time <= 0) &&
+                        distance(tile, e.position) <= spell.range)
+                        return true;
+                }
+                return false;
             });
             if (!new_attack)
                 continue;
@@ -73,13 +103,30 @@ bool Bot::attack_combo(bool escaping) {
         std::uint64_t mask = 0;
         const std::size_t count = exclusive ? 1 : origins.size();
         for (std::size_t i = 0; i < count; ++i)
-            if (distance(origins[i], target) <= reach &&
-                (!needs_sight || sight[i].is_set(target)))
+            if (distance(origins[i], target) <= reach && (!needs_sight || sight[i].is_set(target)))
                 mask |= std::uint64_t{1} << i;
         return mask;
     };
     std::uint64_t eligible = 0;
-    std::vector<float> original, remaining, weights, follow_up;
+    std::vector<float> original, remaining, weights, follow_up, control;
+    // Camp exposure is the same for every prospective victim. Compute it once
+    // per committed core ally; repeating it inside the enemy/ally product can
+    // exceed an entire turn's fuel on dense maps before sequence search starts.
+    std::vector<bool> support(allies.size(), false);
+    if (squad_member())
+        for (unsigned i = 0; i < allies.size(); ++i) {
+            if (bc::fuel_remaining() < search_reserve)
+                return false;
+            const auto &ally = allies[i];
+            if (ally.stunned || ally.channel || ally.completed)
+                continue;
+            for (unsigned member = 0; member < roster.size(); ++member)
+                if (squad.contains(member) && same_job(shared.get(member)) &&
+                    std::get<bc::champion>(ally.ref) == roster[member]) {
+                    support[i] = ally.health > incoming(ally.position, squad.camp);
+                    break;
+                }
+        }
     original.reserve(enemies.size());
     weights.reserve(enemies.size());
     // Concentrate the volley where it removes the most offensive power per
@@ -87,25 +134,33 @@ bool Bot::attack_combo(bool escaping) {
     // control and healing remain on comparable scales across army sizes.
     float total_threat = 0, total_health = 0;
     for (const auto &e : enemies)
-        if (e.health > 0 && !enemy_spawn.is_set(e.position)) {
+        if (useful[&e - enemies.data()]) {
             total_threat += e.damage_rate + e.burst * 0.5f;
             total_health += e.health + e.shield + e.ready_shield;
         }
     const float typical_density = total_threat / std::max(1.0f, total_health);
     for (std::size_t i = 0; i < enemies.size(); ++i) {
+        if (bc::fuel_remaining() < search_reserve)
+            return false;
         const auto &e = enemies[i];
         original.push_back(e.health + e.shield);
         float weight = (1 + std::min(2.0f, e.gems / 100.0f)) * (1 + 0.6f * (1 - e.health / e.max_health));
-        const float density = (e.damage_rate + e.burst * 0.5f) /
-                              std::max(1.0f, e.health + e.shield + e.ready_shield);
+        const float density =
+            (e.damage_rate + e.burst * 0.5f) / std::max(1.0f, e.health + e.shield + e.ready_shield);
         weight *= std::sqrt(density / std::max(0.001f, typical_density));
-        if (shared.focus() == id(std::get<bc::champion>(e.ref)) + 1)
-            weight *= policy::attack_focus_bonus;
+        if (squad_member() && shared.focus() && shared.focus() <= enemy_roster.size() &&
+            std::get<bc::champion>(e.ref) == enemy_roster[shared.focus() - 1])
+            weight *= policy::commit_bonus;
         weights.push_back(weight);
         float assistance = 0;
         for (const auto &ally : allies) {
             if (ally.stunned || ally.channel)
                 continue;
+            if (squad_member()) {
+                if (support[&ally - allies.data()])
+                    assistance += firing(ally, e).damage / std::max(0.01f, e.mitigation);
+                continue;
+            }
             const int d = distance(ally.position, e.position);
             if (d <= ally.range)
                 assistance += ally.strength;
@@ -113,7 +168,8 @@ bool Bot::attack_combo(bool escaping) {
                 assistance += ally.burst;
         }
         follow_up.push_back(assistance * e.mitigation);
-        if (e.health > 0 && !enemy_spawn.is_set(e.position))
+        control.push_back(squad_member() ? control_value(e) : (e.strength + e.burst) * (escaping ? 3 : 1));
+        if (useful[i])
             eligible |= std::uint64_t{1} << i;
     }
     if (!eligible)
@@ -122,6 +178,8 @@ bool Bot::attack_combo(bool escaping) {
     std::vector<Strike> actions;
     std::vector<int> basics{-1}, casts{-1};
     for (std::size_t i = 0; i < enemies.size(); ++i) {
+        if (bc::fuel_remaining() < search_reserve)
+            break;
         const auto legal = in_range(enemies[i].position, range, false);
         if (!(eligible & (std::uint64_t{1} << i)) || !legal)
             continue;
@@ -140,7 +198,7 @@ bool Bot::attack_combo(bool escaping) {
         actions.push_back(a);
     }
     for (int slot_index = 0; slot_index < 2; ++slot_index) {
-        if (bc::fuel_remaining() < policy::planning_reserve)
+        if (bc::fuel_remaining() < search_reserve)
             break;
         const auto &spell = spells[slot_index];
         const auto &ability = abilities[slot_index];
@@ -172,17 +230,17 @@ bool Bot::attack_combo(bool escaping) {
         } else if (spell.kind == bc::ability_kind::aoe_damage) {
             std::vector<std::pair<std::uint64_t, std::uint64_t>> seen;
             for (const auto &e : enemies) {
-                if (bc::fuel_remaining() < policy::planning_reserve)
+                if (bc::fuel_remaining() < search_reserve)
                     break;
                 if (!in_range(e.position, spell.range + spell.radius, spell.exclusive, false))
                     continue;
                 for (int dx = -int(spell.radius); dx <= int(spell.radius); ++dx)
                     for (int dy = -int(spell.radius); dy <= int(spell.radius); ++dy) {
-                        if (bc::fuel_remaining() < policy::planning_reserve)
+                        if (bc::fuel_remaining() < search_reserve)
                             break;
                         a.tile = e.position + vec2{dx, dy};
                         a.origins = in_range(a.tile, spell.range, spell.exclusive, false);
-                        if (!bc::map::is_in_bounds(a.tile) || !a.origins)
+                        if (!bc::map::is_in_bounds(a.tile) || !a.origins || forbidden_centres.is_set(a.tile))
                             continue;
                         a.hits = 0;
                         for (std::size_t i = 0; i < enemies.size(); ++i)
@@ -190,9 +248,20 @@ bool Bot::attack_combo(bool escaping) {
                                 a.hits |= std::uint64_t{1} << i;
                         a.hits &= eligible;
                         const auto pattern = std::pair{a.hits, a.origins};
-                        if (a.hits && std::find(seen.begin(), seen.end(), pattern) == seen.end()) {
-                            seen.push_back(pattern);
-                            add(a);
+                        if (a.hits) {
+                            a.support = -collateral_risk(a.tile, spell.radius);
+                            if (std::find(seen.begin(), seen.end(), pattern) == seen.end()) {
+                                seen.push_back(pattern);
+                                add(a);
+                            } else {
+                                // Equal champion hits may wake different monsters.
+                                for (int index : casts)
+                                    if (index >= 0 && actions[index].slot == a.slot &&
+                                        actions[index].hits == a.hits &&
+                                        actions[index].origins == a.origins &&
+                                        actions[index].support < a.support)
+                                        actions[index] = a;
+                            }
                         }
                     }
             }
@@ -220,9 +289,17 @@ bool Bot::attack_combo(bool escaping) {
     Sequence best;
     auto evaluate = [&](std::array<int, 3> sequence) {
         std::uint64_t legal = every_origin;
+        bool restored = false;
         for (int index : sequence)
-            if (index >= 0)
+            if (index >= 0) {
                 legal &= actions[index].origins;
+                if (actions[index].reset)
+                    restored = true;
+                // Ordinary movement consumes a ranged basic allowance. Only
+                // an actual reset earlier in this sequence restores that shot.
+                if (range > 1 && actions[index].slot < 0 && !restored)
+                    legal &= 1;
+            }
         if (!legal)
             return;
         int origin = 0;
@@ -235,7 +312,11 @@ bool Bot::attack_combo(bool escaping) {
                 }
         }
         std::copy(original.begin(), original.end(), remaining.begin());
-        float score = origin ? -policy::unused_cast_cost : 0;
+        if (origin && pressure[origin] * linked_risk() >= health + initial_shield)
+            return;
+        float score = origin ? -policy::unused_cast_cost -
+                                   std::max(0.0f, pressure[origin] - pressure[0]) * linked_risk()
+                             : 0;
         float own_health = health, own_shield = initial_shield;
         bool enhanced = initially_enhanced;
         std::uint64_t stunned = 0;
@@ -277,11 +358,18 @@ bool Bot::attack_combo(bool escaping) {
                 if (damage > 0)
                     recoil += e.retaliation() * mitigation;
                 if (remaining[i] <= 0) {
-                    score += (200 + e.gems * 7 + e.strength * 3) * weights[i];
+                    score += kill_value(e) * weights[i];
+                    if (e.type == bc::champion_type::cassi || e.type == bc::champion_type::issac) {
+                        const auto sibling = e.type == bc::champion_type::cassi ? bc::champion_type::issac
+                                                                                : bc::champion_type::cassi;
+                        for (std::size_t j = 0; j < enemies.size(); ++j)
+                            if (enemies[j].type == sibling)
+                                remaining[j] = 0; // Linked death is not a second kill reward.
+                    }
                     if (passive == bc::passive_type::reset_cooldowns_on_kill)
                         score += 60;
-                } else if ((a.stun || (a.slot < 0 && enhanced && int(i) == a.target)) && !e.stunned &&
-                           !e.immune)
+                } else if ((a.stun || (a.slot < 0 && enhanced && int(i) == a.target)) &&
+                           (!e.stunned || e.stun_time <= 0) && !e.immune)
                     stunned |= bit;
             }
             if (a.slot < 0)
@@ -289,38 +377,28 @@ bool Bot::attack_combo(bool escaping) {
             const float absorbed = std::min(own_shield, recoil);
             own_shield -= absorbed;
             own_health -= recoil - absorbed;
-            score -= recoil * (1 + std::min(2.0f, gems / 100.0f));
+            score -= recoil * (1 + std::min(2.0f, gems / 100.0f)) * linked_risk();
             if (own_health <= 0)
-                score -= 200 + gems * 7 + strength * 3;
+                score -= (200 + gems * 7 + strength * 3) * linked_risk();
         }
         // Stun only earns credit if the opponent survives the whole combo.
-        int focus_target = -1;
-        float focus_value = 0;
         for (std::size_t i = 0; i < enemies.size(); ++i) {
             if ((stunned & (std::uint64_t{1} << i)) && remaining[i] > 0) {
                 const auto &e = enemies[i];
-                score +=
-                    (e.strength + e.burst) * (escaping ? 3 : 1) + follow_up[i] * policy::stun_followup_credit;
+                score += control[i] + follow_up[i] * policy::stun_followup_credit;
                 if (e.channel)
                     score += 120 + e.gems * 3;
             }
             if (remaining[i] > 0 && remaining[i] < original[i]) {
-                float value = (original[i] - remaining[i]) * weights[i];
                 if (remaining[i] <= follow_up[i]) {
                     const auto &e = enemies[i];
-                    const float finish =
-                        (200 + e.gems * 7 + e.strength * 3) * weights[i] * policy::assist_finish_credit;
+                    const float finish = kill_value(e) * weights[i] * policy::assist_finish_credit;
                     score += finish;
-                    value += finish;
-                }
-                if (value > focus_value) {
-                    focus_value = value;
-                    focus_target = i;
                 }
             }
         }
         if (score > best.score)
-            best = {sequence, score, focus_target, origin};
+            best = {sequence, score, origin};
     };
     // Evaluate attacks alone first, then both cast orders. Resets get a second
     // independently selected attack, allowing a kill followed by a new target.
@@ -331,13 +409,13 @@ bool Bot::attack_combo(bool escaping) {
         for (int cast : casts) {
             if (cast < 0)
                 continue;
-            if (bc::fuel_remaining() < policy::planning_reserve)
+            if (bc::fuel_remaining() < search_reserve)
                 break;
             if (actions[cast].reset) {
-                if (first < 0 && attack_available)
+                if (first < 0 && attack_available && !(can_step && range > 1))
                     continue;
                 for (int second : basics) {
-                    if (bc::fuel_remaining() < policy::planning_reserve)
+                    if (bc::fuel_remaining() < search_reserve)
                         break;
                     if (second >= 0)
                         evaluate({first, cast, second});
@@ -363,8 +441,10 @@ bool Bot::attack_combo(bool escaping) {
         if (a.slot < 0) {
             const auto &enemy = std::get<bc::champion>(enemies[a.target].ref);
             if (me.can_attack() && enemy.is_visible() && enemy.is_alive()) {
-                me.attack(enemy);
-                acted = true;
+                if (me.attack_tiles().is_set(enemy.position())) {
+                    me.attack(enemy);
+                    acted = true;
+                }
             }
         } else if (abilities[a.slot].is_ready()) {
             bool used = false;
@@ -385,8 +465,6 @@ bool Bot::attack_combo(bool escaping) {
         }
     }
     refresh_self();
-    if (acted && best.focus >= 0)
-        shared.focus(id(std::get<bc::champion>(enemies[best.focus].ref)) + 1);
     return acted;
 }
 
@@ -550,52 +628,4 @@ void Bot::observe_fight() {
         }
     }
     enemies = std::move(current);
-}
-
-void Bot::attack_order() {
-    // Priority applies next round. Put an available burst or finishing blow
-    // early in the allied order instead of using a permanent champion order.
-    if (!initialised || bc::fuel_remaining() < policy::planning_reserve)
-        return;
-    auto &me = bc::self();
-    int priority = passive == bc::passive_type::splash_attack ? 1200
-                   : type == bc::champion_type::willow        ? 1600
-                                                              : 1000 - static_cast<int>(slot);
-    if (me.is_alive() && !me.is_recalling() && !me.is_submitting_gems() && !me.is_teleporting() &&
-        !enemies.empty()) {
-        const auto abilities = me.abilities();
-        std::array<bool, 2> ready{};
-        for (unsigned i = 0; i < ready.size(); ++i)
-            ready[i] = abilities[i].cooldown() <= 1;
-        float best = 0;
-        for (const auto &e : enemies) {
-            if (!e.unit().is_visible())
-                continue;
-            const float hp = e.unit().health();
-            if (hp <= 0)
-                continue;
-            const int d = distance(position, e.position);
-            const float basic = d <= range ? strength : 0;
-            float spell = 0;
-            for (unsigned i = 0; i < spells.size(); ++i) {
-                if (!ready[i])
-                    continue;
-                const auto &s = spells[i];
-                if (s.kind == bc::ability_kind::attack_reset && d <= range)
-                    spell = std::max(spell, strength);
-                if ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                     s.kind == bc::ability_kind::aoe_damage) &&
-                    d <= s.range + s.radius)
-                    spell = std::max(spell, focus * s.modifier);
-            }
-            float burst = (basic + spell) * e.mitigation;
-            if (burst >= hp + e.shield)
-                burst += 200 + e.gems * 7;
-            best = std::max(best, burst);
-        }
-        if (best > 0)
-            priority = 2000 + int(std::min(best, 10000.0f));
-    }
-    if (me.priority() != priority)
-        me.set_priority(priority);
 }

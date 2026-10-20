@@ -1,6 +1,7 @@
-#include "bot.h"
+// Worker camp choice and farming.
+#include "../bot.h"
 
-int Bot::choose_group() {
+int Bot::worker_choose_group() {
     // This field depends only on immutable terrain and our origin. Reuse it
     // while clearing or holding a camp; dynamic occupancy is routed locally.
     if (origin_position != position) {
@@ -11,9 +12,7 @@ int Bot::choose_group() {
     float best = -1;
     int choice = -1;
     float progress = std::min(1.0f, round / float(std::max(1u, bc::constants::max_rounds / 2)));
-    float gold_value =
-        (opening.assault ? policy::early_gold_value : policy::spread_gold_value) * (1 - progress) +
-        policy::late_gold_value * progress;
+    float gold_value = policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress;
     const float reserve = std::max(max_health * policy::casualty_margin, incoming(position) * 2);
     // Squad assembly: count living allies. After a wipe a lone respawn must not
     // walk straight back into a grouped enemy and feed one champion at a time.
@@ -26,6 +25,12 @@ int Bot::choose_group() {
         if (bc::fuel_remaining() < 28000)
             break;
         const auto &g = groups[i];
+        bool reserved = false;
+        for (unsigned member = 0; member < roster.size(); ++member)
+            reserved |= squad.contains(member) && roster[member].is_alive() &&
+                        TeamMemory::objective(shared.get(member), groups.size()) == int(i);
+        if (reserved && !g.tiles.is_set(position))
+            continue;
         int path = bc::distance_field::unreachable;
         for (const auto &c : g.camps)
             path = std::min(path, int(origin_field.get(c.position)));
@@ -55,6 +60,11 @@ int Bot::choose_group() {
         float clear = remaining / speed;
         float loss = clear_loss(g, clear);
         float risk = std::max(0.0f, loss - std::max(0.0f, health - reserve)) / std::max(100.0f, health);
+        if (squad.members && type == bc::champion_type::issac)
+            for (const auto &enemy : enemies)
+                if (distance(enemy.position, g.centre) <= enemy.spell_reach + enemy.range)
+                    risk += (enemy.strength + enemy.burst) * linked_risk() * bc::constants::capture_time /
+                            std::max(100.0f, health);
         float ranged_dps = 0;
         for (const auto &s : spells)
             if (s.range > 3 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
@@ -77,14 +87,13 @@ int Bot::choose_group() {
         // reward dominates: a gold cluster pays 0 gems, so no amount of gold
         // route play converts it into a win. Gem-bearing camps (wolf, elk,
         // monolith) pay both, and are weighted as the primary objective there.
-        float reward =
-            g.unit.gem_value() * gem_reward_weight(opening) + gold_value * g.unit.gold_value();
+        float reward = g.unit.gem_value() * gem_reward_weight(opening) + gold_value * g.unit.gold_value();
         float duration = travel + clear + waiting + bc::constants::capture_time + 1;
         duration += std::min(20, g.altar_distance) * 0.25f;
         float value = reward / std::max(1.0f, duration);
         const float risk_weight = g.unit.gem_value() > 0 ? gem_risk_weight(opening) : 1.0f;
-        value /= 1 + risk * 4 * risk_weight + (claims - partners) * 0.55f +
-                 partners * policy::partner_penalty;
+        value /=
+            1 + risk * 4 * risk_weight + (claims - partners) * 0.55f + partners * policy::partner_penalty;
         if (enemy_on)
             value *= 1.4f;
         // While the squad is depleted, converge on the allies still on the map
@@ -112,20 +121,15 @@ int Bot::choose_group() {
     return choice;
 }
 
-void Bot::farm() {
+void Bot::worker_farm() {
     auto &me = bc::self();
     if (bc::fuel_remaining() < policy::planning_reserve)
         return;
-    bool finished = target >= 0 && groups[target].status == CampGroup::cooling;
-    bool opening_rush = slot < opening.rush_size && round < opening.rally_until &&
-                        target + 1 == opening.rally_group && !finished;
-    if (target < 0 || finished || (!opening_rush && int(round) - last_plan >= policy::replan_period)) {
+    const bool finished = target >= 0 && groups[target].status == CampGroup::cooling;
+    if (target < 0 || finished || int(round) - last_plan >= policy::replan_period) {
         if (bc::fuel_remaining() > policy::observation_reserve)
-            target = choose_group();
+            target = worker_choose_group();
     }
-    // Reconsider each member's marginal objective value after the opening.
-    // Claims make cooperative clears attractive when the extra damage saves
-    // enough time; no permanent leader forces a fixed three-unit formation.
     if (target < 0) {
         publish(0);
         return;

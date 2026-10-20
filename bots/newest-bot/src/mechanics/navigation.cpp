@@ -1,4 +1,6 @@
-#include "bot.h"
+// Movement, mobility casts and the shared health-recovery retreat.
+#include "../bot.h"
+#include <tuple>
 
 bool Bot::move_step(vec2 tile) {
     auto &me = bc::self();
@@ -7,6 +9,9 @@ bool Bot::move_step(vec2 tile) {
     if (me.move_absolute(tile)) {
         walked = true;
         position = me.position();
+        blocked = static_blocked | bc::vision::champion_tiles() | bc::vision::camp_tiles() |
+                  bc::vision::teleport_tiles();
+        blocked.set(position, false);
         return true;
     }
     // Hidden occupancy reveals the blocked tile without spending the allowance.
@@ -59,7 +64,7 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
     return false;
 }
 
-bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_group) {
+bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_group, bool allow_teleport) {
     auto &me = bc::self();
     if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
         return false;
@@ -87,15 +92,15 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         // A short teleport may bridge an isolated island. Check landing terrain
         // and occupancy, then compare a terrain-only route beyond the barrier.
         auto crystal = me.consumables()[bc::consumable_type::tp_crystal];
-        if (crystal.count() && !me.restrictions().contains(bc::buff_restrictions::consumable)) {
+        if (allow_teleport && crystal.count() &&
+            !me.restrictions().contains(bc::buff_restrictions::consumable)) {
             // Crystal range is part of the published kit, not a map coordinate.
             // Try reachable landings best-first; a hidden occupant blocks a
             // landing without consuming the crystal, so retry the next
             // candidate instead of abandoning the crossing.
-            constexpr int crystal_range = 3;
             std::vector<std::pair<int, vec2>> landings;
             landings.reserve(24);
-            for (auto p : (around(position, crystal_range) & ~blocked).positions()) {
+            for (auto p : (around(position, rules::crystal_range) & ~blocked).positions()) {
                 int value = field.get(p);
                 if (value != bc::distance_field::unreachable)
                     landings.emplace_back(value, p);
@@ -104,8 +109,7 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
                       [](const auto &l, const auto &r) { return l.first < r.first; });
             for (int attempt = 0; attempt < 3 && attempt < int(landings.size()); ++attempt) {
                 const vec2 destination = landings[attempt].second;
-                if (incoming(destination, engaged_group) * bc::constants::tp_crystal_time >=
-                    health * 0.5f)
+                if (incoming(destination, engaged_group) * bc::constants::tp_crystal_time >= health * 0.5f)
                     continue;
                 if (crystal.use(destination))
                     return true;
@@ -117,7 +121,8 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         }
         return false;
     }
-    if (breaking_through && !urgent && bc::fuel_remaining() > policy::action_reserve + 5000) {
+    if (breaking_through && !squad_member() && !urgent &&
+        bc::fuel_remaining() > policy::action_reserve + 5000) {
         int next_group = -1, best_distance = field.get(position);
         for (const auto &c : camps)
             if (distance(position, c.position) <= range) {
@@ -180,52 +185,84 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
     return moved;
 }
 
-bool Bot::escape() {
+bool Bot::health_recovery_needed() const {
+    if (bc::map::spawn_region(bc::team::ally).is_set(position))
+        return health < max_health;
+    return health < max_health * policy::retreat_health ||
+           health <= incoming(position, squad_member() ? squad.camp : target) * 2;
+}
+
+void Bot::retreat_to_spawn() {
     auto &me = bc::self();
-    publish(TeamMemory::recall);
-    if (bc::map::spawn_region(bc::team::ally).is_set(position)) {
-        // Turn-end recovery must occur before moving off the spawn.
-        if (health < max_health)
-            return true;
-        retreating = false;
-        return false;
-    }
-    float immediate = incoming(position);
-    if (immediate == 0) {
-        bool chased = false;
-        for (const auto &e : enemies)
-            if (!e.stunned && distance(e.position, position) <= 6)
-                chased = true;
-        if (!chased) {
-            me.recall();
-            return true;
-        }
-    }
-    if (home_field.get(position) <= bc::constants::recall_time + 1) {
-        move_to(bc::map::spawn_region(bc::team::ally), true, true);
-        combat(true, -1, true);
-        return true;
-    }
-    // Reach a tile outside camp attack range, then recall. Taking damage during
-    // recall cancels it, so starting a channel in an active camp is never useful.
-    constexpr int search_radius = 6;
-    auto safe = around(position, search_radius) & ~blocked;
+    const auto spawn = bc::map::spawn_region(bc::team::ally);
+    if (spawn.is_set(position) || me.is_recalling() || me.is_teleporting() || me.is_submitting_gems() ||
+        me.buffs().has_stun())
+        return;
+    // One hit cancels recall. Include reach over the channel, including enemies
+    // whose current stun can expire, rather than just their current attack tile.
     bc::bitboard threatened;
-    for (const auto &c : camps)
-        if (c.strength > 0 && distance(position, c.position) <= search_radius + c.range)
-            threatened.draw_chebyshev(c.position, c.range);
-    for (const auto &e : enemies) {
-        const int reach = std::max(e.range + 1, 4);
-        if (distance(position, e.position) <= search_radius + reach)
-            threatened.draw_chebyshev(e.position, reach);
+    for (const auto &camp : camps)
+        if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range)
+            threatened.draw_chebyshev(camp.position, camp.range);
+    for (const auto &enemy : enemies) {
+        const auto design = std::get<bc::champion>(enemy.ref).base_stats();
+        const int reach =
+            std::max(enemy.range, enemy.spell_reach) + bc::constants::recall_time * design.base_move_speed;
+        if (distance(position, enemy.position) <= stats.vision_radius + reach)
+            threatened.draw_chebyshev(enemy.position, reach);
     }
-    // Union the same exclusion regions once. Distant ward sightings cannot
-    // intersect this local search, and need no temporary full-map mask.
-    safe &= ~threatened;
-    if (!safe.is_empty())
-        move_to(safe, true, true);
-    else
-        move_to(bc::map::spawn_region(bc::team::ally), true, true);
-    combat(true, -1, true);
-    return true;
+    const bool safe = !threatened.is_set(position) && incoming(position) == 0;
+    const int walk = home_field.get(position);
+    if (safe && walk > bc::constants::recall_time * stats.base_move_speed) {
+        me.recall();
+        return;
+    }
+    const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
+    const auto goals = walk <= bc::constants::recall_time * stats.base_move_speed || safe_tiles.is_empty()
+                           ? spawn
+                           : safe_tiles;
+    const bool moved = move_to(goals, true, true);
+    if (!moved && safe) {
+        // Occupancy can block a short walk home. Do not wait on that route when
+        // this tile already permits the recall that fulfils the same recovery.
+        me.recall();
+        return;
+    }
+    if (!moved && me.can_move()) {
+        // A disconnected safe region or a blocked corridor must not turn
+        // recovery into idling. Minimize immediate damage, then increase the
+        // distance from attack/spell reach before preferring the way home.
+        auto clearance = [&](vec2 tile) {
+            int value = std::numeric_limits<int>::max();
+            for (const auto &enemy : enemies)
+                value = std::min(value,
+                                 distance(tile, enemy.position) - std::max(enemy.range, enemy.spell_reach));
+            for (const auto &camp : camps)
+                if (camp.strength > 0)
+                    value = std::min(value, distance(tile, camp.position) - camp.range);
+            return value;
+        };
+        auto score = [&](vec2 tile) {
+            return std::tuple{incoming(tile), -clearance(tile), home_field.get(tile)};
+        };
+        vec2 best = position;
+        auto best_score = score(position);
+        for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
+            if (bc::fuel_remaining() < policy::action_reserve)
+                break;
+            if (blocked.is_set(tile))
+                continue;
+            const auto value = score(tile);
+            if (value < best_score) {
+                best = tile;
+                best_score = value;
+            }
+        }
+        if (best != position && bc::fuel_remaining() >= policy::action_reserve)
+            move_step(best);
+    }
+    if (!spawn.is_set(position) && bc::fuel_remaining() > policy::observation_reserve) {
+        observe_fight();
+        combat(true, -1, true);
+    }
 }

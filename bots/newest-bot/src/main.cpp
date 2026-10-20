@@ -1,6 +1,6 @@
 // Dispatch draft and gameplay; a failed turn is logged and still yields.
 #include "bot.h"
-#include "draft.h"
+#include "draft/draft.h"
 #include <cambc.h>
 #include <iostream>
 
@@ -12,10 +12,8 @@ int main() {
         try {
             if (cambc::is_draft())
                 play_draft();
-            else {
+            else
                 bot.play_turn();
-                bot.attack_order();
-            }
         } catch (const std::exception &error) {
             std::cout << "bot error: " << error.what() << std::endl;
         } catch (...) {
@@ -23,7 +21,8 @@ int main() {
         }
 
         if (!drafting && cambc::round_number() != start_round)
-            std::cout << "FUEL_OVERRUN started=" << start_round << " ended=" << cambc::round_number() << '\n';
+            std::cout << "FUEL_OVERRUN started=" << start_round << " ended=" << cambc::round_number()
+                      << " type=" << int(cambc::self().champion_name()) << '\n';
         cambc::end_turn();
     }
 }

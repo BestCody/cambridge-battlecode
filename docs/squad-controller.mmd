@@ -1,0 +1,70 @@
+---
+config:
+  layout: elk
+---
+flowchart TB
+    Draft["Fixed roster for 3, 4 or 5 picks"] --> Init["Read public map; prepare bounded route caches"]
+    Init --> Role{"Champion assignment"}
+    Role -->|Stellar, Tavi, Cassi| Observe
+    Role -->|Issac, Ryth, Varg| Workers["Resource worker controller; respect core camp reservations"]
+
+    subgraph Trio["Trio controller (see docs/design-notes.md)"]
+        Observe["Observe, reconcile coordinator directive, buy legal fixed upgrades"] --> Channel
+        Supervisor{"Every phase: immediate win/loss, exposure, pending delivery and progress"}
+        Supervisor -->|Urgent action or failed progress| Resolve["Finish a safe decisive action, escape, regroup or replan the shared operation"]
+        Channel{"Safe channel already running?"}
+        Channel -->|Yes| Publish["Publish actual intent/result and next-round priority"]
+        Channel -->|No| Health{"Low health, lethal exposure or committed health recovery?"}
+        Health -->|Yes: regardless of gems or home distance| Recover
+        Health -->|No| Supervisor
+        Supervisor -->|Current operation remains feasible| Dispatch{"Shared operation"}
+
+        Dispatch -->|Resource| Select["Keep or select pressure objective with validated firing positions, capture and delivery"]
+        Select -->|Useful preparation improves the same contest| Prepare["Gather together for the named upgrade or access need"]
+        Select -->|Approach needed| Travel["Common terrain approach; support arrival times; distinct firing tiles; bounded yielding"]
+        Select -->|In firing position| Clear["Clear with validated personal sight/actions; calibrate output from achieved damage"]
+        Select -->|Reward available| Capture["Capture together; preserve occupancy and confirm actual reward completion"]
+        Capture -->|Reward completed or control lost| Review{"Review bag age and delivery deadline; compare delivery with the next capture"}
+        Review -->|Continue pressure| Select
+        Review -->|Bank is worthwhile, winning or due| BankPlan
+
+        Dispatch -->|Committed delivery| BankPlan["Compare complete altar routes and carrier/guard schedules"]
+        BankPlan --> Access{"Required access supplies available?"}
+        Access -->|Yes| BankTravel["Travel together; reserve distinct crystal landings; acknowledge all crossings"]
+        Access -->|No| Recover["Common escape / recall, healing and fixed purchases; retain pending delivery"]
+        BankTravel -->|At channel positions| Bank["Clear locks; acknowledge guards; channel in feasible waves; retain finished acknowledgements"]
+        Bank -->|Finished; walking exit| Select
+        Bank -->|Finished; enclosed altar exit| Recover
+
+        Dispatch -->|Recovery| Recover
+        Recover --> Ready{"Required participants recovered?"}
+        Ready -->|Not yet: bounded wait or useful action| Result
+        Ready -->|Yes: explicitly leave Recover| Resume{"Pending delivery remains useful?"}
+        Resume -->|Yes| BankPlan
+        Resume -->|No| EnterSelect["Publish Select; give selection its own planning budget"]
+        EnterSelect --> Publish
+        Recover -->|Crossing cannot be funded| Prepare
+
+        Travel & Clear & Capture & Prepare & BankTravel & Bank & Resolve --> Result
+        Result{"Movement / operation result"}
+        Result -->|Progress or arrival| Publish
+        Result -->|Wait for named event with an expiry| Publish
+        Result -->|Fuel deferred: retain pending work| Publish
+        Result -->|Blocked| Pending["Retain failure reason; prioritize resolution before another travel attempt"]
+        Pending --> Publish
+        Publish -->|Next owner turn| Observe
+    end
+
+    subgraph Execution["Shared individual execution"]
+        Mechanics["Legal moves, attacks, casts, locks and channels"]
+        Paths["Cached terrain routes, current occupancy and personal visibility"]
+        Equipment["One fixed purchase queue per champion"]
+        Heal["Both controllers: early personal health check; escape to safety, recall, stay for spawn healing"]
+    end
+    Trio -.-> Mechanics
+    Workers -.-> Mechanics
+    Mechanics --> Paths
+    Observe -.-> Equipment
+    Workers -.-> Equipment
+    Recover -.-> Heal
+    Workers -.-> Heal

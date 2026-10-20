@@ -1,4 +1,5 @@
-#include "bot.h"
+// Worker reinforcement requests and responses.
+#include "../bot.h"
 
 namespace {
 float observed_power(const ObservedUnit &unit) {
@@ -8,7 +9,7 @@ float observed_power(const ObservedUnit &unit) {
 }
 } // namespace
 
-void Bot::update_formation() {
+void Bot::worker_update_formation() {
     if (!TeamMemory::formations(groups.size()) || bc::fuel_remaining() < policy::observation_reserve)
         return;
     if (TeamMemory::fight_group(shared.get(slot), groups.size()) >= 0)
@@ -27,6 +28,7 @@ void Bot::update_formation() {
     }
     if (!contact)
         return;
+    int contact_group = -1;
     closest = bc::distance_field::unreachable;
     for (std::size_t i = 0; i < groups.size(); ++i) {
         const int d = distance(contact->position, groups[i].centre);
@@ -52,16 +54,16 @@ void Bot::update_formation() {
     }
     const unsigned bodies = std::max(1u, unsigned(roster.size()));
     const float average = team_power / bodies;
-    contact_force = std::clamp(unsigned(std::ceil(enemy_power(contact->position) *
-                                                 policy::formation_advantage / std::max(1.0f, average))),
-                               1u, bodies);
-    publish(0);
+    const unsigned contact_force =
+        std::clamp(unsigned(std::ceil(enemy_power(contact->position) * policy::formation_advantage /
+                                      std::max(1.0f, average))),
+                   1u, bodies);
+    publish(TeamMemory::request(contact_group, contact_force, groups.size()));
 }
 
-bool Bot::reinforce() {
+bool Bot::worker_reinforce() {
     if (!enemies.empty() || !TeamMemory::formations(groups.size()) ||
-        health < max_health * policy::retreat_health ||
-        bc::fuel_remaining() < policy::observation_reserve)
+        health < max_health * policy::retreat_health || bc::fuel_remaining() < policy::observation_reserve)
         return false;
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles.is_set(position))
         return false;
@@ -80,6 +82,8 @@ bool Bot::reinforce() {
     vec2 destination{};
     unsigned selected_force = 0;
     for (unsigned leader = 0; leader < count; ++leader) {
+        if (squad.contains(leader))
+            continue; // Worker reinforcement stays within the resource pool.
         const unsigned demand = TeamMemory::requested_force(shared.get(leader), groups.size());
         if (!alive[leader] || !demand || leader == slot)
             continue;
@@ -135,7 +139,7 @@ bool Bot::reinforce() {
     if constexpr (policy::diagnostic)
         if (moved && round % policy::replan_period == slot % policy::replan_period &&
             bc::fuel_remaining() > 6000)
-            std::printf("FORMATION r=%u id=%u group=%d demand=%u\n", round, id(bc::self()),
-                        selected, selected_force);
+            std::printf("FORMATION r=%u id=%u group=%d demand=%u\n", round, id(bc::self()), selected,
+                        selected_force);
     return moved;
 }
