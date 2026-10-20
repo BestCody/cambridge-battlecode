@@ -149,6 +149,12 @@ inline constexpr int carry_shopping_shards = 10;
 inline constexpr float heart_retreat_health = 0.15f;
 // The top team never buys altar locks.
 inline constexpr bool buy_altar_locks = false;
+// Value multiplier for the camp a champion is already heading to. Weak
+// commitment made champions abandon ~3 camps for every one they finished.
+inline constexpr float worker_commit_bonus = 1.08f;
+// A low-health champion an enemy can reach next turn fights back instead of
+// fleeing: 73% of deaths happened mid-retreat. false always flees.
+inline constexpr bool stand_when_caught = true;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never

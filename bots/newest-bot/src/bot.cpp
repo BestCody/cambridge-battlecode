@@ -49,7 +49,7 @@ void Bot::record_life() {
         if (life.nearest_enemy < 0 || d < life.nearest_enemy)
             life.nearest_enemy = d;
     }
-    life.phase = squad_member() ? int(squad.phase) : -1;
+    life.phase = squad_member() ? int(squad.phase) : 100 + int(current_activity); // 100+: worker activity
     life.job = engaged;
     life.retreating = retreating;
 }

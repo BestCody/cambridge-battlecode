@@ -5,7 +5,25 @@
 #include <iostream>
 #include <tuple>
 
+bool Bot::worker_caught() const {
+    // An enemy that can hit us next turn wherever we step: melee can walk and
+    // attack in one turn, ranged hit from three tiles, so fleeing only gives
+    // away free hits.
+    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    return std::any_of(enemies.begin(), enemies.end(), [&](const auto &enemy) {
+        return enemy.health > 0 && !enemy.channel && !(enemy.stunned && enemy.stun_time > 0) &&
+               !enemy_spawn.is_set(enemy.position) &&
+               distance(position, enemy.position) <=
+                   std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
+    });
+}
+
 bool Bot::worker_escape() {
+    // Caught with nowhere to go: trade blows instead of dying with our back
+    // turned. Recovery resumes once the attacker falls back or dies.
+    if (policy::stand_when_caught && worker_caught() &&
+        !bc::map::spawn_region(bc::team::ally).is_set(position) && combat(true))
+        return true;
     publish(TeamMemory::recall);
     if (bc::map::spawn_region(bc::team::ally).is_set(position) && health >= max_health) {
         retreating = false;
@@ -32,7 +50,9 @@ void Bot::worker_report() {
 // step away from danger and leave offense and defense to the squad.
 void Bot::play_worker_turn() {
     auto &me = bc::self();
+    note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
     if (!me.is_alive()) {
+        note_activity(Activity::dead);
         publish(TeamMemory::unavailable);
         buy_equipment();
         retreating = banking = false;
@@ -41,6 +61,7 @@ void Bot::play_worker_turn() {
     }
     buy_equipment();
     if (me.is_recalling() || me.is_teleporting()) {
+        note_activity(Activity::recall);
         publish(TeamMemory::recall);
         return;
     }
@@ -48,6 +69,7 @@ void Bot::play_worker_turn() {
     if constexpr (policy::worker_pure_resource)
         worker_track_sightings();
     if (me.is_submitting_gems()) {
+        note_activity(Activity::bank);
         publish(TeamMemory::bank);
         // Protect a valuable bag only when the remaining channel is lethal.
         if (health < incoming(position) * (me.remaining_channel_time() + 1)) {
@@ -63,8 +85,10 @@ void Bot::play_worker_turn() {
     // Health recovery precedes fighting, capture, bank travel and shopping.
     // Empty bags and a nearly cleared camp never waive this obligation.
     retreating |= health_recovery_needed();
-    if (retreating && worker_escape())
+    if (retreating && worker_escape()) {
+        note_activity(at_spawn ? Activity::heal : Activity::retreat);
         return;
+    }
     if (!me.can_move() && !me.can_attack() && !me.can_cast()) {
         publish(TeamMemory::unavailable);
         return;
@@ -103,12 +127,18 @@ void Bot::play_worker_turn() {
             if (worker_tribute())
                 return;
         }
-        if (worker_skirmish())
+        if (worker_skirmish()) {
+            note_activity(Activity::fight);
             return;
-        if (worker_tribute())
+        }
+        if (worker_tribute()) {
+            note_activity(Activity::bank);
             return;
-        if (worker_reinforce())
+        }
+        if (worker_reinforce()) {
+            note_activity(Activity::reinforce);
             return;
+        }
     }
 
     bool upgrade =
@@ -127,10 +157,35 @@ void Bot::play_worker_turn() {
                 return;
         }
         retreating = true;
-        if (worker_escape())
+        if (worker_escape()) {
+            note_activity(Activity::shop);
             return;
+        }
     }
     worker_farm();
+    if (target >= 0)
+        note_activity(distance(position, groups[target].centre) <= range + 3 ? Activity::farm
+                                                                             : Activity::travel);
+}
+
+void Bot::note_activity(Activity activity) {
+    if constexpr (!policy::diagnostic)
+        return;
+    // The last note of a turn wins: replace an earlier note from this round.
+    const bool repeat = last_activity_round == int(round);
+    if (repeat)
+        --activity_turns[static_cast<unsigned>(current_activity)];
+    ++activity_turns[static_cast<unsigned>(activity)];
+    current_activity = activity;
+    last_activity_round = round;
+    if (!repeat && int(round) % 250 == 0 && round > 0) {
+        static constexpr const char *names[] = {"idle",  "dead",      "recall", "heal", "retreat", "bank",
+                                                "fight", "reinforce", "shop",   "farm", "travel"};
+        std::printf("ACTIVITY r=%u type=%d switches=%u", round, int(type), target_switches);
+        for (unsigned i = 0; i < activity_turns.size(); ++i)
+            std::printf(" %s=%u", names[i], activity_turns[i]);
+        std::printf("\n");
+    }
 }
 
 void Bot::worker_priority() {

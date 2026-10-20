@@ -77,6 +77,9 @@ struct EnemyTrack {
     int last_round = -1000, previous_round = -1000;
 };
 
+// What a worker spent each turn on, for the time-use diagnostic.
+enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, shop, farm, travel, count };
+
 struct LifeSnapshot {
     int round = -1;
     vec2 position{-1, -1};
@@ -128,6 +131,10 @@ class Bot {
     std::array<unsigned, static_cast<unsigned>(bc::item_type::count)> bought{};
     // Per camp group: last round this worker saw an enemy close to it.
     std::vector<int> enemy_seen_near;
+    std::array<unsigned, static_cast<unsigned>(Activity::count)> activity_turns{};
+    Activity current_activity = Activity::idle;
+    int last_activity_round = -1;
+    unsigned target_switches = 0;
     std::vector<EnemyTrack> enemy_track;
     // Per altar: enemy tributes observed there, and terrain distance from the
     // enemy spawn. Together they pick the altar the squad watches.
@@ -248,6 +255,7 @@ class Bot {
     void worker_priority();
     void worker_report();
     bool worker_escape();
+    bool worker_caught() const;
     int worker_choose_group();
     void worker_farm();
     bool worker_skirmish();
@@ -255,6 +263,7 @@ class Bot {
     bool worker_reinforce();
     bool worker_tribute();
     void worker_disrupt_tribute();
+    void note_activity(Activity activity);
     // safety.cpp: pure-resource disengagement.
     bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const;
     int enemy_index(const ObservedUnit &enemy) const;

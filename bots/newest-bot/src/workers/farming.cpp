@@ -123,7 +123,7 @@ int Bot::worker_choose_group() {
                 value *= policy::depleted_rally_bonus;
         }
         if (int(i) == target)
-            value *= policy::commit_bonus;
+            value *= policy::worker_commit_bonus; // Finish the camp being walked to.
         if (g.status == CampGroup::capture && g.tiles.is_set(position))
             value *= 5;
         // Low-health units keep attacking harmless resources instead of wasting
@@ -145,8 +145,13 @@ void Bot::worker_farm() {
         return;
     const bool finished = target >= 0 && groups[target].status == CampGroup::cooling;
     if (target < 0 || finished || int(round) - last_plan >= policy::replan_period) {
-        if (bc::fuel_remaining() > policy::observation_reserve)
+        if (bc::fuel_remaining() > policy::observation_reserve) {
+            const int before = target;
             target = worker_choose_group();
+            // Diagnostic: abandoning an unfinished camp for another one.
+            if (before >= 0 && target >= 0 && target != before && !finished)
+                ++target_switches;
+        }
     }
     if (target < 0) {
         publish(0);
