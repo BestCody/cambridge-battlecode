@@ -55,6 +55,8 @@ int Bot::worker_choose_group() {
         }
         if (g.status == CampGroup::capture && ally_on && !g.tiles.is_set(position) && !enemy_on)
             continue;
+        if (policy::worker_pure_resource && enemy_on)
+            continue; // Contesting a held reward is a fight, which is the squad's job.
         float remaining = g.status == CampGroup::cooling ? g.max_health : g.health;
         float speed = dps(g) * (1 + claims * 0.65f);
         float clear = remaining / speed;
@@ -83,6 +85,10 @@ int Bot::worker_choose_group() {
             clear = 0;
             risk = 0;
         }
+        // A pure worker prefers camps it can clear alone with its reserve
+        // intact; a camp death destroys the bag outright. Unsafe camps remain a
+        // last resort so a weak worker on an elk map still has something to do.
+        const bool unsafe = policy::worker_pure_resource && risk > 0 && g.status != CampGroup::capture;
         // Every camp counts, and on a fortress-gem map the gem half of the
         // reward dominates: a gold cluster pays 0 gems, so no amount of gold
         // route play converts it into a win. Gem-bearing camps (wolf, elk,
@@ -94,16 +100,28 @@ int Bot::worker_choose_group() {
         const float risk_weight = g.unit.gem_value() > 0 ? gem_risk_weight(opening) : 1.0f;
         value /=
             1 + risk * 4 * risk_weight + (claims - partners) * 0.55f + partners * policy::partner_penalty;
-        if (enemy_on)
-            value *= 1.4f;
-        // While the squad is depleted, converge on the allies still on the map
-        // instead of spreading out and feeding into a grouped enemy one at a
-        // time. Avoiding contested camps alone measured worse: it concedes the
-        // map, so the bias here is toward the team, not away from the enemy.
-        if (g.enemy_distance <= g.home_distance + 8)
-            value *= depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
-        if (depleted && claims > 0)
-            value *= policy::depleted_rally_bonus;
+        if constexpr (policy::worker_pure_resource) {
+            // Safe side of the map, away from recent enemy sightings. Contested
+            // ground is left to the squad.
+            if (g.enemy_distance < g.home_distance)
+                value *= policy::worker_enemy_side_penalty;
+            if (i < enemy_seen_near.size() &&
+                int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory)
+                value *= policy::worker_sighting_penalty;
+            if (unsafe)
+                value *= 0.05f;
+        } else {
+            if (enemy_on)
+                value *= 1.4f;
+            // While the squad is depleted, converge on the allies still on the map
+            // instead of spreading out and feeding into a grouped enemy one at a
+            // time. Avoiding contested camps alone measured worse: it concedes the
+            // map, so the bias here is toward the team, not away from the enemy.
+            if (g.enemy_distance <= g.home_distance + 8)
+                value *= depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
+            if (depleted && claims > 0)
+                value *= policy::depleted_rally_bonus;
+        }
         if (int(i) == target)
             value *= policy::commit_bonus;
         if (g.status == CampGroup::capture && g.tiles.is_set(position))

@@ -69,6 +69,57 @@ inline constexpr float siege_gem_weight = 2.0f;
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
 inline constexpr float siege_risk_weight = 0.06f;
+// Worker policy (Issac, Ryth, Varg). true runs them as pure resource gatherers:
+// they never start fights, step away from approaching enemies, avoid
+// contested camps and bank smaller bags. Offense and defense belong to the
+// squad. false restores the older aggressive worker loop entirely.
+inline constexpr bool worker_pure_resource = true;
+// Extra tiles beyond an enemy's reach plus move that still count as danger.
+inline constexpr int worker_danger_margin = 1;
+// A worker in danger range keeps farming unless an enemy can already hit it,
+// is closing in, or enemy power nearby exceeds ours times this margin.
+// 0.0 restores leaving whenever any enemy is in danger range.
+inline constexpr float worker_strength_margin = 1.0f;
+// Health fraction at which a worker goes home; twins may differ because a
+// death also kills their partner. Measured: 0.50/0.60 saved no lives over
+// 0.28 and cost about 11 worker gems a game, so both match retreat_health.
+inline constexpr float worker_retreat_health = 0.28f;
+inline constexpr float twin_retreat_health = 0.28f;
+// Whether a worker also goes home when its health drops to twice the damage it
+// is taking (camp damage included). The old bots retreat on low health only.
+// false: a pure worker leaves clears only for low health or approaching enemies.
+inline constexpr bool worker_damage_retreat = true;
+// Value multiplier for camps closer to the enemy spawn than ours. 1.0 disables.
+inline constexpr float worker_enemy_side_penalty = 0.7f;
+// Rounds a worker remembers an enemy near a camp, and the value multiplier
+// applied to that camp meanwhile. 0 rounds disables the memory.
+inline constexpr int worker_sighting_memory = 20;
+inline constexpr float worker_sighting_penalty = 0.2f;
+// Multiplier on worker bank thresholds: smaller bags are lost less often.
+// 1.0 restores the old thresholds.
+inline constexpr float worker_bank_scale = 0.5f;
+// Obstruction squad (stage 1). true lets the squad break off its camp job to
+// interrupt enemy tributes and hunt carriers it can kill, and biases its camp
+// choice toward the enemy side and the altar enemies use. false restores the
+// farming-only squad.
+inline constexpr bool squad_obstruction = true;
+// Tiles from the coordinator within which an enemy can become a hunt target.
+inline constexpr int hunt_radius = 8;
+// Bag size that makes a lone enemy worth chasing even without a sure kill.
+inline constexpr unsigned hunt_min_gems = 20;
+// Hunts are refused or abandoned when enemy power near the squad exceeds ours
+// times this margin.
+inline constexpr float hunt_abort_margin = 1.2f;
+// Rounds before an unfinished hunt is abandoned.
+inline constexpr int hunt_max_rounds = 15;
+// Camp selection multipliers for the squad's fallback farming: camps on the
+// enemy's side, and camps near the watched altar. 1.0 disables each.
+inline constexpr float squad_enemy_side_bonus = 1.5f;
+inline constexpr float squad_altar_bonus = 1.5f;
+inline constexpr int squad_altar_watch_radius = 10;
+// Whether Stellar, Tavi and Cassi run the coordinated squad controller. false
+// plays every champion with the independent worker policy.
+inline constexpr bool squad_enabled = true;
 // Squad job planning. A plan is refreshed on any material change; without one
 // it expires after this many work windows. 1 restores the old age-only refresh.
 inline constexpr int plan_lifetime_windows = 3;
@@ -82,6 +133,33 @@ inline constexpr unsigned capture_reset_limit = 2;
 // Control credit multiplier for stunning an enemy other than the shared focus
 // target while it threatens a member. 1.0 disables the preference.
 inline constexpr float secondary_control_bonus = 1.25f;
+// Draft heuristic: draft the offensive team (Stellar/Tavi/Twins squad) or the
+// resource team. Each input adds a point toward offense when contact and
+// contesting will matter, or subtracts one when farming alone should win.
+// Thresholds come from game mechanics, not from the local map pool.
+// draft_mode forces a choice for evaluation: -1 heuristic, 0 resource, 1 offense.
+inline constexpr int draft_mode = -1;
+inline constexpr int offense_threshold = 1;  // Score at or above this drafts offense.
+inline constexpr int small_team_penalty = 2; // 3 picks: too few bodies to spare three.
+inline constexpr int large_team_bonus = 1;   // 5 picks: room for a squad and farmers.
+// Open tiles per champion (both teams): below crowded, contact is constant;
+// above sparse, teams can farm without meeting.
+inline constexpr float crowded_tiles = 150.0f;
+inline constexpr float sparse_tiles = 500.0f;
+// Walking distance between spawns: close spawns meet early and often.
+inline constexpr int close_spawns = 30;
+inline constexpr int far_spawns = 80;
+// Share of gem value in camps we reach first (closer to our spawn). Most of it
+// ours: farm it. Little of it: the gems must be contested.
+inline constexpr float own_gems_high = 0.5f;
+inline constexpr float own_gems_low = 0.25f;
+// Gems per round the map produces per champion (gem value / respawn time).
+// A wolf group alone yields about 0.5 gems a round.
+inline constexpr float scarce_supply = 0.5f;
+inline constexpr float plentiful_supply = 1.5f;
+// Share of gem value behind camps a lone champion cannot farm: a group is
+// needed to farm at all, so the squad pays for itself.
+inline constexpr float grouped_gems_high = 0.5f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
@@ -160,6 +238,11 @@ struct TeamMemory {
     static constexpr unsigned unavailable = mask - 2;
     static constexpr unsigned recovered = mask - 3;
     static constexpr unsigned supplies_needed = mask - 4;
+    // A worker stepping away from an approaching enemy. Squad defense will
+    // read it; deposit codes stop below it so the two can never collide.
+    static constexpr unsigned under_threat = mask - 5;
+    // The squad is hunting the enemy named by the shared focus field.
+    static constexpr unsigned hunting = mask - 6;
     static constexpr unsigned slots = 64 / bits;
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and desired total squad size, or
@@ -206,11 +289,11 @@ struct TeamMemory {
     static unsigned bank_start(unsigned groups) { return groups * (slots + 3) + 1; }
     static unsigned deposit(unsigned altar, unsigned stage, unsigned groups) {
         const unsigned code = bank_start(groups) + altar * bank_stages + stage;
-        return code < supplies_needed ? code : unavailable;
+        return code < hunting ? code : unavailable;
     }
     static int deposit_altar(unsigned code, unsigned groups, unsigned altars) {
         const unsigned start = bank_start(groups);
-        return code >= start && code < supplies_needed && code - start < altars * bank_stages
+        return code >= start && code < hunting && code - start < altars * bank_stages
                    ? int((code - start) / bank_stages)
                    : -1;
     }
@@ -251,6 +334,8 @@ struct DraftPlan {
     std::uint8_t cheap_gem_groups = 0;
     float spacing = 0;
     float mean_splash = 1, dangerous_fraction = 0;
+    // The draft heuristic chose the offensive team (with the squad).
+    std::uint8_t offense = 1;
 };
 static_assert(sizeof(DraftPlan) <= 1024);
 

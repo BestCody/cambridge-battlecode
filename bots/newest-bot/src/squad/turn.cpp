@@ -116,6 +116,15 @@ void Bot::play_squad_turn() {
         publish_squad();
         return;
     }
+    if constexpr (policy::squad_obstruction) {
+        // Obstruction takes precedence over the camp job, which resumes after.
+        observe_enemy_tributes();
+        update_hunt();
+        if (squad.phase != SquadPhase::deposit && squad.phase != SquadPhase::recover && squad_hunt_turn()) {
+            publish_squad();
+            return;
+        }
+    }
     if (squad.phase == SquadPhase::deposit) {
         squad_bank();
         publish_squad();

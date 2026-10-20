@@ -182,7 +182,7 @@ void Bot::initialise() {
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
             slot = i;
-    if (opening.magic == DraftPlan::tag && opening.body_count == roster.size())
+    if (policy::squad_enabled && opening.magic == DraftPlan::tag && opening.body_count == roster.size())
         squad.members =
             squads::StellarTaviCassi::membership(std::span(opening.roster_types).first(roster.size()));
     static_blocked = terrain();
@@ -196,6 +196,10 @@ void Bot::initialise() {
     bc::distance_field enemy_field;
     auto neutral_terrain = bc::map::walls() | bc::map::holes() | bc::map::altars();
     enemy_field.compute(neutral_terrain, bc::map::spawn_region(bc::team::enemy), visited);
+    altar_enemy_distance.assign(altars.size(), bc::distance_field::unreachable);
+    for (unsigned a = 0; a < altars.size(); ++a)
+        for (auto tile : (around(altars[a], bc::constants::submit_gems_range) & ~neutral_terrain).positions())
+            altar_enemy_distance[a] = std::min(altar_enemy_distance[a], int(enemy_field.get(tile)));
     auto layout = bc::map::camp_groups();
     groups.reserve(layout.size());
     for (auto &g : layout) {

@@ -20,6 +20,8 @@ bool Bot::worker_tribute() {
     // banks smaller amounts more often than a solo champion does.
     if (type == bc::champion_type::cassi || type == bc::champion_type::issac)
         threshold *= policy::twin_bank_scale;
+    if (policy::worker_pure_resource)
+        threshold *= policy::worker_bank_scale; // Small bags are lost less often.
     // Near victory, each champion should bank its share of the remaining score.
     threshold = std::min(threshold, float(remaining) / std::max(std::size_t(1), roster.size()));
     bool capture_combo = false;
@@ -40,9 +42,13 @@ bool Bot::worker_tribute() {
         if (d == bc::distance_field::unreachable)
             continue;
         float risk = 0;
+        // Pure workers weigh enemies near an altar twice as heavily and from
+        // further out: a bag lost on the way to bank is the worst outcome.
+        const int watch = policy::worker_pure_resource ? 8 : 6;
+        const float scale = policy::worker_pure_resource ? 2.0f : 1.0f;
         for (const auto &e : enemies)
-            if (distance(e.position, altar) <= 6)
-                risk += 6 + e.strength * 0.05f;
+            if (distance(e.position, altar) <= watch)
+                risk += (6 + e.strength * 0.05f) * scale;
         bool locked = visible.is_set(altar) && bc::vision::has_altar_lock(altar) &&
                       bc::vision::altar_lock_at(altar).is_enemy();
         float value = d + risk + (locked ? bc::constants::altar_lock_hits : 0);
@@ -79,7 +85,7 @@ bool Bot::worker_tribute() {
             me.submit_gems(selected);
             return true;
         }
-        if (worker_skirmish())
+        if (!policy::worker_pure_resource && worker_skirmish())
             return true;
         retreating = true;
         return worker_escape();

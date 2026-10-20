@@ -68,6 +68,24 @@ struct ObservedUnit {
     }
 };
 
+// Diagnostic snapshot of this champion's last chosen state, reported when it
+// is next seen dead. Explains what each death was exposed to.
+// Where an enemy champion was on the last two observations, to tell an
+// enemy closing in from one merely standing nearby.
+struct EnemyTrack {
+    vec2 last{-1, -1}, previous{-1, -1};
+    int last_round = -1000, previous_round = -1000;
+};
+
+struct LifeSnapshot {
+    int round = -1;
+    vec2 position{-1, -1};
+    float health = 0, max_health = 0, enemy_threat = 0, camp_threat = 0;
+    unsigned gems = 0;
+    int enemies_near = 0, nearest_enemy = -1, phase = -1, job = -1;
+    bool retreating = false;
+};
+
 class Bot {
     friend struct ObservedUnit;
     bool initialised = false, walked = false, retreating = false, banking = false;
@@ -105,6 +123,13 @@ class Bot {
     std::vector<bc::champion> enemy_roster;
     std::vector<int> enemy_respawn, enemy_spawned;
     float enemy_average_power = 0;
+    LifeSnapshot last_life;
+    // Per camp group: last round this worker saw an enemy close to it.
+    std::vector<int> enemy_seen_near;
+    std::vector<EnemyTrack> enemy_track;
+    // Per altar: enemy tributes observed there, and terrain distance from the
+    // enemy spawn. Together they pick the altar the squad watches.
+    std::vector<int> altar_tributes, altar_enemy_distance;
 
     bool squad_member() const { return squad.contains(slot); }
 
@@ -150,6 +175,15 @@ class Bot {
     void squad_combat();
     void squad_recover(bool supply = false);
     bool needs_recovery() const;
+    // obstruction.cpp: tribute interruption, carrier hunts, enemy-side bias.
+    void observe_enemy_tributes();
+    int watched_altar() const;
+    float obstruction_bonus(int camp) const;
+    float squad_burst(const ObservedUnit &enemy) const;
+    const ObservedUnit *hunt_enemy() const;
+    void update_hunt();
+    void end_hunt(const char *reason);
+    bool squad_hunt_turn();
     // banking.cpp: delivery.
     void observe_cargo();
     void squad_bank();
@@ -167,6 +201,8 @@ class Bot {
     // Shared mechanics (mechanics/). Both controllers execute through these.
     // world.cpp: observation and estimates.
     void initialise();
+    void record_life();
+    void report_death();
     void refresh_self();
     void prepare_routes();
     void observe();
@@ -216,6 +252,12 @@ class Bot {
     bool worker_reinforce();
     bool worker_tribute();
     void worker_disrupt_tribute();
+    // safety.cpp: pure-resource disengagement.
+    bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const;
+    int enemy_index(const ObservedUnit &enemy) const;
+    bool enemy_closing(const ObservedUnit &enemy) const;
+    void worker_track_sightings();
+    bool worker_disengage();
 
   public:
     void play_turn();

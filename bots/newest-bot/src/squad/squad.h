@@ -129,6 +129,11 @@ struct SquadState {
     unsigned last_alive = 0, capture_resets = 0;
     int last_threats = -1;
     bool was_holding = false;
+    // Obstruction: enemy roster index being hunted, or -1. The camp job is
+    // kept underneath and resumed when the hunt ends.
+    int hunt_target = -1, hunt_since = -1, hunt_seen = -1;
+    // Enemy whose hunt failed, and until when it may not be hunted again.
+    int hunt_refused = -1, hunt_refused_until = -1;
 };
 
 struct JobSearch {

@@ -35,6 +35,16 @@ EquipmentPath equipment_path(bc::champion_type type) {
                      Item::bruiser_shard_of_health, Item::durability_shard_of_strength},
                     4,
                     Item::power_shard_of_strength};
+        case bc::champion_type::vendetta: // Melee: kills reset its cooldowns.
+            return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
+                     Item::durability_shard_of_health},
+                    3,
+                    Item::power_shard_of_strength};
+        case bc::champion_type::vesper_vale: // Ranged, strong basic attacks.
+            return {{Item::monster_shard_of_strength, Item::durability_shard_of_health,
+                     Item::jungle_shard_of_strength},
+                    3,
+                    Item::power_shard_of_strength};
         case bc::champion_type::varg:
             return {{Item::jungle_shard_of_strength, Item::monster_shard_of_strength,
                      Item::durability_shard_of_strength, Item::bruiser_shard_of_health},
@@ -83,6 +93,12 @@ void Bot::buy_equipment(bool crystal_required) {
     if (missing && me.can_buy(crystal))
         me.buy(crystal);
     const unsigned reserve = crystal_required && !me.consumables()[crystal].count() ? crystal.cost() : 0;
+    // Obstruction: squad members carry an altar lock before buying upgrades,
+    // so any of them can cancel an enemy tribute it reaches.
+    const auto altar_lock = bc::consumable_type::altar_lock;
+    if (policy::squad_obstruction && squad_member() && me.gold_count() >= reserve + altar_lock.cost() &&
+        me.can_buy(altar_lock))
+        me.buy(altar_lock);
     while (bc::fuel_remaining() > policy::planning_reserve) {
         const auto item = next_item(type);
         if (item == Item::count || me.gold_count() < reserve + item.cost())

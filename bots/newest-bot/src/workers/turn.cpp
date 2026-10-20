@@ -28,8 +28,8 @@ void Bot::worker_report() {
     }
 }
 
-// Preserve the existing individual worker behavior until the resource pool
-// controller replaces it. Core members never enter this path.
+// Workers earn gems. In pure-resource mode they never choose a fight: they
+// step away from danger and leave offense and defense to the squad.
 void Bot::play_worker_turn() {
     auto &me = bc::self();
     if (!me.is_alive()) {
@@ -45,6 +45,8 @@ void Bot::play_worker_turn() {
         return;
     }
     observe();
+    if constexpr (policy::worker_pure_resource)
+        worker_track_sightings();
     if (me.is_submitting_gems()) {
         publish(TeamMemory::bank);
         // Protect a valuable bag only when the remaining channel is lethal.
@@ -81,23 +83,33 @@ void Bot::play_worker_turn() {
         worker_tribute();
         return;
     }
-    worker_update_formation();
-    // Select a resource before combat can return, so a contested route does
-    // not leave this worker without an economic objective.
-    if (target < 0 && bc::fuel_remaining() > policy::observation_reserve)
-        target = worker_choose_group();
-    if (squad.members && type == bc::champion_type::issac && gems && !enemies.empty() &&
-        incoming(position) > 0) {
-        banking = true;
+    if constexpr (policy::worker_pure_resource) {
+        // Danger first: an approaching enemy ends farming for this turn.
+        if (worker_disengage())
+            return;
+        if (target < 0 && bc::fuel_remaining() > policy::observation_reserve)
+            target = worker_choose_group();
         if (worker_tribute())
             return;
+    } else {
+        worker_update_formation();
+        // Select a resource before combat can return, so a contested route does
+        // not leave this worker without an economic objective.
+        if (target < 0 && bc::fuel_remaining() > policy::observation_reserve)
+            target = worker_choose_group();
+        if (squad.members && type == bc::champion_type::issac && gems && !enemies.empty() &&
+            incoming(position) > 0) {
+            banking = true;
+            if (worker_tribute())
+                return;
+        }
+        if (worker_skirmish())
+            return;
+        if (worker_tribute())
+            return;
+        if (worker_reinforce())
+            return;
     }
-    if (worker_skirmish())
-        return;
-    if (worker_tribute())
-        return;
-    if (worker_reinforce())
-        return;
 
     bool upgrade =
         me.gold_count() >= bc::item_type::power_shard_of_strength.cost() * policy::shopping_shards &&

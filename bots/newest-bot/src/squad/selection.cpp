@@ -76,8 +76,10 @@ Selection Bot::select_squad_job() {
         if (groups[estimate.camp].status == CampGroup::cooling &&
             groups[estimate.camp].respawn > int(round) + estimate.travel + bc::constants::capture_time)
             continue;
+        // Fallback farming leans toward the enemy's side and the watched altar,
+        // where the squad also denies camps and stays close to carriers.
         auto &leader = best[category(estimate)];
-        if (estimate.rate > leader.rate)
+        if (estimate.rate * obstruction_bonus(estimate.camp) > leader.rate * obstruction_bonus(leader.camp))
             leader = estimate;
         if (estimate.camp == squad.camp)
             current = estimate;
@@ -93,7 +95,9 @@ Selection Bot::select_squad_job() {
     const float commitment =
         squad.capture_resets >= policy::capture_reset_limit ? 1.0f : policy::commit_bonus;
     if (current.camp >= 0 && choice.camp >= 0 && category(current) == category(choice) &&
-        groups[current.camp].status != CampGroup::cooling && current.rate * commitment >= choice.rate)
+        groups[current.camp].status != CampGroup::cooling &&
+        current.rate * obstruction_bonus(current.camp) * commitment >=
+            choice.rate * obstruction_bonus(choice.camp))
         choice = current;
     bool preparation = false;
     if (choice.camp >= 0 && choice.pressure && choice.siege && !squad.access_preparation) {

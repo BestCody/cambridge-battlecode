@@ -100,6 +100,8 @@ unsigned Bot::squad_claim() const {
         return TeamMemory::deposit(squad.altar, unsigned(squad.bank_stage), groups.size());
     if (squad.phase == SquadPhase::recover)
         return squad.bank_stage == BankStage::prepared ? TeamMemory::recovered : TeamMemory::recall;
+    if (squad.hunt_target >= 0)
+        return TeamMemory::hunting;
     if (squad.camp < 0)
         return squad.access_preparation ? TeamMemory::supplies_needed : 0;
     if (groups[squad.camp].status == CampGroup::capture && groups[squad.camp].tiles.is_set(position))
@@ -121,6 +123,8 @@ bool Bot::same_job(unsigned code) const {
         return TeamMemory::deposit_altar(code, groups.size(), altars.size()) == squad.altar;
     if (squad.phase == SquadPhase::recover)
         return code == TeamMemory::recall || code == TeamMemory::recovered;
+    if (squad.hunt_target >= 0)
+        return code == TeamMemory::hunting;
     return squad.camp >= 0 && TeamMemory::objective(code, groups.size()) == squad.camp;
 }
 
@@ -166,6 +170,16 @@ void Bot::begin_recovery() {
 void Bot::adopt_job(unsigned code) {
     if (code == TeamMemory::unavailable)
         return;
+    // A hunt rides on top of the camp job: keep the job, follow the focus.
+    if (code == TeamMemory::hunting) {
+        if (shared.focus() && shared.focus() <= enemy_roster.size()) {
+            if (squad.hunt_target < 0)
+                squad.hunt_since = round;
+            squad.hunt_target = int(shared.focus()) - 1;
+        }
+        return;
+    }
+    squad.hunt_target = -1; // Any other directive ends a hunt.
     if (code == TeamMemory::supplies_needed) {
         squad.access_preparation = true;
         enter_selection();
@@ -466,6 +480,10 @@ float Bot::control_value(const ObservedUnit &enemy) const {
 void Bot::squad_focus() {
     if (squad.coordinator != int(slot))
         return;
+    if (squad.hunt_target >= 0) {
+        shared.commit(slot, squad_claim(), unsigned(squad.hunt_target) + 1);
+        return; // The hunt target stays the focus until the hunt ends.
+    }
     unsigned preferred = 0;
     float best = 0;
     const ObservedUnit self(*this);

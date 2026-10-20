@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <span>
 
-// One fixed roster per supported pick count. Archived alternatives are in docs/design-notes.md.
+// Two rosters per supported pick count: offensive (with the squad) or resource
+// (all farmers). The draft heuristic chooses. Archived alternatives are in
+// docs/design-notes.md.
 namespace compositions {
 using Pick = cambc::champion_draft;
 using Type = cambc::champion_type;
@@ -20,20 +22,31 @@ struct Entry {
     Mask picks;
     constexpr unsigned size() const { return std::popcount(picks); }
 };
-// Every roster supplies the Stellar/Tavi/Cassi squad; Twins also supplies Issac.
+// Offensive rosters supply the Stellar/Tavi/Cassi squad (Twins also supplies
+// Issac); extra picks become workers.
 inline constexpr Mask core_picks = roster(Pick::stellar, Pick::tavi, Pick::cassi_and_issac);
-inline constexpr std::array rosters{
+inline constexpr std::array offensive{
     Entry{"Stellar/Tavi/Twins", core_picks},
     Entry{"Ryth/Stellar/Tavi/Twins", Mask(core_picks | bit(Pick::ryth))},
     Entry{"Varg/Ryth/Stellar/Tavi/Twins", Mask(core_picks | roster(Pick::varg, Pick::ryth))}};
-static_assert(rosters.size() == 3 && rosters[0].size() == 3 && rosters[1].size() == 4 &&
-              rosters[2].size() == 5);
+// Resource rosters farm with every body: without Stellar and Tavi no squad
+// forms. Base is the archived "spread-out gathering and rapid camp clearing"
+// team; Twins is one pick for two farmers.
+inline constexpr Mask gather_picks = roster(Pick::varg, Pick::vendetta, Pick::cassi_and_issac);
+inline constexpr std::array resource{
+    Entry{"Varg/Vendetta/Twins", gather_picks},
+    Entry{"Varg/Vendetta/Ryth/Twins", Mask(gather_picks | bit(Pick::ryth))},
+    Entry{"Varg/Vendetta/Ryth/Vesper/Twins", Mask(gather_picks | roster(Pick::ryth, Pick::vesper_vale))}};
+static_assert(offensive[0].size() == 3 && offensive[1].size() == 4 && offensive[2].size() == 5);
+static_assert(resource[0].size() == 3 && resource[1].size() == 4 && resource[2].size() == 5);
 
-constexpr unsigned fixed_roster(unsigned count) {
-    for (unsigned i = 0; i < rosters.size(); ++i)
-        if (rosters[i].size() == count)
-            return i;
-    return rosters.size();
+// The roster for this pick count, or nullptr for an unsupported count.
+constexpr const Entry *roster_for(unsigned count, bool offense) {
+    const auto &table = offense ? offensive : resource;
+    for (const auto &entry : table)
+        if (entry.size() == count)
+            return &entry;
+    return nullptr;
 }
 
 inline constexpr std::array physical{Type::ryth,    Type::vesper_vale, Type::vendetta, Type::cassi,
@@ -64,8 +77,8 @@ inline Bodies expand(Mask picks) {
 // Stable pick order keeps roster and turn-order changes out of squad
 // experiments. The caller only requests a pick while the fixed roster is
 // incomplete.
-inline Pick next_pick(unsigned selected, Mask chosen) {
-    const Mask remaining = rosters[selected].picks & ~chosen;
+inline Pick next_pick(const Entry &selected, Mask chosen) {
+    const Mask remaining = selected.picks & ~chosen;
     return Pick(std::countr_zero(remaining));
 }
 } // namespace compositions
