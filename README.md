@@ -11,7 +11,8 @@ Our Cambridge Battlecode 2026 bot. The bot that is currently competing is [`bots
 | `docs/GameRules.md`, `docs/BotAPICpp.md` | Exported game handbook and C++ API reference |
 | `docs/design-notes.md` | Squad design spec, with implementation status and archived rosters |
 | `docs/squad-controller.mmd` | Mermaid flowchart of the squad controller |
-| `scripts/ladder.ps1` | Per-map win-rate table against a list of opponents |
+| `scripts/evaluate.py` | **The standard check** of whether a change beats `bots/baseline` (see below) |
+| `scripts/ladder.ps1` | Quick per-map table, one game per map (too noisy to judge a change) |
 | `scripts/benchmark.ps1` | Grid search over `policy::` constants in `strategy.h` |
 | `analysis/` | Exported match analytics |
 | `maps/` | Current map pool (`cambc maps pull` refreshes it) |
@@ -28,6 +29,18 @@ pwsh scripts/benchmark.ps1 -GridSpec "commit_bonus=1.0f,1.08f,1.2f"
 ```
 
 Both scripts can be run from any directory.
+
+### Judging a change
+
+Matches are deterministic but chaotic: a one-line change can flip a third of single games, so a single ladder pass proves nothing. `scripts/evaluate.py` plays every map in both seats at five fuel budgets near the real 100k limit (170 games per config, in parallel). It compares the result with `bots/baseline`, which is the last bot you trust.
+
+```sh
+python scripts/evaluate.py --mirror                     # current bot, plus a baseline-vs-baseline noise floor
+python scripts/evaluate.py off:commit_bonus=1.0f current  # compare policy variants side by side
+python scripts/evaluate.py --maps corners,swirl --fuels 100000
+```
+
+The mirror run scores 50% by construction. Differences of about ±7 wins in 170 games are noise. Only commit bot changes that beat the baseline by more than that. Replays, including each bot's stdout logs (inside the `.repl26a` zip), are kept under `--out`.
 
 ## How newest-bot is organised
 
