@@ -59,8 +59,8 @@ ObservedUnit::ObservedUnit(bc::champion c) : ref(c) {
     can_move = state.contains(bc::champion_state::can_move);
     movement_spent = range > 1 && !can_move && !can_attack;
     depositing = state.contains(bc::champion_state::submitting_gems);
-    channel = depositing || state.contains(bc::champion_state::recalling) ||
-              state.contains(bc::champion_state::teleporting);
+    recalling = state.contains(bc::champion_state::recalling);
+    channel = depositing || recalling || state.contains(bc::champion_state::teleporting);
     read_buffs(*this);
     damage_rate = strength;
     unsigned ability_slot = 0;
@@ -129,9 +129,8 @@ ObservedUnit::ObservedUnit(const Bot &bot)
     camp_mitigation = bot.camp_mitigation;
     sight = bot.visible;
     depositing = state.contains(bc::champion_state::submitting_gems);
-    channel = state.contains(bc::champion_state::recalling) ||
-              state.contains(bc::champion_state::submitting_gems) ||
-              state.contains(bc::champion_state::teleporting);
+    recalling = state.contains(bc::champion_state::recalling);
+    channel = recalling || depositing || state.contains(bc::champion_state::teleporting);
     abilities = bot.spells;
     const auto &kit = bc::self().abilities();
     damage_rate = spell_dps(abilities, strength, focus);

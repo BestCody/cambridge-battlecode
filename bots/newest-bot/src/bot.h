@@ -47,7 +47,7 @@ struct ObservedUnit {
     int move_speed = 1;
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
-    bool stunned = false, channel = false, depositing = false, immune = false;
+    bool stunned = false, channel = false, depositing = false, recalling = false, immune = false;
     bool completed = false, can_attack = false, can_cast = false, can_move = false;
     bool movement_spent = false;
     bc::bitboard sight;

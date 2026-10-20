@@ -513,10 +513,10 @@ void Bot::squad_priority() {
             if (!relevant_enemy(enemy))
                 continue;
             const auto next = firing(self, enemy, true);
-            const auto &unit = std::get<bc::champion>(enemy.ref);
             // Damage cancels a recall; only a stun stops a tribute or crossing.
+            // Read from the observation: the enemy may have left vision since.
             const bool interrupt =
-                (next.control > 0 && enemy.channel) || (next.damage > 0 && unit.is_recalling());
+                (next.control > 0 && enemy.channel) || (next.damage > 0 && enemy.recalling);
             int tier = priority_tier::damage;
             float value = next.damage;
             if (next.damage >= enemy.health + enemy.shield || interrupt) {
