@@ -14,9 +14,9 @@ Run from any directory:
     python scripts/evaluate.py --baseline db11-looter,db12-comeback --fuels 100000
 
 A config is NAME or NAME:constant=value,... where each constant is a policy
-value in the bot's strategy.h. Every (config, opponent, fuel) triple runs in its
-own process with private copies of both bots under bots/_eval_*, removed
-afterwards.
+value in the bot's strategy.h. Each bot is built once; matches run through `cambc run-batch` in release mode
+(as on the platform), on at most 90% of the cores at below-normal priority.
+Patched configs use temporary copies under bots/_eval_*, removed afterwards.
 """
 import argparse
 import json
@@ -26,7 +26,6 @@ import shutil
 import subprocess
 import sys
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,54 +39,90 @@ def patch(text, name, value):
     return re.sub(pattern, rf"\g<1>{value};", text)
 
 
-def copy_bot(source, name):
-    target = ROOT / "bots" / name
+# Leave the machine usable: at most 90% of cores, and every cambc process at
+# below-normal priority so the user's own programs always come first.
+JOBS = max(1, int((os.cpu_count() or 2) * 0.9))
+LOW_PRIORITY = {"creationflags": subprocess.BELOW_NORMAL_PRIORITY_CLASS} if os.name == "nt" else {"preexec_fn": lambda: os.nice(10)}
+
+
+def cambc(*command, check=True):
+    done = subprocess.run(["cambc", *command], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", **LOW_PRIORITY)
+    if check and done.returncode:
+        raise RuntimeError(f"cambc {' '.join(command[:2])} failed:\n{done.stdout[-1500:]}{done.stderr[-1500:]}")
+    return done
+
+
+def prepare_bot(name, source, assignments):
+    """A bot folder to play: the source itself, or a patched copy. Built once."""
+    if not assignments:
+        cambc("build", source)
+        return source
+    target = ROOT / "bots" / f"_eval_{name}"
     shutil.rmtree(target, ignore_errors=True)
-    shutil.copytree(ROOT / "bots" / source, target,
-                    ignore=shutil.ignore_patterns(".cambc", "compile_commands.json"))
-    return target
+    shutil.copytree(ROOT / "bots" / source, target, ignore=shutil.ignore_patterns(".cambc", "compile_commands.json"))
+    strategy = target / "src" / "strategy.h"
+    text = strategy.read_text()
+    for constant, value in assignments:
+        text = patch(text, constant, value)
+    strategy.write_text(text)
+    cambc("build", target.name)
+    return target.name
 
 
-def run_task(config, opponent, fuel, args):
-    """Play every map in both seats at one fuel budget. Returns a list of games."""
-    name, source, assignments = config
-    source = source or opponent  # The mirror config plays the opponent against itself.
-    tag = f"{name}_{opponent}_{fuel}"
-    new, base = f"_eval_{tag}", f"_eval_{tag}_base"
-    out = Path(args.out) / tag
-    out.mkdir(parents=True, exist_ok=True)
+def play(configs, opponents, fuels, args):
+    """Run every match through cambc run-batch, which builds once and parallelises."""
+    out = Path(args.out)
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    bots, temporary = {}, []
     try:
-        strategy = copy_bot(source, new) / "src" / "strategy.h"
-        copy_bot(opponent, base)
-        if assignments:
-            text = strategy.read_text()
-            for constant, value in assignments:
-                text = patch(text, constant, value)
-            strategy.write_text(text)
-        for bot in (new, base):
-            built = subprocess.run(["cambc", "build", bot], cwd=ROOT, capture_output=True, text=True)
-            if built.returncode:
-                raise RuntimeError(f"build failed for {bot}:\n{built.stdout[-800:]}{built.stderr[-800:]}")
+        for name, source, assignments in configs:
+            for opponent in opponents:
+                key = (name, opponent)
+                bots[key] = prepare_bot(name, source or opponent, assignments)
+                if assignments:
+                    temporary.append(bots[key])
+        for opponent in opponents:
+            cambc("build", opponent)
         games = []
-        for game_map in args.maps:
-            for seat, (a, b) in (("A", (new, base)), ("B", (base, new))):
-                stats = out / f"{seat}-{game_map}.json"
-                subprocess.run(["cambc", "run", a, b, "--map", game_map, "--fuel", str(fuel),
-                                "--statistics", str(stats), "-o", str(out / "replays" / f"{seat}-{game_map}")],
-                               cwd=ROOT, capture_output=True)
-                result = json.loads(stats.read_text())
+        for fuel in fuels:
+            rows, expected = [], []
+            for name, _, _ in configs:
+                for opponent in opponents:
+                    for game_map in args.maps:
+                        for seat in ("A", "B"):
+                            a, b = (bots[(name, opponent)], opponent) if seat == "A" else (opponent, bots[(name, opponent)])
+                            tag = f"{name}-{opponent}-{fuel}-{seat}-{game_map}"
+                            stats, replay = out / f"{tag}.json", out / f"{tag}.repl26a"
+                            # run-batch resolves relative paths from the manifest's folder.
+                            bot_a, bot_b = (ROOT / "bots" / a).as_posix(), (ROOT / "bots" / b).as_posix()
+                            map_path = (ROOT / "maps" / f"{game_map}.map26a").as_posix()
+                            rows.append(f"{bot_a} {bot_b} {map_path} {replay.as_posix()} --statistics {stats.as_posix()} --json")
+                            expected.append((name, opponent, game_map, seat, stats))
+            manifest = out / f"manifest-{fuel}.txt"
+            manifest.write_text("\n".join(rows) + "\n")
+            print(f"  running {len(rows)} matches at fuel {fuel} on {args.jobs} processes...", flush=True)
+            cambc("run-batch", str(manifest), "--jobs", str(args.jobs), "--fuel-quantum", str(fuel), "--release",
+                  "--json", "--color", "never", check=False)
+            for name, opponent, game_map, seat, stats in expected:
+                if not stats.exists():
+                    print(f"  missing result: {stats.name}", flush=True)
+                    continue
+                result = json.loads(stats.read_text(encoding="utf-8"))
                 ours = 0 if seat == "A" else 1
+                teams = result["teams"]
                 games.append({
                     "config": name, "opponent": opponent, "fuel": fuel, "map": game_map, "seat": seat,
-                    "won": (result["outcome"] == "teamA") == (ours == 0),
-                    "ours": result["teams"][ours]["submittedGems"],
-                    "theirs": result["teams"][1 - ours]["submittedGems"],
-                    "round": result["round"],
+                    "won": result["match"]["outcome"] == ("teamA" if ours == 0 else "teamB"),
+                    "ours": int(teams[ours]["submittedGems"]),
+                    "theirs": int(teams[1 - ours]["submittedGems"]),
+                    "round": result["match"]["roundsCompleted"],
                 })
         return games
     finally:
-        for bot in (new, base):
-            shutil.rmtree(ROOT / "bots" / bot, ignore_errors=True)
+        for name in temporary:
+            shutil.rmtree(ROOT / "bots" / name, ignore_errors=True)
 
 
 def parse_config(spec, bot):
@@ -136,7 +171,7 @@ def main():
     parser.add_argument("--maps", default="", help="comma-separated map names (default: whole pool)")
     parser.add_argument("--fuels", default=",".join(map(str, DEFAULT_FUELS)), help="comma-separated fuel budgets")
     parser.add_argument("--mirror", action="store_true", help="also play each opponent against itself")
-    parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2), help="parallel processes")
+    parser.add_argument("--jobs", type=int, default=JOBS, help="parallel matches (default: 90%% of cores)")
     parser.add_argument("--out", default=str(Path(os.environ.get("TEMP", "/tmp")) / "evaluate"),
                         help="directory for statistics, replays and games.json")
     args = parser.parse_args()
@@ -156,19 +191,10 @@ def main():
         if not (ROOT / "bots" / bot).is_dir():
             sys.exit(f"no such bot: bots/{bot}")
 
-    tasks = [(config, opponent, fuel) for config in configs for opponent in opponents for fuel in fuels]
-    total = len(tasks) * len(args.maps) * 2
+    total = len(configs) * len(opponents) * len(fuels) * len(args.maps) * 2
     print(f"{len(configs)} configs x {len(opponents)} opponents x {len(fuels)} fuel budgets x {len(args.maps)} maps "
-          f"x 2 seats = {total} games, {min(args.jobs, len(tasks))} processes", flush=True)
-    games = []
-    with ProcessPoolExecutor(max_workers=min(args.jobs, len(tasks))) as pool:
-        futures = {pool.submit(run_task, config, opponent, fuel, args): (config[0], opponent, fuel)
-                   for config, opponent, fuel in tasks}
-        for future in as_completed(futures):
-            name, opponent, fuel = futures[future]
-            played = future.result()
-            games.extend(played)
-            print(f"  done {name} vs {opponent} @ {fuel}: {sum(g['won'] for g in played)}/{len(played)}", flush=True)
+          f"x 2 seats = {total} games, up to {args.jobs} processes at below-normal priority", flush=True)
+    games = play(configs, opponents, fuels, args)
     Path(args.out).mkdir(parents=True, exist_ok=True)
     (Path(args.out) / "games.json").write_text(json.dumps(games, indent=1))
     report(games, names, opponents)

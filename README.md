@@ -32,7 +32,7 @@ Both scripts can be run from any directory.
 
 ### Judging a change
 
-Matches are deterministic but chaotic: a one-line change can flip a third of single games, so a single ladder pass proves nothing. `scripts/evaluate.py` plays every map in both seats at five fuel budgets near the real 100k limit (170 games per config, in parallel). It compares the result with `bots/baseline`, which is the last bot you trust.
+Matches are deterministic but chaotic: a one-line change can flip a third of single games, so a single ladder pass proves nothing. `scripts/evaluate.py` plays every map in both seats at five fuel budgets near the real 100k limit, against one or more opponents (`--baseline a,b,c`). It builds each bot once and runs the matches through `cambc run-batch` in release mode, as on the platform, using at most 90% of your CPU cores at below-normal priority so the machine stays usable.
 
 ```sh
 python scripts/evaluate.py --mirror                     # current bot, plus a baseline-vs-baseline noise floor
