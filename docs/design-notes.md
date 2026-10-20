@@ -1,12 +1,57 @@
-# Squad design notes
+# Design notes
 
-This document specifies the Stellar/Tavi/Cassi squad controller in `bots/newest-bot/src/squad/`. Each rule below names the code that implements it.
+## Current team plan
+
+The draft makes one decision per map: draft the **offensive team** or the **resource team**. Everything else follows from the roster.
+
+| Roster | 3 picks | 4 picks | 5 picks |
+| --- | --- | --- | --- |
+| Offensive (squad + workers) | Stellar, Tavi, Twins | + Ryth | + Ryth, Varg |
+| Resource (all farm) | Varg, Vendetta, Twins | + Ryth | + Ryth, Vesper Vale |
+
+The squad (Stellar, Tavi, Cassi) only forms when all three are drafted. Every other champion runs the worker policy.
+
+### Draft heuristic (`draft/draft.cpp`)
+A score starts at 0. Each input adds a point when contact and contesting will decide the game, or subtracts one when farming alone should win. Offense is drafted at `policy::offense_threshold` (1) or above. All inputs are computed from the public map, so they work on any generated map. **Thresholds come from game mechanics, never from the local map pool**, because tournament maps are randomly generated.
+
+| Input | Toward offense | Toward resource |
+| --- | --- | --- |
+| Team size | 5 picks (+1) | 3 picks (−2) |
+| Open tiles per champion | crowded (≤ 150) | sparse (≥ 500) |
+| Walking distance between spawns | close (≤ 30) | far (≥ 80) |
+| Altar layout | any shared middle altar | only per-side altars |
+| Share of gems we reach first | ≤ 25% | ≥ 50% |
+| Gem supply per champion (gems/round) | scarce (≤ 0.5) | plentiful (≥ 1.5) |
+| Gems behind camps a lone champion can't farm | ≥ 50% | — |
+
+`policy::draft_mode` forces either team for evaluation. The decision and every input are logged as `DRAFT_MODE`.
+
+### Roles
+- **Workers (pure resource):** never start fights. They step away when an enemy can hit them, is closing in, or is locally stronger. They prefer safe camps on our side that they can clear alone, bank smaller bags, and signal `under_threat`.
+- **Squad (obstruction, stage 1):** interrupts visible enemy tributes, hunts enemies it can kill in one volley and lone carriers, and kites at spell range. Fallback farming leans toward the enemy side and the altar enemies use. Every member carries an altar lock.
+
+### Measured (against db10-macro, db11-looter and db12-comeback; 158 paired games)
+| Version | Wins | Margin/game | Our gems at 3 / 4 / 5 picks |
+| --- | --- | --- | --- |
+| Before (fixed offensive roster, aggressive workers) | 0 | −820 | 159 / 251 / 222 |
+| Draft heuristic (committed) | 4 | −771 | 331 / 289 / 131 |
+
+The resource team doubles income at 3 picks. At 5 picks every variant nets out about equal. The gap to the old bots is still mostly **income**: their champions earn several times more per round alive.
+
+### Evaluating changes
+Use `scripts/evaluate.py` against several opponents, both seats and several fuel budgets. Single games are deterministic but chaotic, so one game per map proves nothing. Judge on the gem margin, not just wins.
+
+---
+
+## Squad controller rules
+
+The rest of this document specifies the Stellar/Tavi/Cassi squad controller in `bots/newest-bot/src/squad/`. Each rule below names the code that implements it.
 
 - **Done** means the rule is implemented.
 - **Partial** means a simpler version of the rule is implemented, and the gap is described.
 - **Open** means the rule is not implemented.
 
-None of these rules have been match-tested yet. Validate them with `scripts/ladder.ps1` before tuning the `policy::` constants they introduce.
+These rules were match-tested only as a whole (see "Measured" above). Two of them, the secondary-stun bonus and the capture-reset limit, never changed a game in testing. Validate any tuning with `scripts/evaluate.py`.
 
 Terms used throughout:
 
