@@ -1,4 +1,4 @@
-"""Queries about what this bot's team can currently see."""
+"""Queries about this bot's champion vision, including owned wards."""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ def champion_tiles(team: Optional[Team] = None) -> Bitboard:
         team: Team to include, or None for both teams.
     """
     if team is None:
-        return _bc.ally_occupancy() | _bc.enemy_occupancy()
+        out = _bc.ally_occupancy()
+        out |= _bc.enemy_occupancy()
+        return out
     if team == Team.ALLY:
         return _bc.ally_occupancy()
     if team == Team.ENEMY:
@@ -57,6 +59,34 @@ def camp_tiles_into(out: Bitboard) -> None:
     _bc.camp_occupancy_into(out)
 
 
+def awake_camp_tiles() -> Bitboard:
+    """Return the tiles of visible awake camps. Dead camps are excluded."""
+    return _bc.awake_camp_occupancy()
+
+
+def awake_camp_tiles_into(out: Bitboard) -> None:
+    """Like awake_camp_tiles, but writes into out.
+
+    Args:
+        out: Destination Bitboard; its previous contents are overwritten.
+    """
+    _bc.awake_camp_occupancy_into(out)
+
+
+def asleep_camp_tiles() -> Bitboard:
+    """Return the tiles of visible asleep camps. Dead camps are excluded."""
+    return _bc.asleep_camp_occupancy()
+
+
+def asleep_camp_tiles_into(out: Bitboard) -> None:
+    """Like asleep_camp_tiles, but writes into out.
+
+    Args:
+        out: Destination Bitboard; its previous contents are overwritten.
+    """
+    _bc.asleep_camp_occupancy_into(out)
+
+
 def ward_tiles(team: Optional[Team] = None) -> Bitboard:
     """Return the tiles of visible wards.
 
@@ -64,7 +94,9 @@ def ward_tiles(team: Optional[Team] = None) -> Bitboard:
         team: Team to include, or None for both teams.
     """
     if team is None:
-        return _bc.ally_ward_occupancy() | _bc.enemy_ward_occupancy()
+        out = _bc.ally_ward_occupancy()
+        out |= _bc.enemy_ward_occupancy()
+        return out
     _absolute_team(team)
     return _bc.ally_ward_occupancy() if team == Team.ALLY else _bc.enemy_ward_occupancy()
 
@@ -148,6 +180,17 @@ def visible_tiles_into(out: Bitboard) -> None:
     _bc.vision_into(out)
 
 
+def in_vision(position: Vec2) -> bool:
+    """Check current self vision, including owned ward vision, even on empty tiles.
+
+    Hidden tiles return False; out-of-bounds positions raise Error with API_BAD_POSITION.
+
+    Args:
+        position: Tile to query.
+    """
+    return _bc.is_visible(position.x, position.y)
+
+
 def has_teleport(position: Vec2) -> bool:
     """Return whether a visible teleport reservation is on a tile.
 
@@ -177,7 +220,9 @@ def altar_lock_tiles(team: Optional[Team] = None) -> Bitboard:
         team: Team to include, or None for both teams.
     """
     if team is None:
-        return _bc.ally_altar_lock_occupancy() | _bc.enemy_altar_lock_occupancy()
+        out = _bc.ally_altar_lock_occupancy()
+        out |= _bc.enemy_altar_lock_occupancy()
+        return out
     _absolute_team(team)
     return _bc.ally_altar_lock_occupancy() if team == Team.ALLY else _bc.enemy_altar_lock_occupancy()
 

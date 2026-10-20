@@ -10,13 +10,13 @@ use std::sync::OnceLock;
 struct State {
     constants: Constants,
     self_champion: Option<Champion>,
-    champion_designs: [Champion; 12],
+    champion_designs: [Champion; 13],
     memory: (SharedMemory, DraftMemory),
     symmetry: Symmetry,
     terrain: [Bitboard; 4],
     spawns: [Bitboard; 2],
 }
-const _: () = assert!(ChampionType::ALL.len() == 12);
+const _: () = assert!(ChampionType::ALL.len() == 13);
 #[cfg(not(test))]
 static STATE: OnceLock<Box<State>> = OnceLock::new();
 #[cfg(test)]
@@ -42,17 +42,18 @@ fn state() -> Result<&'static State> {
         Error::invalid_argument("SDK initialization failed; call cambc::init() for the error")
     })
 }
-/// Reset the thread-local test cache; leaked fixture states preserve existing static borrows.
+/// Reset the thread-local test caches; leaked fixture states preserve existing static borrows.
 #[cfg(test)]
 pub(crate) fn reset_for_tests() {
     STATE.with(|state| {
         state.borrow_mut().take();
     });
+    crate::board::reset_layout_for_tests();
 }
 /// Initialise immutable SDK data. A static constructor runs this before `main` on the first
 /// turn's fuel, so calling it is only needed to retry or inspect a failed initialisation.
 /// Successful repeat calls do nothing; failures publish nothing and can be retried.
-/// No map layout is cached.
+/// The map layout is cached after the first successful query.
 pub fn init() -> Result<()> {
     if initialized().is_some() {
         return Ok(());
@@ -178,7 +179,7 @@ pub fn is_draft() -> bool {
     unsafe { sys::my_champion() < 0 }
 }
 /// Borrow all initialised champion designs, with no live cooldown/visibility queries.
-pub fn champion_designs() -> Result<&'static [Champion; 12]> {
+pub fn champion_designs() -> Result<&'static [Champion; 13]> {
     Ok(&state()?.champion_designs)
 }
 /// Borrow this team's shared-memory interface, initialised by [`cambc::init`](crate::init).
@@ -330,7 +331,7 @@ impl CampGroup {
     }
     /// Build the camp-spawn tiles; computed on every call.
     pub fn spawn_tiles(&self) -> Result<Bitboard> {
-        let mut mask = Bitboard::new()?;
+        let mut mask = Bitboard::uninit()?;
         self.spawn_tiles_into(&mut mask)?;
         Ok(mask)
     }
@@ -563,14 +564,21 @@ fn load_camp(h: u32) -> Result<Camp> {
 /// An immutable snapshot of a visible ordinary ward.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Ward {
+    pub(crate) owner: ChampionHandle,
     pub(crate) position: Vec2,
     pub(crate) team: Team,
     pub(crate) remaining_time: Option<i32>,
 }
 impl Ward {
+    /// Return the owning champion captured when this ward was visible, even if the owner is hidden.
+    /// Live champion state still requires the champion to be in vision.
+    pub fn owner(&self) -> Result<Champion> {
+        Champion::new(self.owner)
+    }
     /// Decode an engine ward record.
     pub(crate) fn from_raw(v: &sys::WardInfo) -> Result<Self> {
         Ok(Self {
+            owner: ChampionHandle(v.owner),
             position: Vec2::new(v.x, v.y),
             team: Team::from_absolute(v.team as i32)?,
             remaining_time: if v.timer < 0 { None } else { Some(v.timer) },
@@ -643,6 +651,15 @@ pub struct Teleport {
     remaining_time: i32,
 }
 impl Teleport {
+    fn decode(i: sys::TeleportInfo) -> Result<Self> {
+        Ok(Self {
+            champion: ChampionHandle(i.champion),
+            kind: ChampionType::try_from(i.kind)?,
+            team: Team::from_absolute(i.team as i32)?,
+            destination: i.destination,
+            remaining_time: i.timer,
+        })
+    }
     /// Construct a live wrapper for the teleport caster, preserving host visibility errors.
     pub fn champion(&self) -> Result<Champion> {
         Champion::new(self.champion)
@@ -774,9 +791,25 @@ fn optional<T>(r: Result<T>) -> Result<Option<T>> {
 pub fn visible_tiles() -> Result<Bitboard> {
     Bitboard::query(|p| unsafe { sys::vision(p) })
 }
+/// Check current self vision, including owned ward vision, even on empty tiles.
+/// Hidden tiles return `Ok(false)`; out-of-bounds positions return `ApiBadPosition`.
+///
+/// # Arguments
+/// * `position` - Tile to query.
+pub fn in_vision(position: Vec2) -> Result<bool> {
+    Ok(query(|p| unsafe { sys::is_visible(position.x, position.y, p) })? != 0)
+}
 /// Query the current visible camp occupancy mask.
 pub fn camp_tiles() -> Result<Bitboard> {
     Bitboard::query(|p| unsafe { sys::camp_occupancy(p) })
+}
+/// Query the tiles of visible awake camps. Dead camps are excluded.
+pub fn awake_camp_tiles() -> Result<Bitboard> {
+    Bitboard::query(|p| unsafe { sys::awake_camp_occupancy(p) })
+}
+/// Query the tiles of visible asleep camps. Dead camps are excluded.
+pub fn asleep_camp_tiles() -> Result<Bitboard> {
+    Bitboard::query(|p| unsafe { sys::asleep_camp_occupancy(p) })
 }
 /// Query current visible teleport-destination occupancy.
 pub fn teleport_tiles() -> Result<Bitboard> {
@@ -833,6 +866,20 @@ pub fn visible_tiles_into(out: &mut Bitboard) -> Result<()> {
 /// * `out` - Destination mask; its previous contents are overwritten.
 pub fn camp_tiles_into(out: &mut Bitboard) -> Result<()> {
     crate::check(unsafe { sys::camp_occupancy(out.ptr_mut()) })
+}
+/// Like [`awake_camp_tiles`], but writes into `out`.
+///
+/// # Arguments
+/// * `out` - Destination mask; its previous contents are overwritten.
+pub fn awake_camp_tiles_into(out: &mut Bitboard) -> Result<()> {
+    crate::check(unsafe { sys::awake_camp_occupancy(out.ptr_mut()) })
+}
+/// Like [`asleep_camp_tiles`], but writes into `out`.
+///
+/// # Arguments
+/// * `out` - Destination mask; its previous contents are overwritten.
+pub fn asleep_camp_tiles_into(out: &mut Bitboard) -> Result<()> {
+    crate::check(unsafe { sys::asleep_camp_occupancy(out.ptr_mut()) })
 }
 /// Like [`teleport_tiles`], but writes into `out`.
 ///
@@ -944,15 +991,7 @@ pub fn has_teleport(position: Vec2) -> Result<bool> {
 pub fn teleports() -> Result<Vec<Teleport>> {
     crate::list(|p, n, out| unsafe { sys::teleports(p, n, out) })?
         .into_iter()
-        .map(|i| {
-            Ok(Teleport {
-                champion: ChampionHandle(i.champion),
-                kind: ChampionType::try_from(i.kind)?,
-                team: Team::from_absolute(i.team as i32)?,
-                destination: i.destination,
-                remaining_time: i.timer,
-            })
-        })
+        .map(Teleport::decode)
         .collect()
 }
 /// Return the visible teleport reservation at `position`.
@@ -960,15 +999,22 @@ pub fn teleports() -> Result<Vec<Teleport>> {
 /// # Arguments
 /// * `position` - Tile to query.
 pub fn teleport_at(position: Vec2) -> Result<Teleport> {
-    if has_teleport(position)? {
-        if let Some(t) = teleports()?.into_iter().find(|t| t.position() == position) {
-            return Ok(t);
+    let info = query(|p| unsafe { sys::teleport_at(position.x, position.y, p) });
+    match info {
+        Ok(i) => Teleport::decode(i),
+        Err(e)
+            if matches!(
+                e.code(),
+                Some(ErrorCode::ApiNotFound | ErrorCode::ApiNotInVision)
+            ) =>
+        {
+            Err(Error::local(
+                ErrorCode::ApiNotFound,
+                "no visible teleport at position",
+            ))
         }
+        Err(e) => Err(e),
     }
-    Err(Error::local(
-        ErrorCode::ApiNotFound,
-        "no visible teleport at position",
-    ))
 }
 /// Return an owning visible altar lock at `position`, preferring ally then enemy.
 ///

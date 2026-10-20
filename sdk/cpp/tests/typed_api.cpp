@@ -1,7 +1,7 @@
 // Standalone SDK test with deterministic host responses; no live game is required.
+#include <unordered_set>
 #if defined(__wasm__)
 #undef __wasm__
-#include <unordered_set>
 #include <cambc.h>
 #define __wasm__ 1
 #else
@@ -104,6 +104,8 @@ static_assert(std::is_same_v<decltype(std::declval<const cambc::camp&>().is_elk(
 static_assert(std::is_same_v<decltype(std::declval<const cambc::camp&>().is_gem_cluster()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const cambc::camp&>().is_gold_cluster()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const cambc::camp&>().is_monolith()), bool>);
+static_assert(std::is_same_v<decltype(std::declval<const cambc::camp&>().is_golem()), bool>);
+static_assert(std::is_same_v<decltype(std::declval<const cambc::ward&>().owner()), cambc::champion>);
 static_assert(std::is_same_v<decltype(std::declval<const cambc::ward&>().is_ally()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const cambc::ward&>().is_enemy()), bool>);
 static_assert(std::is_same_v<decltype(std::declval<const cambc::teleport&>().is_ally()), bool>);
@@ -170,7 +172,10 @@ std::array<std::byte, 4> mock_draft_memory{std::byte{'S'}, std::byte{'D'}, std::
 cambc::vec2 mock_position{ 5, 6 };
 cambc::vec2 cast_position{};
 std::uint64_t visible_tiles{};
+bool path_reachable = true;
+std::int32_t visibility_error = 0;
 bool camps_alive = true;
+bool camps_awake = false;
 std::int32_t mock_champion_team = 0, mock_my_team = 0;
 std::int32_t mock_ward_timer = 9;
 std::uint8_t mock_ward_disabled = 1;
@@ -255,12 +260,15 @@ extern "C"
 		assert(x >= 0 && y >= 0 && x < 8 && y < 8); *out = (*board & tile_bit({x, y})) != 0; return 0;
 	}
 	std::int32_t sdk_Bitboard_Zero(std::uint64_t* out) { *out = 0; return 0; }
+	std::int32_t sdk_Bitboard_ImportRawBuffer(std::uint64_t* out, const std::uint8_t* bytes, std::size_t size) {
+		assert(size == 8); std::memcpy(out, bytes, size); return 0;
+	}
 	std::int32_t sdk_champion_design(std::int32_t type, champion_design* out) {
 		assert(type >= 0 && type < 13); *out = {};
 		out->definition.passive_type = static_cast<std::uint8_t>(type % 10);
 		out->definition.type = type; out->definition.abilities[0].kind = 2;
 		out->definition.abilities[0].payload.damage = {4, 2};
-		out->base_stats.base_health = 200; return 0;
+		out->base_stats.base_health = 200; out->base_stats.base_move_speed = 1; return 0;
 	}
 	std::int32_t sdk_Bitboard_DrawChebyshev(std::uint64_t* out, std::int32_t x, std::int32_t y, float radius) {
 		for (int yy = 0; yy < 8; ++yy) for (int xx = 0; xx < 8; ++xx)
@@ -316,13 +324,13 @@ extern "C"
 
 	std::int32_t sdk_ward(std::uint32_t handle, ward_info* out) {
 		if (const auto code = position_error({static_cast<int>(handle), 1})) return code;
-		*out = {handle == 2 ? 0u : 1u, handle == 5 ? 2 : static_cast<int>(handle), 1, mock_ward_timer, mock_ward_disabled}; return 0;
+		*out = {handle == 2 ? 0u : 1u, handle == 5 ? 2 : static_cast<int>(handle), 1, mock_ward_timer, mock_ward_disabled, handle == 2 ? 0u : 1u}; return 0;
 	}
 
 	std::int32_t sdk_wards(ward_info* out, std::uint32_t capacity, std::uint32_t* count) {
 		if (query_error) return query_error;
-		const std::array values{ward_info{0, 2, 1, mock_ward_timer, mock_ward_disabled},
-			ward_info{1, 4, 1, mock_ward_timer, mock_ward_disabled}, ward_info{1, 2, 1, 5, 0}};
+		const std::array values{ward_info{0, 2, 1, mock_ward_timer, mock_ward_disabled, 0},
+			ward_info{1, 4, 1, mock_ward_timer, mock_ward_disabled, 1}, ward_info{1, 2, 1, 5, 0, 1}};
 		*count = 0;
 		for (const auto& value : values) if (visible_tiles & tile_bit({value.x, value.y})) ++*count;
 		if (!capacity) return 0;
@@ -346,6 +354,11 @@ extern "C"
 	std::int32_t sdk_teleports(teleport_info* out, std::uint32_t capacity, std::uint32_t* count) {
 		*count = teleports_active && (visible_tiles & tile_bit({6, 1})) ? 1 : 0;
 		if (capacity && *count) out[0] = {0, 2, 1, {6, 1}, 5}; return 0;
+	}
+	std::int32_t sdk_teleport_at(std::int32_t x, std::int32_t y, teleport_info* out) {
+		std::int32_t has{}; if (const auto code = sdk_has_teleport(x, y, &has)) return code;
+		if (!has) return static_cast<int>(error_code::api_not_found);
+		*out = {0, 2, 1, {6, 1}, 5}; return 0;
 	}
 	std::int32_t sdk_ally_altar_lock_occupancy(std::uint64_t* out) { *out = visible_tiles & tile_bit({1, 1}); return 0; }
 	std::int32_t sdk_enemy_altar_lock_occupancy(std::uint64_t* out) { *out = visible_tiles & tile_bit({1, 1}); return 0; }
@@ -399,6 +412,21 @@ extern "C"
 	}
 	std::int32_t sdk_Bitboard_Intersect(const std::uint64_t* a, const std::uint64_t* b, std::uint64_t* out) { *out = *a & *b; return 0; }
 	std::int32_t sdk_Bitboard_Union(const std::uint64_t* a, const std::uint64_t* b, std::uint64_t* out) { *out = *a | *b; return 0; }
+	std::int32_t sdk_DistanceField_Get(const std::uint16_t* field, std::int32_t x, std::int32_t y, std::uint16_t* out) {
+		*out = field[y * 8 + x]; return 0;
+	}
+	std::int32_t sdk_DistanceField_ComputeToWithExpansionCount(const std::uint64_t* walls, const std::uint64_t* roots,
+		const std::uint64_t*, std::uint64_t* visited, std::uint16_t* field, std::uint16_t, std::uint16_t* count) {
+		assert((*walls & *roots) == 0); // The occupied target must seed the distance field.
+		assert((*walls & tile_bit({1, 1})) != 0); // Other camps remain blocked.
+		std::fill_n(field, 64, std::uint16_t{65535});
+		if (path_reachable) { field[mock_position.y * 8 + mock_position.x] = 2; field[1 * 8 + 3] = 0; }
+		*visited = 0; *count = 2; return 0;
+	}
+	std::int32_t sdk_Bitboard_ReachableMask(const std::uint64_t*, std::int32_t x, std::int32_t y,
+		std::uint64_t* out, std::uint16_t distance) {
+		assert(distance == 1); *out = tile_bit({x, y}) | tile_bit({3, 1}); return 0;
+	}
 	std::int32_t sdk_vision(std::uint64_t* out) { *out = visible_tiles; return 0; }
 	std::int32_t sdk_ally_occupancy(std::uint64_t* out) { *out = mock_champion_team == mock_my_team ? visible_tiles & tile_bit(mock_position) : 0; return 0; }
 	std::int32_t sdk_enemy_occupancy(std::uint64_t* out) { *out = mock_champion_team != mock_my_team ? visible_tiles & tile_bit(mock_position) : 0; return 0; }
@@ -406,6 +434,14 @@ extern "C"
 		*out = 0;
 		if (camps_alive) for (const auto& spec : camp_specs) *out |= visible_tiles & tile_bit({spec.x, spec.y});
 		return 0;
+	}
+	std::int32_t sdk_awake_camp_occupancy(std::uint64_t* out) {
+		if (query_error) return query_error;
+		*out = tile_bit({1, 1}); return 0;
+	}
+	std::int32_t sdk_asleep_camp_occupancy(std::uint64_t* out) {
+		if (query_error) return query_error;
+		*out = tile_bit({2, 2}); return 0;
 	}
 	std::int32_t sdk_map_num_camp_groups(std::uint32_t* out) {
 		++group_calls;
@@ -425,6 +461,29 @@ extern "C"
 	std::int32_t sdk_map_camp_info(std::uint32_t handle, camp_info* out) {
 		for (std::size_t i = 0; i < camp_handles.size(); ++i) if (handle == camp_handles[i]) { *out = camp_specs[i]; return 0; }
 		return static_cast<int>(error_code::api_invalid_camp_info);
+	}
+	std::int32_t sdk_map_camp_layout(std::uint32_t* out, std::uint32_t capacity, std::uint32_t* count) {
+		if (sdk_my_champion() == -1) return static_cast<int>(error_code::api_not_initialized);
+		std::vector<std::uint32_t> words;
+		for (const auto group : {21u, 7u}) {
+			words.insert(words.end(), {group, group * 10, group, 30, group == 21 ? 2u : 1u});
+			for (std::size_t i = group == 21 ? 0 : 2; i < (group == 21 ? 2 : 3); ++i)
+				words.insert(words.end(), {camp_handles[i], static_cast<std::uint32_t>(camp_specs[i].type),
+					static_cast<std::uint32_t>(camp_specs[i].x), static_cast<std::uint32_t>(camp_specs[i].y)});
+		}
+		*count = static_cast<std::uint32_t>(words.size());
+		std::copy_n(words.begin(), std::min(capacity, *count), out); return 0;
+	}
+	std::int32_t sdk_map_camp_group_of(std::uint32_t handle, std::uint32_t* out) {
+		for (std::size_t i = 0; i < camp_handles.size(); ++i)
+			if (handle == camp_handles[i]) { *out = i < 2 ? 21 : 7; return 0; }
+		return static_cast<int>(error_code::api_invalid_camp_info);
+	}
+	std::int32_t sdk_map_camp_at(std::int32_t x, std::int32_t y, std::uint32_t* out) {
+		if (x < 0 || y < 0 || x >= 8 || y >= 8) return static_cast<int>(error_code::api_bad_position);
+		for (std::size_t i = 0; i < camp_specs.size(); ++i)
+			if (camp_specs[i].x == x && camp_specs[i].y == y) { *out = camp_handles[i]; return 0; }
+		return static_cast<int>(error_code::api_not_found);
 	}
 	std::int32_t sdk_bc_camp_group_max_respawn(std::uint32_t, std::int32_t* out) { *out = 30; return 0; }
 	std::int32_t sdk_camp_group_cooldown(std::uint32_t, std::int32_t* out) {
@@ -448,9 +507,22 @@ extern "C"
 		*out = {spec.x, spec.y, 25, 50, 12, 3, {1, 2}};
 		return 0;
 	}
+	std::int32_t sdk_camp_state(std::uint32_t handle, std::uint32_t* out) {
+		camp_info spec{}; const auto code = sdk_map_camp_info(handle, &spec);
+		if (code) return code;
+		if (const auto error = position_error({spec.x, spec.y})) return error;
+		*out = !camps_alive ? 0 : camps_awake ? 1 : 2;
+		return 0;
+	}
 	std::int32_t sdk_camp_design(std::int32_t, camp_design* out) {
 		*out = {}; out->base_stats.base_health = 50;
 		out->definition.attack_type = 1; out->base_stats.base_attack_range = 3;
+		return 0;
+	}
+	std::int32_t sdk_is_visible(std::int32_t x, std::int32_t y, std::int32_t* out) {
+		if (visibility_error) return visibility_error;
+		if (x < 0 || y < 0 || x >= 8 || y >= 8) return static_cast<std::int32_t>(error_code::api_bad_position);
+		*out = (visible_tiles & tile_bit({x, y})) != 0;
 		return 0;
 	}
 	std::int32_t sdk_has_camp(std::int32_t x, std::int32_t y, std::int32_t* out) {
@@ -487,6 +559,7 @@ extern "C"
 
 	std::int32_t sdk_champion(std::uint32_t handle, champion_info* out)
 	{
+		if (handle == 1) return 97; // Hidden enemy ward owner.
 		assert(handle == 0);
 		*out = {};
 		out->team = mock_champion_team;
@@ -494,6 +567,15 @@ extern "C"
 		out->y = mock_position.y;
 		out->health = 70; out->max_health = 100; out->strength = 18; out->focus = 12;
 		out->move_speed = 3; out->attack_range = mock_champion_attack_range; out->state = mock_state;
+		return query_error;
+	}
+
+	std::int32_t sdk_champion_identity(std::uint32_t handle, champion_identity* out)
+	{
+		if (handle == 1) { *out = {}; out->team = 1; return 0; }
+		assert(handle == 0);
+		*out = {};
+		out->team = mock_champion_team;
 		return query_error;
 	}
 
@@ -578,7 +660,7 @@ extern "C"
 			out->payload.heal = { 4, 2 };
 			break;
 		case 6:
-			out->payload.dash_range = 4;
+			out->payload.dash = { 4, 1, 1.75f, 1 };
 			break;
 		case 7:
 			out->payload.shield = { 4, 2, 3 };
@@ -650,8 +732,72 @@ static_assert(!has_stored_buffs<cambc::unit> && !has_stored_buffs<cambc::champio
 static_assert(!has_buff_refresh<cambc::buff_collection>);
 static_assert(std::ranges::forward_range<cambc::buff_collection>);
 
+void test_in_vision()
+{
+	const auto previous = visible_tiles;
+	visible_tiles = tile_bit({3, 2}); // Empty visible tile: visibility does not require an occupant.
+	assert(cambc::vision::in_vision({3, 2}));
+	assert(!cambc::vision::in_vision({2, 3}));
+	visible_tiles = 0;
+	assert(!cambc::vision::in_vision({3, 2})); // The query must not cache the earlier result.
+	for (const auto p : {cambc::vec2{-1, 0}, cambc::vec2{0, -1}, cambc::vec2{8, 0}, cambc::vec2{0, 8}}) {
+		try { (void)cambc::vision::in_vision(p); assert(false); }
+		catch (const cambc::error& e) { assert(e.code() == cambc::error_code::api_bad_position); }
+	}
+	visibility_error = static_cast<std::int32_t>(cambc::error_code::api_not_initialized);
+	try { (void)cambc::vision::in_vision({3, 2}); assert(false); }
+	catch (const cambc::error& e) { assert(e.code() == cambc::error_code::api_not_initialized); }
+	visibility_error = 0;
+	visible_tiles = previous;
+}
+
+void test_move_towards_blocked_target()
+{
+	const auto saved_move_calls = move_calls;
+	const auto saved_position = mock_position;
+	const auto saved_state = mock_state;
+	const auto saved_visibility = visible_tiles;
+	visible_tiles = ~std::uint64_t{0};
+	mock_position = {2, 1};
+	mock_state = 1 | 8; // Alive and allowed to move.
+	const auto& me = cambc::self();
+	assert(me.move_towards({4, 1})); // Visible camp target two tiles away.
+	assert(mock_position == cambc::vec2(3, 1));
+	assert(cambc::vision::camp_tiles().is_set({4, 1})); // Original occupancy remains intact.
+	mock_position = {2, 1};
+	path_reachable = false;
+	assert(!me.move_towards({4, 1}));
+	path_reachable = true;
+	action_successful = false;
+	assert(!me.move_towards({4, 1}));
+	action_successful = true;
+	action_error = 22;
+	throws<cambc::error>([&] { (void)me.move_towards({4, 1}); });
+	action_error = 0;
+	mock_position = saved_position;
+	mock_state = saved_state;
+	visible_tiles = saved_visibility;
+	move_calls = saved_move_calls;
+}
+
 void test_camp_vision()
 {
+	query_error = 0;
+	const auto awake = cambc::vision::awake_camp_tiles();
+	const auto asleep = cambc::vision::asleep_camp_tiles();
+	assert(awake.count() == 1 && awake.is_set({1, 1}));
+	assert(asleep.count() == 1 && asleep.is_set({2, 2}));
+	auto reused = cambc::vision::awake_camp_tiles();
+	cambc::vision::asleep_camp_tiles_into(reused);
+	assert(reused == asleep);
+	cambc::vision::awake_camp_tiles_into(reused);
+	assert(reused == awake);
+	query_error = static_cast<int>(cambc::error_code::api_not_initialized);
+	throws<cambc::error>([] { (void)cambc::vision::awake_camp_tiles(); });
+	throws<cambc::error>([] { (void)cambc::vision::asleep_camp_tiles(); });
+	throws<cambc::error>([&] { cambc::vision::awake_camp_tiles_into(reused); });
+	throws<cambc::error>([&] { cambc::vision::asleep_camp_tiles_into(reused); });
+	assert(reused == awake);
 	query_error = 0;
 	mock_ability_kind = 3;
 	mock_position = {5, 6};
@@ -710,17 +856,30 @@ void test_camp_vision()
 		throws<cambc::error>([&] { (void)cambc::vision::has_champion(position); });
 	}
 	assert(std::holds_alternative<cambc::map::camp_group_alive>(groups[0].state()));
+	assert(camp.state() == cambc::camp_state::asleep);
+	const auto sleeping_state = camp.state();
+	assert(sleeping_state.is_alive() && sleeping_state.is_asleep());
+	assert(!sleeping_state.is_dead() && !sleeping_state.is_awake());
+	assert(camp.is_alive() && camp.is_asleep() && !camp.is_awake() && !camp.is_dead());
+	camps_awake = true;
+	assert(camp.state() == cambc::camp_state::alive);
+	assert(camp.is_alive() && camp.is_awake() && !camp.is_asleep() && !camp.is_dead());
+	assert(sleeping_state.is_asleep()); // Predicates on a captured state never query the host.
+	camps_awake = false;
 	camp_timer = 7;
 	assert(std::get<cambc::map::camp_group_respawning>(groups[0].state()).timer == 7);
 	camp_timer = 0;
 	assert(std::get<cambc::map::camp_group_respawning>(groups[0].state()).timer == 0);
 	camps_alive = false;
+	assert(camp.state() == cambc::camp_state::dead);
+	assert(camp.is_dead() && !camp.is_alive() && !camp.is_awake() && !camp.is_asleep());
 	camp_timer.reset();
 	assert(std::holds_alternative<cambc::map::camp_group_reward_available>(groups[0].state()));
 	assert(!camp.is_visible() && cambc::vision::camps().empty() && !cambc::vision::has_camp({1, 1}));
 	assert(cambc::vision::camp_groups().size() == 1);
 	visible_tiles = 0;
 	assert(!camp.is_visible() && cambc::vision::camps().empty() && cambc::vision::champions().empty());
+	throws<cambc::error>([&] { (void)camp.state(); });
 	assert(cambc::vision::camp_groups().empty());
 	assert(champions.size() == 1 && camps.size() == 1 && visible_groups.size() == 1);
 	assert(static_cast<cambc::handle_champion_t>(champions[0]) == static_cast<cambc::handle_champion_t>(champion));
@@ -757,7 +916,8 @@ void test_design_globals()
 	assert(cambc::draft::team_size() == 3);
 	assert(cambc::draft_memory.size() == 4 && std::memcmp(cambc::draft_memory.data(), "SDK!", 4) == 0);
 	assert(draft_reads == 1);
-	assert(cambc::champion_designs.size() == 12);
+	assert(cambc::champion_designs.size() == 13);
+	assert(cambc::champion_designs.back().champion_name() == cambc::champion_type::heart_of_ruin);
 	for (std::size_t i = 0; i < cambc::champion_designs.size(); ++i)
 	{
 		const auto& design = cambc::champion_designs[i];
@@ -855,6 +1015,7 @@ void test_new_game_api()
 	assert(camp.is_gem_cluster() == (camp.kind() == cambc::camp_type::gem_cluster));
 	assert(camp.is_gold_cluster() == (camp.kind() == cambc::camp_type::gold_cluster));
 	assert(camp.is_monolith() == (camp.kind() == cambc::camp_type::monolith));
+	assert(camp.is_golem() == (camp.kind() == cambc::camp_type::golem));
 	check_attack_tiles(camp);
 	owner.attack(camp); assert(cast_kind == 2 && cast_target == 42);
 	const cambc::unit& camp_target = camp;
@@ -882,6 +1043,11 @@ void test_new_game_api()
 		assert(sample.is_cc() == sample.is(cambc::ability_kind::cc));
 		assert(sample.is_heal() == sample.is(cambc::ability_kind::heal));
 		assert(sample.is_dash() == sample.is(cambc::ability_kind::dash));
+		if (sample.is_dash()) {
+			const auto& landing = sample.get<cambc::ability_dash>();
+			assert(landing.range == 4 && landing.radius == 1 && landing.modifier == 1.75f && landing.duration == 1);
+			assert(sample.damage_amount() == 100);
+		}
 		assert(sample.is_shield() == sample.is(cambc::ability_kind::shield));
 		if (mock_ability_kind == 0) { throws<std::bad_optional_access>([&] { (void)sample.valid_tiles(); }); continue; }
 		if (mock_ability_kind == 1) { throws<std::invalid_argument>([&] { (void)sample.valid_tiles(); }); continue; }
@@ -1192,6 +1358,9 @@ void test_dynamic_sensing()
 	assert(cambc::vision::wards().empty());
 	assert(cambc::vision::wards(cambc::team::ally).empty() && cambc::vision::wards(cambc::team::enemy).empty());
 	assert(wards.size() == 3 && wards[0].position() == cambc::vec2(2, 1));
+	assert(wards[1].owner().is_enemy());
+	throws<cambc::error>([&] { (void)wards[1].owner().position(); });
+	throws<cambc::error>([&] { (void)wards[1].owner().health(); });
 	assert(cambc::vision::teleport_tiles().is_empty() && cambc::vision::teleports().empty() && !cambc::vision::has_teleport({6, 1}));
 	assert(cambc::vision::altar_lock_tiles().is_empty() && cambc::vision::altar_locks().empty());
 	assert(ordinary.position() == cambc::vec2(2, 1));
@@ -1323,6 +1492,8 @@ void test_host_flag_decoding()
 
 int main()
 {
+	test_in_vision();
+	if (!cambc::is_draft()) test_move_towards_blocked_target();
 	test_logical_masks();
 	test_value_semantics();
 	if (!cambc::is_draft()) test_host_flag_decoding();

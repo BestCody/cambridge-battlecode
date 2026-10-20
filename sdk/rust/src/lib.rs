@@ -32,9 +32,10 @@ pub mod map {
 /// Live visibility, occupancy and visible-entity queries.
 pub mod vision {
     pub use crate::world::{
-        altar_lock_at, altar_lock_tiles, altar_lock_tiles_into, altar_locks, camp_at, camp_tiles,
+        altar_lock_at, altar_lock_tiles, altar_lock_tiles_into, altar_locks,
+        asleep_camp_tiles, asleep_camp_tiles_into, awake_camp_tiles, awake_camp_tiles_into, camp_at, camp_tiles,
         camp_tiles_into, champion_at, champion_tiles, champion_tiles_into, has_altar_lock, has_camp,
-        has_champion, has_teleport, has_ward, teleport_at, teleport_tiles, teleport_tiles_into,
+        has_champion, has_teleport, has_ward, in_vision, teleport_at, teleport_tiles, teleport_tiles_into,
         teleports, vision_camp_groups as camp_groups, vision_camps as camps,
         vision_champions as champions, visible_tiles, visible_tiles_into, ward_at, ward_tiles,
         ward_tiles_into, wards,
@@ -44,7 +45,8 @@ pub mod vision {
 pub mod draft {
     pub use crate::world::{current_draft, draft_pick as pick, draft_team_size as team_size};
 }
-/// Replay debug drawing.
+/// Replay debug drawing during draft and gameplay. Drawings last for the current
+/// round; both teams clear at the next round, or when draft transitions to gameplay.
 pub mod debug {
     pub use crate::world::{debug_draw_dot as draw_dot, debug_draw_line as draw_line};
 }
@@ -198,4 +200,62 @@ pub(crate) fn require_self(handle: ChampionHandle) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+#[doc(hidden)]
+pub mod __private {
+    #[cfg(cambc_debug)]
+    pub struct DebugGuard;
+    #[cfg(cambc_debug)]
+    impl DebugGuard {
+        pub fn pause() -> Self {
+            unsafe { crate::sys::fuel_pause() };
+            DebugGuard
+        }
+    }
+    #[cfg(cambc_debug)]
+    impl Drop for DebugGuard {
+        fn drop(&mut self) {
+            // Refund the guard's own call overhead before restoring.
+            unsafe { crate::sys::fuel_adjust(1) };
+            unsafe { crate::sys::fuel_resume() }
+        }
+    }
+}
+
+/// Run the statements without spending fuel when the bot is built in debug
+/// mode (`cambc run`, the default); skipped entirely in release mode
+/// (`--release`, and always on the platform). The free budget per block is
+/// 1000 turns, beyond which the rest is charged; ending the turn inside
+/// closes the free window.
+///
+/// A macro: `debug_block! { statements }` runs the body inline, so `return`
+/// and `?` leave the enclosing function (fuel resumes on the way out). In
+/// release mode the body is type-checked but never evaluated.
+#[cfg(cambc_debug)]
+#[macro_export]
+macro_rules! debug_block {
+    ($($body:tt)*) => {{
+        let _guard = $crate::__private::DebugGuard::pause();
+        $($body)* ;
+    }};
+}
+
+/// Run the statements without spending fuel when the bot is built in debug
+/// mode (`cambc run`, the default); skipped entirely in release mode
+/// (`--release`, and always on the platform). The free budget per block is
+/// 1000 turns, beyond which the rest is charged; ending the turn inside
+/// closes the free window.
+///
+/// A macro: `debug_block! { statements }` runs the body inline, so `return`
+/// and `?` leave the enclosing function (fuel resumes on the way out). In
+/// release mode the body is type-checked but never evaluated.
+#[cfg(not(cambc_debug))]
+#[macro_export]
+macro_rules! debug_block {
+    ($($body:tt)*) => {
+        if false {
+            $($body)* ;
+        }
+    };
 }

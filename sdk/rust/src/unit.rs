@@ -2,7 +2,7 @@
 //! Live state is queried on demand. Only the self champion may perform actions or private-resource queries.
 use crate::{
     check, query, require_self, sys, Ability, Bitboard, BuffCollection, BuffRestrictions,
-    CampGroup, CampGroupHandle, CampHandle, CampStats, CampType, ChampionHandle, ChampionStats,
+    CampGroup, CampGroupHandle, CampHandle, CampState, CampStats, CampType, ChampionHandle, ChampionStats,
     ChampionType, ConsumableType, Entity, Error, ErrorCode, ItemCounts, ItemType, PassiveType,
     Result, Team, Vec2,
 };
@@ -117,7 +117,7 @@ impl Unit {
     /// Build the live unit's Chebyshev attack-range mask without filtering targets or attack availability.
     /// Hidden units and design-only champions propagate position/range query errors.
     pub fn attack_tiles(&self) -> Result<Bitboard> {
-        let mut mask = Bitboard::new()?;
+        let mut mask = Bitboard::uninit()?;
         self.attack_tiles_into(&mut mask)?;
         Ok(mask)
     }
@@ -295,12 +295,16 @@ impl Champion {
         let h = self.handle()?;
         query(|p| unsafe { sys::champion(h.0, p) })
     }
-    /// Return this champion's type; live champions require a host query.
+    fn identity(&self) -> Result<sys::ChampionIdentity> {
+        let h = self.handle()?;
+        query(|p| unsafe { sys::champion_identity(h.0, p) })
+    }
+    /// Return this champion's type; live champions read it without vision.
     pub fn champion_name(&self) -> Result<ChampionType> {
         if let UnitIdentity::Design(t) = self.unit.identity {
             Ok(t)
         } else {
-            ChampionType::try_from(self.info()?.kind)
+            ChampionType::try_from(self.identity()?.kind)
         }
     }
     /// Query the checked champion passive from its engine design.
@@ -309,9 +313,9 @@ impl Champion {
         let d = query(|p| unsafe { sys::champion_design(kind as i32, p) })?;
         PassiveType::try_from(d.definition.passive_type)
     }
-    /// Query the champion's team relative to the guest perspective.
+    /// Query the champion's team relative to the guest perspective; no vision required.
     pub fn team(&self) -> Result<Team> {
-        Team::from_absolute(self.info()?.team)
+        Team::from_absolute(self.identity()?.team)
     }
     /// Check whether this champion belongs to the observing team.
     pub fn is_ally(&self) -> Result<bool> {
@@ -426,7 +430,7 @@ impl Champion {
     /// # Panics
     /// Panics if SDK initialisation failed.
     pub fn ward_placement_tiles(&self) -> Result<Bitboard> {
-        let mut b = Bitboard::new()?;
+        let mut b = Bitboard::uninit()?;
         self.ward_placement_tiles_into(&mut b)?;
         Ok(b)
     }
@@ -630,9 +634,10 @@ impl Champion {
         self.own()?;
         query(|out| unsafe { sys::move_to(destination.x, destination.y, out) }).map(|successful| successful != 0)
     }
-    /// Move self to the reachable tile on a shortest path to `target`, avoiding walls, holes, altars,
-    /// the enemy spawn and visible units. Returns `Ok(false)` without moving when already there,
-    /// unable to move, or `target` is blocked or unreachable, and for a newly revealed obstruction.
+    /// Move self to the reachable tile on a shortest path to `target`. Always treat the target as free for pathfinding,
+    /// while avoiding other walls, holes, altars, enemy spawn tiles, visible units and teleport reservations.
+    /// Returns `Ok(false)` when already there, unable to move, no route exists, or a hidden obstruction is revealed.
+    /// The engine still validates the chosen landing tile: trying to enter a known blocked target returns `Err`.
     ///
     /// # Arguments
     /// * `target` - Map tile to approach.
@@ -650,9 +655,7 @@ impl Champion {
         blocked.union_assign(&crate::world::camp_tiles()?)?;
         blocked.union_assign(&crate::world::teleport_tiles()?)?;
         blocked.set(origin, false)?;
-        if blocked.is_set(target)? {
-            return Ok(false);
-        }
+        blocked.set(target, false)?;
         let mut roots = Bitboard::new()?;
         roots.set(target, true)?;
         let mut destinations = Bitboard::new()?;
@@ -662,7 +665,7 @@ impl Champion {
             &blocked,
             &roots,
             &destinations,
-            &mut Bitboard::new()?,
+            &mut Bitboard::uninit()?,
             u16::MAX,
         )?;
         let (mut best, mut best_distance) = (origin, distances.get(origin)?);
@@ -812,6 +815,11 @@ impl Camp {
     pub fn is_monolith(&self) -> bool {
         self.kind() == CampType::Monolith
     }
+    /// Return whether this camp is a golem.
+    #[must_use]
+    pub fn is_golem(&self) -> bool {
+        self.kind() == CampType::Golem
+    }
     /// Return the immutable engine spawn position, not a current live position.
     #[must_use]
     pub fn spawn_position(&self) -> Vec2 {
@@ -821,6 +829,20 @@ impl Camp {
     pub fn camp_group(&self) -> Result<CampGroup> {
         crate::world::camp_group(self.group)
     }
+    /// Query `CampState::Dead`, `Alive` (awake), or `Asleep` (living but dormant).
+    /// The current tile, or last occupied tile when dead, must be in vision;
+    /// hidden camps return `ApiNotInVision`. This is separate from the camp-group state.
+    pub fn state(&self) -> Result<CampState> {
+        CampState::try_from(query(|p| unsafe { sys::camp_state(self.handle.0, p) })?)
+    }
+    /// Query whether this camp is dead; uses the same visibility checks as `state()`.
+    pub fn is_dead(&self) -> Result<bool> { Ok(self.state()?.is_dead()) }
+    /// Query whether this camp is living (awake or asleep); uses the same visibility checks as `state()`.
+    pub fn is_alive(&self) -> Result<bool> { Ok(self.state()?.is_alive()) }
+    /// Query whether this camp is awake; uses the same visibility checks as `state()`.
+    pub fn is_awake(&self) -> Result<bool> { Ok(self.state()?.is_awake()) }
+    /// Query whether this camp is living but dormant; uses the same visibility checks as `state()`.
+    pub fn is_asleep(&self) -> Result<bool> { Ok(self.state()?.is_asleep()) }
     /// Query immutable engine design stats, not current modified combat stats.
     pub fn base_stats(&self) -> Result<CampStats> {
         Ok(query(|p| unsafe { sys::camp_design(self.kind as i32, p) })?.base_stats)
