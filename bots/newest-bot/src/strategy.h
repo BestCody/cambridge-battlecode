@@ -164,6 +164,13 @@ inline constexpr int crystal_min_saving = 8;
 // normal range. false sieges whenever a solo clear would be too costly
 // (measured: 12 fewer wins in 840 games).
 inline constexpr bool siege_alone_only = true;
+// Team cohesion in camp choice. The top team farms neighbouring camps about
+// 8 tiles apart, close enough to join each other's fights; ours spread 12-13
+// apart and fought alone. A camp farther than cohesion_radius from every
+// teammate's claimed camp or visible position has its value divided by
+// 1 + cohesion_weight * excess / cohesion_radius. 0 disables.
+inline constexpr int cohesion_radius = 8;
+inline constexpr float cohesion_weight = 1.0f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never

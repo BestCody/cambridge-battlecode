@@ -21,6 +21,19 @@ int Bot::worker_choose_group() {
         if (ally_champion.is_alive())
             ++alive_allies;
     const bool depleted = float(alive_allies) <= float(roster.size()) * policy::depleted_alive_fraction;
+    // Where the rest of the team works: living teammates' claimed camps and
+    // the allies in view. Camps near them keep help within reach.
+    std::vector<vec2> team;
+    if constexpr (policy::cohesion_weight > 0) {
+        for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+            if (s != slot && roster[s].is_alive()) {
+                const int claimed = TeamMemory::objective(shared.get(s), groups.size());
+                if (claimed >= 0)
+                    team.push_back(groups[claimed].centre);
+            }
+        for (const auto &ally : allies)
+            team.push_back(ally.position);
+    }
     for (std::size_t i = 0; i < groups.size(); ++i) {
         if (bc::fuel_remaining() < 28000)
             break;
@@ -126,6 +139,13 @@ int Bot::worker_choose_group() {
                 value *= depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
             if (depleted && claims > 0)
                 value *= policy::depleted_rally_bonus;
+        }
+        if (!team.empty()) {
+            int nearest = std::numeric_limits<int>::max();
+            for (const auto p : team)
+                nearest = std::min(nearest, distance(p, g.centre));
+            const float excess = float(std::max(0, nearest - policy::cohesion_radius));
+            value /= 1 + policy::cohesion_weight * excess / policy::cohesion_radius;
         }
         if (int(i) == target)
             value *= policy::worker_commit_bonus; // Finish the camp being walked to.

@@ -10,6 +10,9 @@ newest-bot replicates the play of Intercontinental Fish, the #1 ladder team, as 
 
 Rosters live in `draft/team_compositions.h`. The squad controller is off (`policy::squad_enabled`), so every champion runs the worker policy:
 
+- **Farm near each other.** Like the top team, champions farm neighbouring camps rather than spreading out, so help is within reach when a fight starts.
+  - Camp value is divided by 1 + `cohesion_weight` × (tiles beyond `cohesion_radius` (8) to the nearest teammate's claimed camp or position) ÷ 8.
+  - The weight is 1. Weights 0.5 and 2 measured worse.
 - **Farm and fight.** Champions farm their own side and fight when a fight comes to them. Heart of Ruin and other dash champions use damaging dashes on enemies and camps (`impact_dash`).
 - **Bank small bags often.** Carries (Stellar, Heart of Ruin) bank at 28 gems, everyone else at 20. Anyone passing within 2 tiles of an altar banks 10 or more.
 - **Shop on a fixed build.** Carries go home with 10 shards' worth of gold, others with 5. Each champion buys Fish's build order (`mechanics/economy.cpp`). No altar locks: Fish never buys them.
@@ -33,6 +36,7 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
 | Teleport crystals (3 fuel budgets) | 198/630 wins (was 197), margin −291/game (was −292) | 172/210 (was 169) |
 | Camp choice before fuel runs out; runtime engine settings (3 fuel budgets) | 231/630 wins (was 198), margin −189/game (was −291) | 188/210 (was 172) |
 | Siege only where possible and when no ally is closer (3 fuel budgets) | 283/630 wins (was 231), margin −70/game (was −189) | 202/210 (was 188) |
+| Farm near teammates, cohesion weight 1 (1 fuel budget) | 101/210 wins (was 95), margin +32/game (was −84) | 63/70 (was 68) |
 
 Crystals fired on 14 of 35 maps. There they won 151/336 (was 137) and improved the gem margin by 51 a game. On the other maps the results only show noise.
 
