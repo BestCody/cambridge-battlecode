@@ -80,6 +80,25 @@ struct EnemyTrack {
 // What a worker spent each turn on, for the time-use diagnostic.
 enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, shop, farm, travel, count };
 
+// Built once per map from spare fuel: turns from spawn to each tile by walking,
+// and by walking then one crystal hop. Indexed row-major.
+struct HopMap {
+    enum Stage { start, rows, columns, ready } stage = start;
+    int row = 0, width = 0, height = 0;
+    std::vector<std::uint16_t> walk, nearest, hop;
+    std::vector<std::uint8_t> open;
+    std::vector<int> shortcuts; // Tiles a hop reaches clearly sooner than walking.
+};
+
+// The current trip's crystal decision: walking distances to its goal, and
+// where to take off when the hop pays for a detour from spawn.
+struct CrystalPlan {
+    int goal = -1; // Camp group index, or groups.size() + altar index.
+    std::vector<std::uint16_t> to_goal;
+    vec2 takeoff{-1, -1};
+    int saving = 0;
+};
+
 struct LifeSnapshot {
     int round = -1;
     vec2 position{-1, -1};
@@ -135,6 +154,9 @@ class Bot {
     Activity current_activity = Activity::idle;
     int last_activity_round = -1;
     unsigned target_switches = 0;
+    HopMap hops;
+    CrystalPlan crystal_plan;
+    unsigned crystals_bought = 0, crystals_used = 0;
     std::vector<EnemyTrack> enemy_track;
     // Per altar: enemy tributes observed there, and terrain distance from the
     // enemy spawn. Together they pick the altar the squad watches.
@@ -248,6 +270,11 @@ class Bot {
     ActionResult deposit_at(int altar);
     void interrupt_deposit();
     void ward_ahead(vec2 goal);
+    // crystal.cpp: teleport crystal shortcuts.
+    void prepare_hops();
+    bool crystal_travel(int goal, const bc::bitboard &goals);
+    bool crystal_hop();
+    bool crystal_safe() const;
 
     // Worker controller (workers/): independent policy for Issac, Ryth and
     // Varg. The squad uses the shared mechanics, never these decisions.

@@ -155,6 +155,10 @@ inline constexpr float worker_commit_bonus = 1.08f;
 // A low-health champion an enemy can reach next turn fights back instead of
 // fleeing: 73% of deaths happened mid-retreat. false always flees.
 inline constexpr bool stand_when_caught = true;
+// Teleport crystals: buy one at spawn, and use it, only when one hop over a
+// wall or hole strip saves at least this many turns over walking to the next
+// camp or altar, after paying for the channel. Shards are bought first.
+inline constexpr int crystal_min_saving = 8;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never

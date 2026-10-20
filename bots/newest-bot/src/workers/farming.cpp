@@ -159,6 +159,8 @@ void Bot::worker_farm() {
     }
     auto &g = groups[target];
     publish(target < TeamMemory::bank - 1 ? target + 1 : 0);
+    if (distance(position, g.centre) > range + 3 && crystal_travel(target, g.tiles))
+        return;
     if (g.status == CampGroup::capture) {
         if (!g.tiles.is_set(position))
             move_to(g.tiles, false, true);

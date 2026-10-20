@@ -21,6 +21,7 @@ void Bot::play_turn() {
     }
     record_life();
     prepare_routes();
+    prepare_hops();
 }
 
 void Bot::record_life() {

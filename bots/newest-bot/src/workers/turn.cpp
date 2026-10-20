@@ -57,6 +57,7 @@ void Bot::play_worker_turn() {
         buy_equipment();
         retreating = banking = false;
         target = -1;
+        crystal_plan.takeoff = {-1, -1};
         return;
     }
     buy_equipment();
@@ -181,7 +182,8 @@ void Bot::note_activity(Activity activity) {
     if (!repeat && int(round) % 250 == 0 && round > 0) {
         static constexpr const char *names[] = {"idle",  "dead",      "recall", "heal", "retreat", "bank",
                                                 "fight", "reinforce", "shop",   "farm", "travel"};
-        std::printf("ACTIVITY r=%u type=%d switches=%u", round, int(type), target_switches);
+        std::printf("ACTIVITY r=%u type=%d switches=%u crystals=%u/%u", round, int(type), target_switches,
+                    crystals_bought, crystals_used);
         for (unsigned i = 0; i < activity_turns.size(); ++i)
             std::printf(" %s=%u", names[i], activity_turns[i]);
         std::printf("\n");

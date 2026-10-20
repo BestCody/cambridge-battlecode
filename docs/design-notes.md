@@ -2,41 +2,33 @@
 
 ## Current team plan
 
-The draft makes one decision per map: draft the **offensive team** or the **resource team**. Everything else follows from the roster.
+newest-bot replicates the play of Intercontinental Fish, the #1 ladder team, as seen in their match summaries. The earlier squad bot is archived as `bots/squad-bot` (tag `squad-bot-final`).
 
-| Roster | 3 picks | 4 picks | 5 picks |
-| --- | --- | --- | --- |
-| Offensive (squad + workers) | Stellar, Tavi, Twins | + Ryth | + Ryth, Varg |
-| Resource (all farm) | Varg, Vendetta, Twins | + Ryth | + Ryth, Vesper Vale |
-
-The squad (Stellar, Tavi, Cassi) only forms when all three are drafted. Every other champion runs the worker policy.
-
-### Draft heuristic (`draft/draft.cpp`)
-A score starts at 0. Each input adds a point when contact and contesting will decide the game, or subtracts one when farming alone should win. Offense is drafted at `policy::offense_threshold` (1) or above. All inputs are computed from the public map, so they work on any generated map. **Thresholds come from game mechanics, never from the local map pool**, because tournament maps are randomly generated.
-
-| Input | Toward offense | Toward resource |
+| 3 picks | 4 picks | 5 picks |
 | --- | --- | --- |
-| Team size | 5 picks (+1) | 3 picks (−2) |
-| Open tiles per champion | crowded (≤ 150) | sparse (≥ 500) |
-| Walking distance between spawns | close (≤ 30) | far (≥ 80) |
-| Altar layout | any shared middle altar | only per-side altars |
-| Share of gems we reach first | ≤ 25% | ≥ 50% |
-| Gem supply per champion (gems/round) | scarce (≤ 0.5) | plentiful (≥ 1.5) |
-| Gems behind camps a lone champion can't farm | ≥ 50% | — |
+| Stellar, Heart of Ruin, Ren | + Twins | + Twins, Ryth |
 
-`policy::draft_mode` forces either team for evaluation. The decision and every input are logged as `DRAFT_MODE`.
+Rosters live in `draft/team_compositions.h`. The squad controller is off (`policy::squad_enabled`), so every champion runs the worker policy:
 
-### Roles
-- **Workers (pure resource):** never start fights. They step away when an enemy can hit them, is closing in, or is locally stronger. They prefer safe camps on our side that they can clear alone, bank smaller bags, and signal `under_threat`.
-- **Squad (obstruction, stage 1):** interrupts visible enemy tributes, hunts enemies it can kill in one volley and lone carriers, and kites at spell range. Fallback farming leans toward the enemy side and the altar enemies use. Every member carries an altar lock.
+- **Farm and fight.** Champions farm their own side and fight when a fight comes to them. Heart of Ruin and other dash champions use damaging dashes on enemies and camps (`impact_dash`).
+- **Bank small bags often.** Carries (Stellar, Heart of Ruin) bank at 28 gems, everyone else at 20. Anyone passing within 2 tiles of an altar banks 10 or more.
+- **Shop on a fixed build.** Carries go home with 10 shards' worth of gold, others with 5. Each champion buys Fish's build order (`mechanics/economy.cpp`). No altar locks: Fish never buys them.
+- **Retreat late, fight back when caught.** Heart of Ruin retreats at 15% health, the others at 28%. A low-health champion an enemy can reach next turn fights back instead of fleeing (`policy::stand_when_caught`).
+- **Teleport crystal shortcuts** (`mechanics/crystal.cpp`). Each champion builds a hop map once per map from spare end-of-turn fuel. The hop map holds the turns from spawn to each tile by walking, and by walking plus one 3-tile hop.
+  - **At spawn:** after buying shards, a champion buys a crystal only if one hop toward its camp or altar saves at least `policy::crystal_min_saving` (8) turns, after counting the 3-turn channel and the landing turn.
+  - **On the way:** a champion carrying a crystal hops wherever doing so saves 8 or more turns, but only when no visible enemy could stun it during the channel.
 
-### Measured (against db10-macro, db11-looter and db12-comeback; 158 paired games)
-| Version | Wins | Margin/game | Our gems at 3 / 4 / 5 picks |
-| --- | --- | --- | --- |
-| Before (fixed offensive roster, aggressive workers) | 0 | −820 | 159 / 251 / 222 |
-| Draft heuristic (committed) | 4 | −771 | 331 / 289 / 131 |
+  The threshold comes from the crystal's cost (10 gold, about 3 turns of a champion's income), not from the map pool.
 
-The resource team doubles income at 3 picks. At 5 picks every variant nets out about equal. The gap to the old bots is still mostly **income**: their champions earn several times more per round alive.
+### Measured (35 maps, both seats)
+| Change | Against db10/db11/db12 | Against squad-bot |
+| --- | --- | --- |
+| Fight back when caught | 76/210 wins (was 60), margin −181/game (was −271) | 57/70 |
+| Teleport crystals (3 fuel budgets) | 198/630 wins (was 197), margin −291/game (was −292) | 172/210 (was 169) |
+
+Crystals fired on 14 of 35 maps. There they won 151/336 (was 137) and improved the gem margin by 51 a game. On the other maps the results only show noise.
+
+Known issue: when all enemies are visible next to our spawn (e.g. `00reverse-spiral`), observation uses so much fuel that camp choice never runs and the team idles all game.
 
 ### Evaluating changes
 Use `scripts/evaluate.py` against several opponents, both seats and several fuel budgets. Single games are deterministic but chaotic, so one game per map proves nothing. Judge on the gem margin, not just wins.
@@ -45,13 +37,13 @@ Use `scripts/evaluate.py` against several opponents, both seats and several fuel
 
 ## Squad controller rules
 
-The rest of this document specifies the Stellar/Tavi/Cassi squad controller in `bots/newest-bot/src/squad/`. Each rule below names the code that implements it.
+The rest of this document specifies the Stellar/Tavi/Cassi squad controller in `bots/newest-bot/src/squad/`. It is switched off in the replica (`policy::squad_enabled`) and plays in full in `bots/squad-bot`. Each rule below names the code that implements it.
 
 - **Done** means the rule is implemented.
 - **Partial** means a simpler version of the rule is implemented, and the gap is described.
 - **Open** means the rule is not implemented.
 
-These rules were match-tested only as a whole (see "Measured" above). Two of them, the secondary-stun bonus and the capture-reset limit, never changed a game in testing. Validate any tuning with `scripts/evaluate.py`.
+These rules were only ever match-tested as a whole, as part of the squad bot. Two of them, the secondary-stun bonus and the capture-reset limit, never changed a game in testing. Validate any tuning with `scripts/evaluate.py`.
 
 Terms used throughout:
 

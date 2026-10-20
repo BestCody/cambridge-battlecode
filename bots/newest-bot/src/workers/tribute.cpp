@@ -34,6 +34,7 @@ bool Bot::worker_tribute() {
     publish(TeamMemory::bank);
     float best_value = 1e20f;
     vec2 selected{-1, -1};
+    int selected_index = -1;
     for (std::size_t index = 0; index < altars.size(); ++index) {
         auto altar = altars[index];
         float d = index < altar_routes.size() ? altar_routes[index].get(position) : distance(position, altar);
@@ -53,6 +54,7 @@ bool Bot::worker_tribute() {
         if (value < best_value) {
             best_value = value;
             selected = altar;
+            selected_index = int(index);
         }
     }
     if (selected.x < 0)
@@ -89,7 +91,10 @@ bool Bot::worker_tribute() {
         return worker_escape();
     }
     // Score altar choices first; build a route mask only for the selected one.
-    move_to(around(selected, bc::constants::submit_gems_range), false, true);
+    const auto approach = around(selected, bc::constants::submit_gems_range);
+    if (crystal_travel(int(groups.size()) + selected_index, approach))
+        return true;
+    move_to(approach, false, true);
     ward_ahead(selected);
     return true;
 }
