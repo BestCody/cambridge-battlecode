@@ -67,14 +67,19 @@ int Bot::worker_choose_group() {
                 if (distance(enemy.position, g.centre) <= enemy.spell_reach + enemy.range)
                     risk += (enemy.strength + enemy.burst) * linked_risk() * rules::settings().capture_time /
                             std::max(100.0f, health);
-        float ranged_dps = 0;
+        float ranged_dps = 0, ranged_reach = 0;
         for (const auto &s : spells)
             if (s.range > 3 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                                s.kind == bc::ability_kind::aoe_damage))
+                                s.kind == bc::ability_kind::aoe_damage)) {
                 ranged_dps +=
                     focus * s.modifier / s.cooldown * (s.kind == bc::ability_kind::aoe_damage ? g.splash : 1);
-        if (risk > 0.15f && ranged_dps > 0) {
-            // A slower but lossless range-four clear is an offensive option.
+                ranged_reach = std::max(ranged_reach, s.range);
+            }
+        if (ranged_dps > 0 && risk > 0.15f && groups[i].siege_open < 0)
+            groups[i].siege_open = !siege_tiles(g, ranged_reach, true).is_empty();
+        if (risk > 0.15f && ranged_dps > 0 && g.siege_open > 0) {
+            // A slower but lossless range-four clear is an offensive option,
+            // where the terrain leaves a tile out of every camp's reach.
             float siege = remaining / (ranged_dps * camp_multiplier);
             if (siege < clear * (1 + 3 * risk)) {
                 clear = siege;
@@ -177,14 +182,14 @@ void Bot::worker_farm() {
         return;
     }
     float clear = g.health / dps(g);
-    bool siege = clear_loss(g, clear) > health * (1 - policy::casualty_margin);
     float spell_range = 0;
     for (const auto &s : spells)
         if (s.modifier > 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
                                s.kind == bc::ability_kind::aoe_damage))
             spell_range = std::max(spell_range, s.range);
-    siege = siege && spell_range > 3;
-    int attack_range = siege ? static_cast<int>(spell_range) : range;
+    bool siege = spell_range > 3 && clear_loss(g, clear) > health * (1 - policy::casualty_margin);
+    if (siege && policy::siege_alone_only && ally_draws_attacks(g))
+        siege = false;
     bc::bitboard goals;
     const CampMemory *nearest = nullptr;
     int best_distance = bc::distance_field::unreachable;
@@ -196,9 +201,19 @@ void Bot::worker_farm() {
             best_distance = d;
             nearest = &c;
         }
-        goals |= around(c.position, attack_range);
+        goals |= around(c.position, range);
     }
     goals &= ~blocked;
+    if (siege) {
+        // Stand within spell reach but out of every camp's reach. Without such
+        // a tile, attack from normal range: waiting for one idled Stellar for
+        // over half of its camp turns.
+        auto stand = siege_tiles(g, spell_range, false) & ~blocked;
+        if (stand.is_empty())
+            siege = false;
+        else
+            goals = std::move(stand);
+    }
     if (passive == bc::passive_type::splash_attack && !siege &&
         bc::fuel_remaining() > policy::planning_reserve) {
         // Stand beside the best splash centre. Stopping at the nearest edge
@@ -224,10 +239,6 @@ void Bot::worker_farm() {
                 }
             }
     }
-    if (siege)
-        for (const auto &c : g.camps)
-            if (c.health > 0 && c.stats.base_strength > 0)
-                goals &= ~around(c.position, c.stats.base_attack_range);
     if (!nearest) {
         target = -1;
         return;
@@ -270,4 +281,28 @@ void Bot::worker_farm() {
     }
     if (bc::fuel_remaining() > 6000)
         ward_ahead(nearest->position);
+}
+
+bc::bitboard Bot::siege_tiles(const CampGroup &g, float reach, bool assume_alive) const {
+    // Within spell reach of a camp, outside the attack range of every camp
+    // that strikes back: a clear the camps cannot answer.
+    bc::bitboard tiles, threatened;
+    for (const auto &c : g.camps) {
+        if (!assume_alive && c.health <= 0)
+            continue;
+        tiles.draw_chebyshev(c.position, reach);
+        if (c.stats.base_strength > 0)
+            threatened.draw_chebyshev(c.position, c.stats.base_attack_range);
+    }
+    return tiles & ~threatened & ~static_blocked;
+}
+
+bool Bot::ally_draws_attacks(const CampGroup &g) const {
+    // Camps attack the nearest champion: an ally closer to a striking camp
+    // than our attack range takes the hits while we attack.
+    for (const auto &ally : allies)
+        for (const auto &c : g.camps)
+            if (c.health > 0 && c.stats.base_strength > 0 && distance(ally.position, c.position) < range)
+                return true;
+    return false;
 }

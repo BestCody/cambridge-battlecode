@@ -13,6 +13,12 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
 - **Farm and fight.** Champions farm their own side and fight when a fight comes to them. Heart of Ruin and other dash champions use damaging dashes on enemies and camps (`impact_dash`).
 - **Bank small bags often.** Carries (Stellar, Heart of Ruin) bank at 28 gems, everyone else at 20. Anyone passing within 2 tiles of an altar banks 10 or more.
 - **Shop on a fixed build.** Carries go home with 10 shards' worth of gold, others with 5. Each champion buys Fish's build order (`mechanics/economy.cpp`). No altar locks: Fish never buys them.
+- **Siege only when it works.** Stellar and Cassi have range-4 spells, and camps strike at range 3. A champion sieges, standing 4 tiles out where only its spells reach, only when all three hold:
+  - a solo clear would cost too much health;
+  - a tile out of every camp's reach exists;
+  - no ally is closer to the camps, since camps attack the nearest champion.
+
+  Otherwise it attacks from normal range. Before this rule, Stellar stood still for 55% of its camp turns waiting for siege tiles that didn't exist.
 - **Retreat late, fight back when caught.** Heart of Ruin retreats at 15% health, the others at 28%. A low-health champion an enemy can reach next turn fights back instead of fleeing (`policy::stand_when_caught`).
 - **Teleport crystal shortcuts** (`mechanics/crystal.cpp`). Each champion builds a hop map once per map from spare end-of-turn fuel. The hop map holds the turns from spawn to each tile by walking, and by walking plus one 3-tile hop.
   - **At spawn:** after buying shards, a champion buys a crystal only if one hop toward its camp or altar saves at least `policy::crystal_min_saving` (8) turns, after counting the 3-turn channel and the landing turn.
@@ -26,6 +32,7 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
 | Fight back when caught | 76/210 wins (was 60), margin −181/game (was −271) | 57/70 |
 | Teleport crystals (3 fuel budgets) | 198/630 wins (was 197), margin −291/game (was −292) | 172/210 (was 169) |
 | Camp choice before fuel runs out; runtime engine settings (3 fuel budgets) | 231/630 wins (was 198), margin −189/game (was −291) | 188/210 (was 172) |
+| Siege only where possible and when no ally is closer (3 fuel budgets) | 283/630 wins (was 231), margin −70/game (was −189) | 202/210 (was 188) |
 
 Crystals fired on 14 of 35 maps. There they won 151/336 (was 137) and improved the gem margin by 51 a game. On the other maps the results only show noise.
 

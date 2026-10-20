@@ -35,6 +35,9 @@ struct CampGroup {
     int seen = -1, respawn = 0, attacked = -10000;
     int holding_since = -1;
     int home_distance = 0, enemy_distance = 0, altar_distance = 0;
+    // Whether the full group leaves any tile for a spell-range siege; -1 until
+    // first checked (terrain and camp ranges are fixed).
+    int siege_open = -1;
     enum Status { alive, capture, cooling } status = alive;
     explicit CampGroup(bc::map::camp_group g);
 };
@@ -285,6 +288,8 @@ class Bot {
     bool worker_caught() const;
     int worker_choose_group();
     void worker_farm();
+    bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
+    bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     void worker_update_formation();
     bool worker_reinforce();

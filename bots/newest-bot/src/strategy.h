@@ -159,6 +159,11 @@ inline constexpr bool stand_when_caught = true;
 // wall or hole strip saves at least this many turns over walking to the next
 // camp or altar, after paying for the channel. Shards are bought first.
 inline constexpr int crystal_min_saving = 8;
+// Spell-range siege (Stellar, Cassi): only when no ally is closer to the camp.
+// Camps attack the nearest champion, so with a closer ally we attack from
+// normal range. false sieges whenever a solo clear would be too costly
+// (measured: 12 fewer wins in 840 games).
+inline constexpr bool siege_alone_only = true;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
