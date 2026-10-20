@@ -7,6 +7,7 @@ Our Cambridge Battlecode 2026 bot. The bot that is currently competing is [`bots
 | Path | Contents |
 | --- | --- |
 | `bots/newest-bot/` | The competing C++ bot (see below) |
+| `bots/squad-bot/` | Archived: the Stellar/Tavi/Cassi squad bot (git tag `squad-bot-final`), kept as a reference opponent |
 | `bots/starter-cpp/` | The SDK starter bot, used as a sparring opponent |
 | `docs/GameRules.md`, `docs/BotAPICpp.md` | Exported game handbook and C++ API reference |
 | `docs/design-notes.md` | Squad design spec, with implementation status and archived rosters |
