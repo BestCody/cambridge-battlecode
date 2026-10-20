@@ -109,7 +109,7 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
                       [](const auto &l, const auto &r) { return l.first < r.first; });
             for (int attempt = 0; attempt < 3 && attempt < int(landings.size()); ++attempt) {
                 const vec2 destination = landings[attempt].second;
-                if (incoming(destination, engaged_group) * bc::constants::tp_crystal_time >= health * 0.5f)
+                if (incoming(destination, engaged_group) * rules::settings().tp_crystal_time >= health * 0.5f)
                     continue;
                 if (crystal.use(destination))
                     return true;
@@ -218,18 +218,18 @@ void Bot::retreat_to_spawn() {
     for (const auto &enemy : enemies) {
         const auto design = std::get<bc::champion>(enemy.ref).base_stats();
         const int reach =
-            std::max(enemy.range, enemy.spell_reach) + bc::constants::recall_time * design.base_move_speed;
+            std::max(enemy.range, enemy.spell_reach) + rules::settings().recall_time * design.base_move_speed;
         if (distance(position, enemy.position) <= stats.vision_radius + reach)
             threatened.draw_chebyshev(enemy.position, reach);
     }
     const bool safe = !threatened.is_set(position) && incoming(position) == 0;
     const int walk = home_field.get(position);
-    if (safe && walk > bc::constants::recall_time * stats.base_move_speed) {
+    if (safe && walk > rules::settings().recall_time * stats.base_move_speed) {
         me.recall();
         return;
     }
     const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
-    const auto goals = walk <= bc::constants::recall_time * stats.base_move_speed || safe_tiles.is_empty()
+    const auto goals = walk <= rules::settings().recall_time * stats.base_move_speed || safe_tiles.is_empty()
                            ? spawn
                            : safe_tiles;
     const bool moved = move_to(goals, true, true);

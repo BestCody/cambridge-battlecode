@@ -25,10 +25,14 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
 | --- | --- | --- |
 | Fight back when caught | 76/210 wins (was 60), margin −181/game (was −271) | 57/70 |
 | Teleport crystals (3 fuel budgets) | 198/630 wins (was 197), margin −291/game (was −292) | 172/210 (was 169) |
+| Camp choice before fuel runs out; runtime engine settings (3 fuel budgets) | 231/630 wins (was 198), margin −189/game (was −291) | 188/210 (was 172) |
 
 Crystals fired on 14 of 35 maps. There they won 151/336 (was 137) and improved the gem margin by 51 a game. On the other maps the results only show noise.
 
-Known issue: when all enemies are visible next to our spawn (e.g. `00reverse-spiral`), observation uses so much fuel that camp choice never runs and the team idles all game.
+### Fuel and engine settings
+- **Choose a camp first.** A champion without a camp chooses one right after observing, before the rest of the turn spends the fuel. With every champion in view, observation once cost 55k of the 100k budget. Camp choice, which needed 50k left, then never ran, and the team idled in spawn all game on `00reverse-spiral`.
+- **Cheaper observation.** Visible champions come from the known rosters instead of the engine's per-team vision list (3,700 fuel a call), and each champion type's fixed kit is cached (about 550 fuel per champion seen). With all ten champions in view that saves roughly 12k a turn.
+- **Never use `bc::constants` for engine settings; use `rules::settings()`.** The SDK copies the settings into `bc::constants` during static initialisation, in an order that varies between builds. In some builds the copies read the settings before they were loaded and stayed 0. With `winning_gems` at 0, every bag looked like the winning deposit, so champions banked single gems. Only `bc::constants::passive_abilities` are compile-time and safe.
 
 ### Evaluating changes
 Use `scripts/evaluate.py` against several opponents, both seats and several fuel budgets. Single games are deterministic but chaotic, so one game per map proves nothing. Judge on the gem margin, not just wins.

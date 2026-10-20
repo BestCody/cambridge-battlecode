@@ -30,6 +30,31 @@ CampGroup::CampGroup(bc::map::camp_group g) : unit(std::move(g)), tiles(unit.spa
 }
 
 namespace {
+// What a champion type always has, read once per type rather than on every
+// sighting: these engine queries cost about 550 fuel per champion per turn.
+struct Kit {
+    bool known = false, immune = false;
+    int move_speed = 1;
+    float camp_multiplier = 1;
+    std::array<Spell, 2> spells;
+};
+const Kit &kit_of(const bc::champion &c, bc::champion_type type) {
+    static std::array<Kit, 32> kits;
+    auto &kit = kits[static_cast<unsigned>(type) % kits.size()];
+    if (!kit.known) {
+        const auto design = c.base_stats();
+        kit.move_speed = std::max(1, int(design.base_move_speed));
+        kit.camp_multiplier = design.camp_damage_multiplier;
+        kit.immune = c.passive() == bc::passive_type::stun_immunity;
+        unsigned slot = 0;
+        for (const auto &a : c.abilities())
+            if (slot < kit.spells.size())
+                kit.spells[slot++] = describe(a);
+        kit.known = true;
+    }
+    return kit;
+}
+
 void read_buffs(ObservedUnit &out) {
     auto buffs = out.unit().buffs();
     out.stunned = buffs.has_stun();
@@ -48,10 +73,10 @@ ObservedUnit::ObservedUnit(bc::champion c) : ref(c) {
     range = c.attack_range();
     gems = c.gem_count();
     type = c.champion_name();
-    const auto design = c.base_stats();
-    move_speed = std::max(1, int(design.base_move_speed));
-    camp_multiplier = design.camp_damage_multiplier;
-    immune = c.passive() == bc::passive_type::stun_immunity;
+    const auto &kit = kit_of(c, type);
+    move_speed = kit.move_speed;
+    camp_multiplier = kit.camp_multiplier;
+    immune = kit.immune;
     const auto state = c.state();
     completed = state.contains(bc::champion_state::completed_turn);
     can_attack = state.contains(bc::champion_state::can_attack);
@@ -65,7 +90,7 @@ ObservedUnit::ObservedUnit(bc::champion c) : ref(c) {
     damage_rate = strength;
     unsigned ability_slot = 0;
     for (const auto &a : c.abilities()) {
-        const auto s = describe(a);
+        const auto &s = kit.spells[ability_slot];
         abilities[ability_slot] = s;
         cooldowns[ability_slot] = a.cooldown();
         const bool ready = cooldowns[ability_slot++] <= 1;
@@ -98,7 +123,7 @@ ObservedUnit::ObservedUnit(bc::champion c) : ref(c) {
         if (!items[item])
             continue;
         if (item.passive() == bc::item_passive::monster)
-            camp_multiplier = design.camp_damage_multiplier * (1 + item.passive_magnitude());
+            camp_multiplier = kit.camp_multiplier * (1 + item.passive_magnitude());
         if (item.passive() == bc::item_passive::jungle)
             camp_mitigation = 1 - item.passive_magnitude();
     }
@@ -188,7 +213,7 @@ void Bot::initialise() {
     static_blocked = terrain();
     altars = bc::map::altars().positions();
     for (auto p : altars)
-        altar_goals |= around(p, bc::constants::submit_gems_range);
+        altar_goals |= around(p, rules::settings().submit_gems_range);
     altar_goals &= ~static_blocked;
     bc::bitboard visited;
     home_field.compute(static_blocked, bc::map::spawn_region(bc::team::ally), visited);
@@ -198,7 +223,8 @@ void Bot::initialise() {
     enemy_field.compute(neutral_terrain, bc::map::spawn_region(bc::team::enemy), visited);
     altar_enemy_distance.assign(altars.size(), bc::distance_field::unreachable);
     for (unsigned a = 0; a < altars.size(); ++a)
-        for (auto tile : (around(altars[a], bc::constants::submit_gems_range) & ~neutral_terrain).positions())
+        for (auto tile :
+             (around(altars[a], rules::settings().submit_gems_range) & ~neutral_terrain).positions())
             altar_enemy_distance[a] = std::min(altar_enemy_distance[a], int(enemy_field.get(tile)));
     auto layout = bc::map::camp_groups();
     groups.reserve(layout.size());
@@ -279,7 +305,8 @@ void Bot::prepare_routes() {
     // fuel, so altar choice respects walls without rerunning every route.
     if (altar_routes.size() < altars.size() &&
         bc::fuel_remaining() > policy::planning_reserve + policy::action_reserve) {
-        auto goals = around(altars[altar_routes.size()], bc::constants::submit_gems_range) & ~static_blocked;
+        auto goals =
+            around(altars[altar_routes.size()], rules::settings().submit_gems_range) & ~static_blocked;
         bc::bitboard visited;
         altar_routes.emplace_back().compute(static_blocked, goals, visited);
         AltarAccess access;
@@ -310,11 +337,13 @@ void Bot::observe() {
     allies.clear();
     camps.clear();
     nearby_healing = 0;
-    for (auto c : bc::vision::champions(bc::team::enemy))
-        if (c.is_alive())
+    // The rosters hold every champion; checking them is far cheaper than the
+    // engine's per-team vision list (about 3,700 fuel each).
+    for (const auto &c : enemy_roster)
+        if (c.is_visible() && c.is_alive())
             enemies.emplace_back(c);
-    for (auto c : bc::vision::champions(bc::team::ally))
-        if (c != bc::self() && c.is_alive()) {
+    for (const auto &c : roster)
+        if (c != bc::self() && c.is_visible() && c.is_alive()) {
             allies.emplace_back(c);
             if (squad_member() && !enemies.empty())
                 for (unsigned i = 0; i < roster.size(); ++i)
@@ -339,7 +368,7 @@ void Bot::observe() {
                 enemy_spawned[i] = std::min(int(round), enemy_respawn[i]);
             enemy_respawn[i] = -1;
         } else if (enemy_respawn[i] < 0)
-            enemy_respawn[i] = int(round) + bc::constants::respawn_time;
+            enemy_respawn[i] = int(round) + rules::settings().respawn_time;
     }
     for (const auto &a : allies)
         if (distance(position, a.position) <= 6)
@@ -392,7 +421,7 @@ void Bot::observe() {
             else if (friendly_holder && g.holding_since < 0)
                 g.holding_since = round;
             if (squad_member() && int(i) == squad.camp && g.holding_since >= 0 &&
-                int(round) - g.holding_since <= bc::constants::capture_time)
+                int(round) - g.holding_since <= rules::settings().capture_time)
                 squad.progress = round;
             for (auto &c : g.camps)
                 c.health = 0;
@@ -513,7 +542,7 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
             if (c.strength <= 0 || c.stunned || distance(tile, c.position) > c.range)
                 continue;
             const auto &g = groups[c.group];
-            if (c.group != engaged_group && g.attacked < int(round) - bc::constants::camp_sleep_time - 1 &&
+            if (c.group != engaged_group && g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
                 g.health >= g.max_health)
                 continue;
             // Camps attack the nearest champion, including our enemy. Avoid taking

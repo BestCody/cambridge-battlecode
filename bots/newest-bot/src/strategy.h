@@ -175,6 +175,20 @@ inline constexpr int span = 999;
 namespace rules {
 inline constexpr int crystal_range = 3;
 inline constexpr int altar_lock_range = 2;
+
+// Engine settings, read from the engine on first use. Never use the SDK's
+// bc::constants copies of them: those are filled during static initialisation
+// in an unspecified order and in some builds copy the settings before they
+// are loaded. winning_gems was 0 there, so every bag looked like the winning
+// deposit. (bc::constants::passive_abilities are compile-time and safe.)
+inline const bc::detail::game_settings &settings() {
+    static const bc::detail::game_settings value = [] {
+        bc::detail::game_settings result{};
+        bc::detail::check(bc::detail::sdk_get_settings(&result));
+        return result;
+    }();
+    return value;
+}
 } // namespace rules
 
 inline int distance(vec2 a, vec2 b) { return static_cast<int>(a.chebyshev_distance(b)); }
@@ -187,9 +201,9 @@ inline bc::bitboard terrain() {
     return bc::map::walls() | bc::map::holes() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
 }
 inline int channel_duration(unsigned gems) {
-    return std::max(bc::constants::submit_gem_minimum_duration,
-                    static_cast<int>(std::ceil(gems * bc::constants::submit_gem_duration_multiplier)) +
-                        bc::constants::submit_gem_base_duration);
+    return std::max(rules::settings().submit_gem_minimum_duration,
+                    static_cast<int>(std::ceil(gems * rules::settings().submit_gem_duration_multiplier)) +
+                        rules::settings().submit_gem_base_duration);
 }
 inline unsigned id(const bc::champion &c) {
     return static_cast<unsigned>(static_cast<bc::handle_champion_t>(c));

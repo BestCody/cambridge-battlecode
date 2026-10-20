@@ -100,8 +100,8 @@ void Bot::play_squad_turn() {
         if (squad.contains(i))
             if (const auto *member = observed_member(i))
                 known_cargo += member->gems;
-    const bool can_win =
-        known_cargo && known_cargo + bc::global_submitted_gems(bc::team::ally) >= bc::constants::winning_gems;
+    const bool can_win = known_cargo && known_cargo + bc::global_submitted_gems(bc::team::ally) >=
+                                            rules::settings().winning_gems;
     if (can_win && squad.phase != SquadPhase::deposit && squad.altar < 0 && review_banking(true)) {
         return;
     }

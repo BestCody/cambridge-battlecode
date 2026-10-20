@@ -31,7 +31,7 @@ float Bot::collateral_risk(vec2 centre, float radius, int engaged_group) const {
                 damage += camp.strength * camp_mitigation * mitigation;
         }
     }
-    return damage * bc::constants::camp_sleep_time;
+    return damage * rules::settings().camp_sleep_time;
 }
 
 FiringOpportunity Bot::firing(const ObservedUnit &member, const ObservedUnit &enemy, bool next_turn) const {
@@ -129,7 +129,7 @@ bool Bot::same_job(unsigned code) const {
 }
 
 int Bot::work_window() const {
-    return std::max(bc::constants::capture_time + 1, std::max(spells[0].cooldown, spells[1].cooldown));
+    return std::max(rules::settings().capture_time + 1, std::max(spells[0].cooldown, spells[1].cooldown));
 }
 
 void Bot::enter_selection() {
@@ -436,7 +436,7 @@ bool Bot::relevant_enemy(const ObservedUnit &enemy) const {
     if (enemy.health <= 0 || enemy_spawn.is_set(enemy.position))
         return false;
     if (enemy.depositing &&
-        enemy.gems + bc::global_submitted_gems(bc::team::enemy) >= bc::constants::winning_gems)
+        enemy.gems + bc::global_submitted_gems(bc::team::enemy) >= rules::settings().winning_gems)
         return distance(position, enemy.position) <=
                std::max(spells[0].range, spells[1].range) + stats.base_move_speed;
     const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
@@ -448,7 +448,7 @@ bool Bot::relevant_enemy(const ObservedUnit &enemy) const {
                 if (distance(member->position, enemy.position) <= reach)
                     return true;
     if (squad.phase == SquadPhase::deposit && squad.altar >= 0)
-        return distance(altars[squad.altar], enemy.position) <= reach + bc::constants::submit_gems_range;
+        return distance(altars[squad.altar], enemy.position) <= reach + rules::settings().submit_gems_range;
     if (squad.camp >= 0 && squad.phase != SquadPhase::recover)
         for (const auto &camp : groups[squad.camp].camps)
             if (distance(camp.position, enemy.position) <= reach)

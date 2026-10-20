@@ -158,7 +158,7 @@ bool Bot::needs_recovery() const {
     const auto &group = groups[squad.camp];
     const float gain = upgrade_gain(type, max_health, strength, focus, bc::self().gold_count());
     const int home = home_field.get(position);
-    const float trip = std::min(home, bc::constants::recall_time) + group.home_distance + 1;
+    const float trip = std::min(home, rules::settings().recall_time) + group.home_distance + 1;
     return gain > 0 && group.health / dps(group) * gain / (1 + gain) > trip;
 }
 

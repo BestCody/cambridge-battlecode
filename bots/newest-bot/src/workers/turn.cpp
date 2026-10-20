@@ -94,6 +94,11 @@ void Bot::play_worker_turn() {
         publish(TeamMemory::unavailable);
         return;
     }
+    // Choose a camp before the rest of the turn spends the fuel. With many
+    // champions in view, observation alone can use half the budget, and a
+    // later choice never ran: the team stood in spawn all game.
+    if (target < 0 && bc::fuel_remaining() > policy::planning_reserve)
+        target = worker_choose_group();
     worker_disrupt_tribute();
     if (position == previous)
         ++stalls;
@@ -103,7 +108,7 @@ void Bot::play_worker_turn() {
     worker_report();
 
     // A guaranteed winning deposit has higher value than any additional kill.
-    if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= bc::constants::winning_gems) {
+    if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems) {
         banking = true;
         worker_tribute();
         return;
@@ -112,16 +117,10 @@ void Bot::play_worker_turn() {
         // Danger first: an approaching enemy ends farming for this turn.
         if (worker_disengage())
             return;
-        if (target < 0 && bc::fuel_remaining() > policy::observation_reserve)
-            target = worker_choose_group();
         if (worker_tribute())
             return;
     } else {
         worker_update_formation();
-        // Select a resource before combat can return, so a contested route does
-        // not leave this worker without an economic objective.
-        if (target < 0 && bc::fuel_remaining() > policy::observation_reserve)
-            target = worker_choose_group();
         if (squad.members && type == bc::champion_type::issac && gems && !enemies.empty() &&
             incoming(position) > 0) {
             banking = true;

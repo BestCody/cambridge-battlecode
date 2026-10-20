@@ -218,12 +218,12 @@ BankEstimate Bot::estimate_bank(int altar) {
     std::array<unsigned, TeamMemory::slots> bags{};
     unsigned channels = 0;
     auto destinations =
-        around(altars[altar], bc::constants::submit_gems_range) & ~static_blocked & ~known_camp_obstacles;
+        around(altars[altar], rules::settings().submit_gems_range) & ~static_blocked & ~known_camp_obstacles;
     bc::bitboard occupied_channels;
     for (unsigned i = 0; i < roster.size(); ++i)
         if (squad.contains(i))
             if (const auto *member = i == slot ? &self : observed_member(i))
-                if (distance(member->position, altars[altar]) <= bc::constants::submit_gems_range)
+                if (distance(member->position, altars[altar]) <= rules::settings().submit_gems_range)
                     occupied_channels.set(member->position);
     destinations &= ~occupied_channels;
     for (unsigned i = 0; i < roster.size(); ++i) {
@@ -240,7 +240,7 @@ BankEstimate Bot::estimate_bank(int altar) {
         const bool crossing = !access.region.is_set(member->position);
         int travel = 0;
         vec2 best{-1, -1};
-        if (distance(member->position, altars[altar]) <= bc::constants::submit_gems_range) {
+        if (distance(member->position, altars[altar]) <= rules::settings().submit_gems_range) {
             best = member->position;
         } else if (!crossing) {
             if (bc::fuel_remaining() < policy::planning_reserve)
@@ -269,7 +269,7 @@ BankEstimate Bot::estimate_bank(int altar) {
                 return BankEstimate{};
             plan.teleport = true;
             plan.entry = access.rendezvous;
-            plan.access = bc::constants::tp_crystal_time * std::popcount(squad.members) + 1;
+            plan.access = rules::settings().tp_crystal_time * std::popcount(squad.members) + 1;
             plan.supply |= !roster[i].consumables()[bc::consumable_type::tp_crystal].count();
             travel = (entry + member->move_speed - 1) / member->move_speed;
             if (plan.supply) {
@@ -278,7 +278,7 @@ BankEstimate Bot::estimate_bank(int altar) {
                     from_spawn = std::min(from_spawn, int(access.entry_routes.get(spawn)));
                 if (from_spawn == bc::distance_field::unreachable)
                     return BankEstimate{};
-                travel = std::min(int(home_field.get(member->position)), bc::constants::recall_time) + 1 +
+                travel = std::min(int(home_field.get(member->position)), rules::settings().recall_time) + 1 +
                          from_spawn;
             }
             int inside = bc::distance_field::unreachable;
@@ -302,17 +302,17 @@ BankEstimate Bot::estimate_bank(int altar) {
         return BankEstimate{};
     if (visible.is_set(altars[altar]) && bc::vision::has_altar_lock(altars[altar]) &&
         bc::vision::altar_lock_at(altars[altar]).is_enemy())
-        plan.locks = (bc::constants::altar_lock_hits + std::popcount(plan.participants) - 1) /
+        plan.locks = (rules::settings().altar_lock_hits + std::popcount(plan.participants) - 1) /
                      std::popcount(plan.participants);
     for (const auto &enemy : enemies) {
         const int approach =
             std::max(0, distance(enemy.position, altars[altar]) - std::max(enemy.range, enemy.spell_reach) -
-                            bc::constants::submit_gems_range);
+                            rules::settings().submit_gems_range);
         plan.interference = std::min(plan.interference, approach / enemy.move_speed);
     }
     if (!schedule_bank(plan, bags, channels))
         return BankEstimate{};
-    plan.winning = plan.cargo + bc::global_submitted_gems(bc::team::ally) >= bc::constants::winning_gems;
+    plan.winning = plan.cargo + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems;
     const int next = squad.resume_camp >= 0 ? squad.resume_camp : squad.camp;
     int direct = 0;
     if (next >= 0) {
@@ -320,11 +320,11 @@ BankEstimate Bot::estimate_bank(int altar) {
         for (const auto &camp : groups[next].camps)
             exit = std::min(exit, int(route.get(camp.position)));
         plan.recall_exit = exit == bc::distance_field::unreachable;
-        plan.exit = plan.recall_exit ? bc::constants::recall_time + 1 + groups[next].home_distance : exit;
+        plan.exit = plan.recall_exit ? rules::settings().recall_time + 1 + groups[next].home_distance : exit;
         direct = std::max(0, distance(position, groups[next].centre) - range);
     } else {
         plan.recall_exit = (access.region & bc::map::spawn_region(bc::team::ally)).is_empty();
-        plan.exit = plan.recall_exit ? bc::constants::recall_time + 1 : 0;
+        plan.exit = plan.recall_exit ? rules::settings().recall_time + 1 : 0;
     }
     if (plan.winning)
         plan.exit = 0;
@@ -365,7 +365,7 @@ bool Bot::review_banking(bool urgent) {
         squad.cargo_deadline = -1;
         return false;
     }
-    const bool winning = cargo + bc::global_submitted_gems(bc::team::ally) >= bc::constants::winning_gems;
+    const bool winning = cargo + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems;
     if (!urgent && !winning && cargo == unsigned(squad.reviewed_gems) &&
         int(enemies.size()) == squad.last_enemies && int(round) < squad.review &&
         (squad.cargo_deadline < 0 || int(round) < squad.cargo_deadline))
@@ -378,9 +378,9 @@ bool Bot::review_banking(bool urgent) {
     if (oldest >= 0 && squad.cargo_deadline < oldest)
         squad.cargo_deadline = oldest + plan.completion + next_time + work_window();
     const bool aged = squad.cargo_deadline >= 0 && int(round) >= squad.cargo_deadline;
-    const int hard = int(bc::constants::max_rounds) - int(round);
+    const int hard = int(rules::settings().max_rounds) - int(round);
     const float race =
-        squad.enemy_pace > 0 ? (bc::constants::winning_gems - squad.enemy_score) / squad.enemy_pace : hard;
+        squad.enemy_pace > 0 ? (rules::settings().winning_gems - squad.enemy_score) / squad.enemy_pace : hard;
     const bool deadline = std::min(float(hard), race) <= plan.completion + next_time;
     bool continuation = false;
     if (squad.plan.camp == squad.camp && squad.plan.complete && squad.camp >= 0) {
@@ -502,7 +502,7 @@ void Bot::squad_bank() {
             duration = std::max(duration, channel_duration(i == slot ? gems : member->gems));
         }
         squad.crossing_deadline =
-            round + travel + bc::constants::tp_crystal_time * std::popcount(squad.members) + work_window();
+            round + travel + rules::settings().tp_crystal_time * std::popcount(squad.members) + work_window();
         squad.arrival_deadline = squad.crossing_deadline + duration + work_window();
     }
     if (!access.region.is_set(position)) {
@@ -527,10 +527,10 @@ void Bot::squad_bank() {
         squad.bank_stage = BankStage::ready;
         publish_squad();
         vec2 landing;
-        if (can_protect_channel(bc::constants::tp_crystal_time) &&
+        if (can_protect_channel(rules::settings().tp_crystal_time) &&
             !me.restrictions().contains(bc::buff_restrictions::consumable)) {
             while (bc::fuel_remaining() > policy::action_reserve && teleport_assignment(landing)) {
-                if (incoming(landing) * bc::constants::tp_crystal_time < health &&
+                if (incoming(landing) * rules::settings().tp_crystal_time < health &&
                     me.consumables()[bc::consumable_type::tp_crystal].use(landing)) {
                     squad.bank_stage = BankStage::crossing;
                     if constexpr (policy::diagnostic)
@@ -559,10 +559,10 @@ void Bot::squad_bank() {
     // Travel is an executable part of the committed job. Rebuilding a full
     // three-carrier schedule every step can starve the walk that makes that
     // schedule possible. Assign distinct final positions once members arrive.
-    if (distance(position, altars[squad.altar]) > bc::constants::submit_gems_range) {
+    if (distance(position, altars[squad.altar]) > rules::settings().submit_gems_range) {
         squad.bank_stage = BankStage::assembled;
         publish_squad();
-        squad_move(around(altars[squad.altar], bc::constants::submit_gems_range));
+        squad_move(around(altars[squad.altar], rules::settings().submit_gems_range));
         squad_combat();
         return;
     }

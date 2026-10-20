@@ -316,8 +316,8 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
         return result;
     const int capture =
         group.holding_since < 0
-            ? bc::constants::capture_time + 1
-            : std::max(1, bc::constants::capture_time + 1 - (int(round) - group.holding_since));
+            ? rules::settings().capture_time + 1
+            : std::max(1, rules::settings().capture_time + 1 - (int(round) - group.holding_since));
     auto obstacles = static_blocked | (known_camp_obstacles & ~group.tiles);
     bc::bitboard visited;
     if (search.stage == 0) {
@@ -423,7 +423,7 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
         }
         const int wait =
             group.status == CampGroup::cooling ? std::max(0, group.respawn - int(round) - result.travel) : 0;
-        if (wait > bc::constants::capture_time)
+        if (wait > rules::settings().capture_time)
             return reject();
         result.reward_time = result.travel + wait + int(std::ceil(result.clear)) + search.occupancy + capture;
         search.clear_reward_time = result.reward_time;
@@ -589,15 +589,16 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
                 for (const auto &camp : group.camps) {
                     const int entry = altar_access[a].entry_routes.get(camp.position);
                     if (entry != bc::distance_field::unreachable)
-                        delivery = std::min(delivery, entry + bc::constants::tp_crystal_time +
-                                                          bc::constants::recall_time + group.home_distance);
+                        delivery =
+                            std::min(delivery, entry + rules::settings().tp_crystal_time +
+                                                   rules::settings().recall_time + group.home_distance);
                 }
     if (delivery == bc::distance_field::unreachable)
         return reject();
     const unsigned occupants =
         std::max(1u, std::min(unsigned(std::popcount(result.participants)), group.tiles.count()));
     result.delivery = delivery + channel_duration((group.unit.gem_value() + occupants - 1) / occupants);
-    if (int(round) + result.reward_time + result.delivery >= int(bc::constants::max_rounds))
+    if (int(round) + result.reward_time + result.delivery >= int(rules::settings().max_rounds))
         return reject();
     result.pressure = group.unit.gem_value() && group.enemy_distance != bc::distance_field::unreachable &&
                       group.enemy_distance <= group.home_distance + 2 * opening.spacing;
@@ -629,7 +630,7 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
         return reject();
     result.rate = useful / std::max(1, result.reward_time + result.delivery);
     if (squad.enemy_pace > 0) {
-        const float horizon = (bc::constants::winning_gems - squad.enemy_score) / squad.enemy_pace;
+        const float horizon = (rules::settings().winning_gems - squad.enemy_score) / squad.enemy_pace;
         result.rate *= std::min(1.0f, horizon / std::max(1, result.reward_time + result.delivery));
     }
     result.staging = group.approach;

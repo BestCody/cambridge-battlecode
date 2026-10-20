@@ -208,7 +208,7 @@ ActionResult Bot::deposit_at(int altar) {
     if (me.is_submitting_gems())
         return ActionResult::progress;
     if (altar < 0 || altar >= int(altars.size()) ||
-        distance(position, altars[altar]) > bc::constants::submit_gems_range || me.is_recalling() ||
+        distance(position, altars[altar]) > rules::settings().submit_gems_range || me.is_recalling() ||
         me.is_teleporting() || me.buffs().has_stun())
         return ActionResult::blocked;
     const auto at = altars[altar];
@@ -234,7 +234,7 @@ void Bot::interrupt_deposit() {
         if (enemy.depositing && relevant_enemy(enemy))
             for (const auto altar : altars)
                 if (distance(position, altar) <= rules::altar_lock_range &&
-                    distance(enemy.position, altar) <= bc::constants::submit_gems_range &&
+                    distance(enemy.position, altar) <= rules::settings().submit_gems_range &&
                     visible.is_set(altar) && !bc::vision::has_altar_lock(altar)) {
                     lock.use(altar);
                     return;
@@ -274,7 +274,7 @@ void Bot::ward_ahead(vec2 goal) {
         }
     }
     if (value > -1e19f &&
-        (best != ward || distance(position, ward) > int(bc::constants::ward_vision_radius) / 2))
+        (best != ward || distance(position, ward) > int(rules::settings().ward_vision_radius) / 2))
         if (me.place_ward(best))
             ward = best;
 }

@@ -11,7 +11,7 @@ int Bot::worker_choose_group() {
     }
     float best = -1;
     int choice = -1;
-    float progress = std::min(1.0f, round / float(std::max(1u, bc::constants::max_rounds / 2)));
+    float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
     float gold_value = policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress;
     const float reserve = std::max(max_health * policy::casualty_margin, incoming(position) * 2);
     // Squad assembly: count living allies. After a wipe a lone respawn must not
@@ -65,7 +65,7 @@ int Bot::worker_choose_group() {
         if (squad.members && type == bc::champion_type::issac)
             for (const auto &enemy : enemies)
                 if (distance(enemy.position, g.centre) <= enemy.spell_reach + enemy.range)
-                    risk += (enemy.strength + enemy.burst) * linked_risk() * bc::constants::capture_time /
+                    risk += (enemy.strength + enemy.burst) * linked_risk() * rules::settings().capture_time /
                             std::max(100.0f, health);
         float ranged_dps = 0;
         for (const auto &s : spells)
@@ -94,7 +94,7 @@ int Bot::worker_choose_group() {
         // route play converts it into a win. Gem-bearing camps (wolf, elk,
         // monolith) pay both, and are weighted as the primary objective there.
         float reward = g.unit.gem_value() * gem_reward_weight(opening) + gold_value * g.unit.gold_value();
-        float duration = travel + clear + waiting + bc::constants::capture_time + 1;
+        float duration = travel + clear + waiting + rules::settings().capture_time + 1;
         duration += std::min(20, g.altar_distance) * 0.25f;
         float value = reward / std::max(1.0f, duration);
         const float risk_weight = g.unit.gem_value() > 0 ? gem_risk_weight(opening) : 1.0f;

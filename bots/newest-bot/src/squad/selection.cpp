@@ -17,7 +17,7 @@ Selection Bot::select_squad_job() {
                 continue;
             const float reward = g.unit.gem_value() ? g.unit.gem_value() : g.unit.gold_value();
             const float cost = distance(position, g.centre) + g.health / std::max(1.0f, dps(g)) +
-                               bc::constants::capture_time + 1;
+                               rules::settings().capture_time + 1;
             const bool pressure = g.unit.gem_value() && g.enemy_distance != bc::distance_field::unreachable &&
                                   g.enemy_distance <= g.home_distance + 2 * opening.spacing;
             // Home camps a worker is already farming stay with that worker.
@@ -74,7 +74,7 @@ Selection Bot::select_squad_job() {
     JobEstimate current;
     for (const auto &estimate : job_search.assessed) {
         if (groups[estimate.camp].status == CampGroup::cooling &&
-            groups[estimate.camp].respawn > int(round) + estimate.travel + bc::constants::capture_time)
+            groups[estimate.camp].respawn > int(round) + estimate.travel + rules::settings().capture_time)
             continue;
         // Fallback farming leans toward the enemy's side and the watched altar,
         // where the squad also denies camps and stays close to carriers.
@@ -126,7 +126,7 @@ Selection Bot::select_squad_job() {
                 }
             const float output = groups[objective.camp].health / std::max(1.0f, objective.clear);
             const float saved = objective.clear * improvement / std::max(1.0f, output + improvement);
-            const float detour = candidate.reward_time + bc::constants::recall_time + 1 +
+            const float detour = candidate.reward_time + rules::settings().recall_time + 1 +
                                  groups[objective.camp].home_distance - objective.travel;
             if (saved > detour * policy::commit_bonus && saved - detour > best_saved) {
                 best_saved = saved - detour;

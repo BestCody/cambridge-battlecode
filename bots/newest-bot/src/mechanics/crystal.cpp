@@ -5,7 +5,7 @@
 namespace {
 constexpr std::uint16_t far = bc::distance_field::unreachable;
 // Turns a hop costs: the channel, then the turn it lands on.
-int hop_turns() { return bc::constants::tp_crystal_time + 1; }
+int hop_turns() { return rules::settings().tp_crystal_time + 1; }
 } // namespace
 
 void Bot::prepare_hops() {
@@ -173,12 +173,13 @@ bool Bot::crystal_hop() {
     if (landings.empty() || !crystal_safe())
         return false;
     std::sort(landings.begin(), landings.end(), [](const auto &l, const auto &r) {
-        return l.first != r.first ? l.first < r.first
-                                  : l.second.y != r.second.y ? l.second.y < r.second.y : l.second.x < r.second.x;
+        return l.first != r.first         ? l.first < r.first
+               : l.second.y != r.second.y ? l.second.y < r.second.y
+                                          : l.second.x < r.second.x;
     });
     for (int attempt = 0; attempt < 3 && attempt < int(landings.size()); ++attempt) {
         const auto [rest, landing] = landings[attempt];
-        if (incoming(landing) * bc::constants::tp_crystal_time >= health * 0.5f)
+        if (incoming(landing) * rules::settings().tp_crystal_time >= health * 0.5f)
             continue;
         if (crystal.use(landing)) {
             ++crystals_used;
@@ -198,7 +199,7 @@ bool Bot::crystal_hop() {
 
 bool Bot::crystal_safe() const {
     // Damage does not cancel the channel; a stun or a death does.
-    const int wait = bc::constants::tp_crystal_time;
+    const int wait = rules::settings().tp_crystal_time;
     for (const auto &enemy : enemies)
         if (distance(position, enemy.position) <=
             std::max(enemy.range, enemy.spell_reach) + enemy.move_speed * wait)

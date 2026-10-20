@@ -9,12 +9,12 @@ bool Bot::worker_tribute() {
     }
     int closest = int(altar_field.get(position));
     const int remaining =
-        std::max(1, int(bc::constants::winning_gems) - int(bc::global_submitted_gems(bc::team::ally)));
+        std::max(1, int(rules::settings().winning_gems) - int(bc::global_submitted_gems(bc::team::ally)));
     bool win = int(gems) >= remaining;
     const bool reachable = closest != bc::distance_field::unreachable;
     if (!reachable && !win)
         return false;
-    bool deadline = int(bc::constants::max_rounds - round) <= closest + channel_duration(gems) + 5;
+    bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Small bags banked often: the top team's carries bank around 28 gems and
     // everyone else around 20, so a death rarely costs much.
     const bool carry = type == bc::champion_type::stellar || type == bc::champion_type::heart_of_ruin;
@@ -24,7 +24,7 @@ bool Bot::worker_tribute() {
     bool capture_combo = false;
     if (target >= 0 && closest == 0 && groups[target].status == CampGroup::capture &&
         groups[target].holding_since >= 0) {
-        int remaining = bc::constants::capture_time + 1 - (int(round) - groups[target].holding_since);
+        int remaining = rules::settings().capture_time + 1 - (int(round) - groups[target].holding_since);
         capture_combo = remaining > 0 && remaining <= channel_duration(gems);
     }
     if (!banking && !win && !deadline && !capture_combo && gems < threshold &&
@@ -50,7 +50,7 @@ bool Bot::worker_tribute() {
                 risk += (6 + e.strength * 0.05f) * scale;
         bool locked = visible.is_set(altar) && bc::vision::has_altar_lock(altar) &&
                       bc::vision::altar_lock_at(altar).is_enemy();
-        float value = d + risk + (locked ? bc::constants::altar_lock_hits : 0);
+        float value = d + risk + (locked ? rules::settings().altar_lock_hits : 0);
         if (value < best_value) {
             best_value = value;
             selected = altar;
@@ -59,7 +59,7 @@ bool Bot::worker_tribute() {
     }
     if (selected.x < 0)
         return false;
-    if (distance(position, selected) <= bc::constants::submit_gems_range) {
+    if (distance(position, selected) <= rules::settings().submit_gems_range) {
         if (visible.is_set(selected) && bc::vision::has_altar_lock(selected) &&
             bc::vision::altar_lock_at(selected).is_enemy()) {
             if (me.can_attack())
@@ -91,7 +91,7 @@ bool Bot::worker_tribute() {
         return worker_escape();
     }
     // Score altar choices first; build a route mask only for the selected one.
-    const auto approach = around(selected, bc::constants::submit_gems_range);
+    const auto approach = around(selected, rules::settings().submit_gems_range);
     if (crystal_travel(int(groups.size()) + selected_index, approach))
         return true;
     move_to(approach, false, true);
@@ -111,8 +111,8 @@ void Bot::worker_disrupt_tribute() {
             for (auto altar : altars) {
                 // The tribute radius is a conservative subset of lock placement
                 // range, and is available directly from the engine settings.
-                if (distance(position, altar) > bc::constants::submit_gems_range ||
-                    distance(e.position, altar) > bc::constants::submit_gems_range ||
+                if (distance(position, altar) > rules::settings().submit_gems_range ||
+                    distance(e.position, altar) > rules::settings().submit_gems_range ||
                     bc::vision::has_altar_lock(altar))
                     continue;
                 if (lock.use(altar)) {

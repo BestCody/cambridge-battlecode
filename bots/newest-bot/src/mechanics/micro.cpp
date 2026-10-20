@@ -640,10 +640,10 @@ void Bot::observe_fight() {
     blocked.set(position, false);
     std::vector<ObservedUnit> current;
     current.reserve(enemies.size());
-    for (auto c : bc::vision::champions(bc::team::enemy)) {
+    for (const auto &c : enemy_roster) {
         if (bc::fuel_remaining() < policy::planning_reserve)
             break;
-        if (!c.is_alive())
+        if (!c.is_visible() || !c.is_alive())
             continue;
         const auto found = std::find_if(enemies.begin(), enemies.end(),
                                         [&](const auto &e) { return std::get<bc::champion>(e.ref) == c; });

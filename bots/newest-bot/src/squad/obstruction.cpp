@@ -10,7 +10,7 @@ void Bot::observe_enemy_tributes() {
     for (const auto &enemy : enemies)
         if (enemy.depositing)
             for (unsigned a = 0; a < altars.size(); ++a)
-                if (distance(enemy.position, altars[a]) <= bc::constants::submit_gems_range)
+                if (distance(enemy.position, altars[a]) <= rules::settings().submit_gems_range)
                     ++altar_tributes[a];
 }
 
