@@ -12,7 +12,7 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
 
 - **Farm near each other.** Like the top team, champions farm neighbouring camps rather than spreading out, so help is within reach when a fight starts.
   - Camp value is divided by 1 + `cohesion_weight` × (tiles beyond `cohesion_radius` (8) to the nearest teammate's claimed camp or position) ÷ 8.
-  - The weight is 1. Weights 0.5 and 2 measured worse.
+  - The weight is 1.
 - **Farm and fight.** Champions farm their own side and fight when a fight comes to them. Heart of Ruin and other dash champions use damaging dashes on enemies and camps (`impact_dash`).
 - **Bank small bags often.** Carries (Stellar, Heart of Ruin) bank at 28 gems, everyone else at 20. Anyone passing within 2 tiles of an altar banks 10 or more.
 - **Shop on a fixed build.** Carries go home with 10 shards' worth of gold, others with 5. Each champion buys Fish's build order (`mechanics/economy.cpp`). No altar locks: Fish never buys them.
@@ -21,24 +21,13 @@ Rosters live in `draft/team_compositions.h`. The squad controller is off (`polic
   - a tile out of every camp's reach exists;
   - no ally is closer to the camps, since camps attack the nearest champion.
 
-  Otherwise it attacks from normal range. Before this rule, Stellar stood still for 55% of its camp turns waiting for siege tiles that didn't exist.
+  Otherwise it attacks from normal range instead of waiting for a siege tile that may not exist.
 - **Retreat late, fight back when caught.** Heart of Ruin retreats at 15% health, the others at 28%. A low-health champion an enemy can reach next turn fights back instead of fleeing (`policy::stand_when_caught`).
 - **Teleport crystal shortcuts** (`mechanics/crystal.cpp`). Each champion builds a hop map once per map from spare end-of-turn fuel. The hop map holds the turns from spawn to each tile by walking, and by walking plus one 3-tile hop.
   - **At spawn:** after buying shards, a champion buys a crystal only if one hop toward its camp or altar saves at least `policy::crystal_min_saving` (8) turns, after counting the 3-turn channel and the landing turn.
   - **On the way:** a champion carrying a crystal hops wherever doing so saves 8 or more turns, but only when no visible enemy could stun it during the channel.
 
   The threshold comes from the crystal's cost (10 gold, about 3 turns of a champion's income), not from the map pool.
-
-### Measured (35 maps, both seats)
-| Change | Against db10/db11/db12 | Against squad-bot |
-| --- | --- | --- |
-| Fight back when caught | 76/210 wins (was 60), margin −181/game (was −271) | 57/70 |
-| Teleport crystals (3 fuel budgets) | 198/630 wins (was 197), margin −291/game (was −292) | 172/210 (was 169) |
-| Camp choice before fuel runs out; runtime engine settings (3 fuel budgets) | 231/630 wins (was 198), margin −189/game (was −291) | 188/210 (was 172) |
-| Siege only where possible and when no ally is closer (3 fuel budgets) | 283/630 wins (was 231), margin −70/game (was −189) | 202/210 (was 188) |
-| Farm near teammates, cohesion weight 1 (1 fuel budget) | 101/210 wins (was 95), margin +32/game (was −84) | 63/70 (was 68) |
-
-Crystals fired on 14 of 35 maps. There they won 151/336 (was 137) and improved the gem margin by 51 a game. On the other maps the results only show noise.
 
 ### Fuel and engine settings
 - **Choose a camp first.** A champion without a camp chooses one right after observing, before the rest of the turn spends the fuel. With every champion in view, observation once cost 55k of the 100k budget. Camp choice, which needed 50k left, then never ran, and the team idled in spawn all game on `00reverse-spiral`.

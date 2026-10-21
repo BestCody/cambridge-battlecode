@@ -35,8 +35,8 @@ inline constexpr float partner_penalty = 0.35f;
 // Cassi and Issac share one fate: one death drops both bags, so the pair banks
 // smaller amounts more often than a solo champion. 1.0 disables the adjustment.
 inline constexpr float twin_bank_scale = 0.6f;
-// Squad assembly. Avoiding contested camps when depleted measured harmful (it
-// concedes the map); converging on surviving allies is the real regroup.
+// Squad assembly. Avoiding contested camps when depleted concedes the map;
+// converging on surviving allies is the real regroup.
 // depleted_penalty 1.0 disables the avoid-contest variant.
 inline constexpr float depleted_penalty = 1.0f;
 inline constexpr float depleted_rally_bonus = 3.0f;
@@ -81,8 +81,7 @@ inline constexpr int worker_danger_margin = 1;
 // 0.0 restores leaving whenever any enemy is in danger range.
 inline constexpr float worker_strength_margin = 1.0f;
 // Health fraction at which a worker goes home; twins may differ because a
-// death also kills their partner. Measured: 0.50/0.60 saved no lives over
-// 0.28 and cost about 11 worker gems a game, so both match retreat_health.
+// death also kills their partner. Both currently match retreat_health.
 inline constexpr float worker_retreat_health = 0.28f;
 inline constexpr float twin_retreat_health = 0.28f;
 // Whether a worker also goes home when its health drops to twice the damage it
@@ -149,11 +148,11 @@ inline constexpr int carry_shopping_shards = 10;
 inline constexpr float heart_retreat_health = 0.15f;
 // The top team never buys altar locks.
 inline constexpr bool buy_altar_locks = false;
-// Value multiplier for the camp a champion is already heading to. Weak
-// commitment made champions abandon ~3 camps for every one they finished.
+// Value multiplier for the camp a champion is already heading to, so it
+// finishes camps instead of switching between them.
 inline constexpr float worker_commit_bonus = 1.08f;
 // A low-health champion an enemy can reach next turn fights back instead of
-// fleeing: 73% of deaths happened mid-retreat. false always flees.
+// fleeing, which only gives away free hits. false always flees.
 inline constexpr bool stand_when_caught = true;
 // Teleport crystals: buy one at spawn, and use it, only when one hop over a
 // wall or hole strip saves at least this many turns over walking to the next
@@ -161,12 +160,10 @@ inline constexpr bool stand_when_caught = true;
 inline constexpr int crystal_min_saving = 8;
 // Spell-range siege (Stellar, Cassi): only when no ally is closer to the camp.
 // Camps attack the nearest champion, so with a closer ally we attack from
-// normal range. false sieges whenever a solo clear would be too costly
-// (measured: 12 fewer wins in 840 games).
+// normal range. false sieges whenever a solo clear would be too costly.
 inline constexpr bool siege_alone_only = true;
 // Team cohesion in camp choice. The top team farms neighbouring camps about
-// 8 tiles apart, close enough to join each other's fights; ours spread 12-13
-// apart and fought alone. A camp farther than cohesion_radius from every
+// 8 tiles apart, close enough to join each other's fights. A camp farther than cohesion_radius from every
 // teammate's claimed camp or visible position has its value divided by
 // 1 + cohesion_weight * excess / cohesion_radius. 0 disables.
 inline constexpr int cohesion_radius = 8;

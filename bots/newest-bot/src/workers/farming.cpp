@@ -133,8 +133,8 @@ int Bot::worker_choose_group() {
                 value *= 1.4f;
             // While the squad is depleted, converge on the allies still on the map
             // instead of spreading out and feeding into a grouped enemy one at a
-            // time. Avoiding contested camps alone measured worse: it concedes the
-            // map, so the bias here is toward the team, not away from the enemy.
+            // time. Avoiding contested camps instead would concede the map, so
+            // the bias here is toward the team, not away from the enemy.
             if (g.enemy_distance <= g.home_distance + 8)
                 value *= depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
             if (depleted && claims > 0)
@@ -226,8 +226,7 @@ void Bot::worker_farm() {
     goals &= ~blocked;
     if (siege) {
         // Stand within spell reach but out of every camp's reach. Without such
-        // a tile, attack from normal range: waiting for one idled Stellar for
-        // over half of its camp turns.
+        // a tile, attack from normal range rather than wait for one.
         auto stand = siege_tiles(g, spell_range, false) & ~blocked;
         if (stand.is_empty())
             siege = false;
