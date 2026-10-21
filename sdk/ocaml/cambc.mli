@@ -899,6 +899,13 @@ module Distance_field : sig
   (** [copy d] is an independent copy.
       @param d Distance field. *)
   val copy : t -> t
+  (** [copy_from destination source] copies every distance into existing storage.
+      With [~mask], only selected tiles are copied; all unselected destination values
+      are preserved and mask padding is ignored. Self-copy is a no-op.
+      @param mask Tiles to copy; omit to copy the entire field.
+      @param destination Field to update.
+      @param source Field to copy from. *)
+  val copy_from : ?mask:Bitboard.t -> t -> t -> unit
   (** Map width in tiles.
       @param d Distance field. *)
   val width : t -> int

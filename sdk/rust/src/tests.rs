@@ -1379,6 +1379,35 @@ fn aligned_boards_and_fields_clone_own_their_storage() {
     assert_eq!(f.export_raw_buffer().unwrap().len(), 128);
 }
 #[test]
+fn distance_field_copy_into_existing_storage() {
+    setup();
+    let mut source = DistanceField::new().unwrap();
+    let mut destination = DistanceField::new().unwrap();
+    let empty = source.clone();
+    source.set(Vec2::new(1, 1), 123).unwrap();
+    source.set(Vec2::new(2, 2), 456).unwrap();
+    destination.copy_from(&source).unwrap();
+    assert_eq!(destination.get(Vec2::new(2, 2)).unwrap(), 456);
+    let address = destination.ptr();
+    let mut mask = Bitboard::new().unwrap();
+    mask.set(Vec2::new(1, 1), true).unwrap();
+    source.set(Vec2::new(1, 1), 321).unwrap();
+    source.set(Vec2::new(2, 2), 654).unwrap();
+    destination.copy_from_with_mask(&source, &mask).unwrap();
+    assert_eq!(destination.get(Vec2::new(1, 1)).unwrap(), 321);
+    assert_eq!(destination.get(Vec2::new(2, 2)).unwrap(), 456);
+    assert_eq!(destination.ptr(), address);
+    destination.copy_from_with_mask(&empty, &mask).unwrap();
+    assert_eq!(destination.get(Vec2::new(1, 1)).unwrap(), 0);
+    assert_eq!(destination.get(Vec2::new(2, 2)).unwrap(), 456);
+    destination.copy_from(&empty).unwrap();
+    assert_eq!(destination.get(Vec2::new(2, 2)).unwrap(), 0);
+    let mut lazy_destination = DistanceField::new().unwrap();
+    lazy_destination.copy_from_with_mask(&source, &mask).unwrap();
+    assert_eq!(lazy_destination.get(Vec2::new(1, 1)).unwrap(), 321);
+    assert_eq!(lazy_destination.get(Vec2::new(2, 2)).unwrap(), 0);
+}
+#[test]
 fn distance_field_next_moves() {
     setup();
     let mut field = DistanceField::new().unwrap();
