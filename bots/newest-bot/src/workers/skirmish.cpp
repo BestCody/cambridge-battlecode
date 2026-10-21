@@ -2,22 +2,29 @@
 #include "../bot.h"
 
 bool Bot::worker_skirmish() {
+    profiling::Scope scope(profiling::Stage::skirmish);
     if (enemies.empty())
         return false;
     const auto abilities = bc::self().abilities();
+    // Nothing acts before the second use below, so readiness is read once.
+    std::array<bool, 2> is_ready{};
+    {
+        const bool can_cast = bc::self().can_cast();
+        for (unsigned i = 0; i < is_ready.size(); ++i)
+            is_ready[i] = ready(abilities[i], can_cast);
+    }
     int ready_reach = range;
     for (unsigned i = 0; i < spells.size(); ++i)
-        if (abilities[i].is_ready() && spells[i].modifier > 0 &&
+        if (is_ready[i] && spells[i].modifier > 0 &&
             (spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
              spells[i].kind == bc::ability_kind::aoe_damage))
             ready_reach = std::max(ready_reach, int(spells[i].range + spells[i].radius));
     int selected = -1;
     float best = -1;
     bool selected_contact = false;
-    const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     for (std::size_t i = 0; i < enemies.size(); ++i) {
         const auto &e = enemies[i];
-        if (enemy_spawn.is_set(e.position))
+        if (enemy_spawn_tile[tile_index(e.position)])
             continue;
         int d = distance(position, e.position);
         // Choose the current engagement among enemies we can actually damage.
@@ -45,7 +52,7 @@ bool Bot::worker_skirmish() {
     theirs += respawn_threat(position);
     float spell_burst = 0;
     for (unsigned i = 0; i < 2; ++i)
-        if (abilities[i].is_ready()) {
+        if (is_ready[i]) {
             if (spells[i].kind == bc::ability_kind::attack_reset &&
                 distance(position, victim.position) <= range)
                 spell_burst = std::max(spell_burst, strength);
@@ -87,14 +94,14 @@ bool Bot::worker_skirmish() {
             return true;
         moved = attack_dash(victim.position);
         moved = advance_attack(victim.position) || moved;
-        if (bc::fuel_remaining() > policy::observation_reserve)
+        if (moved)
             observe_fight();
     } else if (range > 1 && d > range) {
         if (d <= ready_reach && combat(true))
             return true;
         moved = attack_dash(victim.position);
         moved = advance_attack(victim.position) || moved;
-        if (bc::fuel_remaining() > policy::observation_reserve)
+        if (moved)
             observe_fight();
     }
     bool acted = combat(true);

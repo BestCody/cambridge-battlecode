@@ -16,7 +16,7 @@ bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 tile) const {
 
 int Bot::enemy_index(const ObservedUnit &enemy) const {
     for (unsigned i = 0; i < enemy_roster.size(); ++i)
-        if (std::get<bc::champion>(enemy.ref) == enemy_roster[i])
+        if (enemy.champion() == enemy_roster[i])
             return int(i);
     return -1;
 }
@@ -92,9 +92,10 @@ bool Bot::worker_disengage() {
             continue;
         const int d = distance(position, enemy.position);
         float burst = me.can_attack() && d <= range ? strength : 0;
+        const bool can_cast = me.can_cast();
         for (unsigned i = 0; i < spells.size(); ++i) {
             const auto &spell = spells[i];
-            if (!abilities[i].is_ready() || !me.can_cast())
+            if (!ready(abilities[i], can_cast))
                 continue;
             if (spell.kind == bc::ability_kind::attack_reset && d <= range)
                 burst += strength;
@@ -114,14 +115,12 @@ bool Bot::worker_disengage() {
     // Step to the reachable tile with the fewest threats, then the most room,
     // then the shortest way home (or to an altar when carrying a bag).
     const auto &guide =
-        gems && altar_field.get(position) < home_field.get(position) ? altar_field : home_field;
+        gems && altar_walk().get(position) < home_field.get(position) ? altar_walk() : home_field;
     vec2 best = position;
     auto best_score = std::tuple{threats, -clearance, int(guide.get(position))};
     if (me.can_move())
         for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
-            if (bc::fuel_remaining() < policy::action_reserve)
-                break;
-            if (tile == position || blocked.is_set(tile))
+            if (tile == position)
                 continue;
             const auto [count, room] = danger(tile);
             const auto score = std::tuple{count, -room, int(guide.get(tile))};

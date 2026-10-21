@@ -2,12 +2,13 @@
 #include "../bot.h"
 
 bool Bot::worker_tribute() {
+    profiling::Scope scope(profiling::Stage::tribute);
     auto &me = bc::self();
     if (!gems) {
         banking = false;
         return false;
     }
-    int closest = int(altar_field.get(position));
+    int closest = int(altar_walk().get(position));
     const int remaining =
         std::max(1, int(rules::settings().winning_gems) - int(bc::global_submitted_gems(bc::team::ally)));
     bool win = int(gems) >= remaining;
@@ -66,7 +67,7 @@ bool Bot::worker_tribute() {
                 me.attack(bc::vision::altar_lock_at(selected));
             if (bc::vision::has_altar_lock(selected))
                 for (const auto &a : me.abilities())
-                    if (a.is_attack_reset() && a.is_ready() && !me.can_attack()) {
+                    if (a.is_attack_reset() && ready(a, me.can_cast()) && !me.can_attack()) {
                         if (a.use() && me.can_attack())
                             me.attack(bc::vision::altar_lock_at(selected));
                         break;
@@ -100,7 +101,7 @@ bool Bot::worker_tribute() {
 }
 
 void Bot::worker_disrupt_tribute() {
-    if (enemies.empty() || bc::fuel_remaining() < policy::planning_reserve)
+    if (enemies.empty())
         return;
     auto &me = bc::self();
     auto lock = me.consumables()[bc::consumable_type::altar_lock];

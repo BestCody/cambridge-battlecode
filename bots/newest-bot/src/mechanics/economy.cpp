@@ -89,6 +89,7 @@ void Bot::refresh_equipment() {
 }
 
 void Bot::buy_equipment(bool crystal_required) {
+    profiling::Scope scope(profiling::Stage::buy);
     auto &me = bc::self();
     // Access is a controller decision. Reserve this champion's own crystal
     // before spending on the fixed equipment queue; Tavi cannot buy it afield.
@@ -97,7 +98,11 @@ void Bot::buy_equipment(bool crystal_required) {
     if (missing && me.can_buy(crystal))
         me.buy(crystal);
     const unsigned reserve = crystal_required && !me.consumables()[crystal].count() ? crystal.cost() : 0;
-    while (bc::fuel_remaining() > policy::planning_reserve) {
+    // Shards sell only at spawn or while dead (anywhere for a remote shopper),
+    // so elsewhere the purchase loop could only fail.
+    const bool can_shop = !me.is_alive() || passive == bc::passive_type::remote_shop ||
+                          bc::map::spawn_region(bc::team::ally).is_set(me.position());
+    while (can_shop) {
         const auto item = next_item(type, bought);
         if (me.gold_count() < reserve + item.cost())
             break;
@@ -107,11 +112,16 @@ void Bot::buy_equipment(bool crystal_required) {
             break;
         me.buy(item, count);
         bought[static_cast<unsigned>(item)] += count;
+        equipment_dirty = true;
     }
     const auto lock = bc::consumable_type::altar_lock;
     if (policy::buy_altar_locks && me.gold_count() >= reserve + lock.cost() && me.can_buy(lock))
         me.buy(lock);
-    refresh_equipment();
+    // Item stats change only when items do.
+    if (equipment_dirty) {
+        refresh_equipment();
+        equipment_dirty = false;
+    }
     if (me.is_alive())
         refresh_self();
 }
@@ -155,7 +165,7 @@ float Bot::upgrade_output(unsigned member, unsigned reward, bool siege, float sp
         focus_points = emblem->focus_points() - owned * item.focus_points();
     }
     const auto design = bc::champion(champion).base_stats();
-    const auto &kit = member == slot ? spells : seen->abilities;
+    const std::array<Spell, 2> &kit = member == slot ? spells : *seen->abilities.spells;
     const float attack = member == slot ? strength : seen->strength;
     const float spell = member == slot ? focus : seen->focus;
     float multiplier = design.camp_damage_multiplier;
@@ -193,7 +203,7 @@ bool Bot::clear_altar_lock(int altar) {
         acted = true;
     }
     for (const auto &ability : me.abilities())
-        if (bc::vision::has_altar_lock(at) && ability.is_attack_reset() && ability.is_ready() &&
+        if (bc::vision::has_altar_lock(at) && ability.is_attack_reset() && ready(ability, me.can_cast()) &&
             !me.can_attack() && ability.use() && me.can_attack()) {
             me.attack(bc::vision::altar_lock_at(at));
             acted = true;
@@ -242,8 +252,7 @@ void Bot::interrupt_deposit() {
 }
 
 void Bot::ward_ahead(vec2 goal) {
-    if (bc::fuel_remaining() < policy::ward_reserve)
-        return;
+    profiling::Scope scope(profiling::Stage::ward);
     auto &me = bc::self();
     if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
         return;
@@ -251,23 +260,28 @@ void Bot::ward_ahead(vec2 goal) {
         return;
     vec2 best = position;
     float value = -1e20f;
-    auto placements = me.ward_placement_tiles() & ~(blocked | bc::vision::ward_tiles(bc::team::ally));
+    // Placement tiles not blocked or holding an allied ward, built in place.
+    auto &placements = step_tiles;
+    me.ward_placement_tiles_into(placements);
+    bc::vision::ward_tiles_into(bc::team::ally, occupancy);
+    occupancy |= blocked;
+    occupancy &= placements;
+    placements ^= occupancy;
+    // Unseen placement tiles, from one packed export rather than a query each.
+    subtract_into(search_goals, placements, visible);
+    unseen_tile.load(search_goals);
     // Put vision into the next brush/approach instead of repeatedly scanning all
     // hypothetical fields of view (which would consume the tactical budget).
     for (auto p : placements.positions()) {
-        if (bc::fuel_remaining() < policy::action_reserve)
-            break;
         // Allied wards are not shared through vision. Partition placement
         // tiles by stable team slot so two allies can never reserve one tile.
         if (unsigned(p.x + p.y) % roster.size() != slot)
             continue;
         float score = -distance(p, goal) * 3 + distance(p, position) * 0.3f;
-        if (bc::map::bushes().is_set(p))
+        if (bush_tile[tile_index(p)])
             score += 2;
-        if (!visible.is_set(p))
+        if (unseen_tile[tile_index(p)])
             score += 1;
-        if (blocked.is_set(p))
-            score -= 4;
         if (score > value) {
             value = score;
             best = p;

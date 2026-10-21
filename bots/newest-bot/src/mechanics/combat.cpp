@@ -2,29 +2,27 @@
 #include "../bot.h"
 
 namespace {
-bool present(const ObservedUnit &u) { return u.unit().is_visible() && u.unit().health() > 0; }
+bool present(const ObservedUnit &u) { return live_health(u) > 0; }
 } // namespace
 
 bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
-    if (bc::fuel_remaining() < (squad_member() ? policy::planning_reserve : policy::action_reserve))
-        return false;
+    profiling::Scope scope(profiling::Stage::combat);
     auto &me = bc::self();
-    if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
+    const auto state = me.state();
+    if (state.contains(bc::champion_state::teleporting) || state.contains(bc::champion_state::recalling) ||
+        state.contains(bc::champion_state::submitting_gems))
         return false;
-    if (bc::fuel_remaining() < policy::action_reserve)
-        return false;
-    if (!me.can_attack() && !me.can_cast())
+    if (!state.contains(bc::champion_state::can_attack) && !state.contains(bc::champion_state::can_cast))
         return false;
     // A damaging dash (Heart of Ruin) engages first; the rest of the turn
     // continues from the landing tile.
     const bool dashed = !escaping && impact_dash(fighting_champions, farm_group);
     if (fighting_champions && attack_combo(escaping))
         return true;
-    if (bc::fuel_remaining() < policy::action_reserve)
-        return false;
-    auto &targets = fighting_champions ? enemies : camps;
-    const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
-    const auto forbidden_centres = bc::map::walls() | bc::map::holes() | bc::map::altars();
+    // A camp is a target only in the farmed group: the targets are its records
+    // (every other camp weighs nothing and is never chosen).
+    const std::span<ObservedUnit> targets =
+        fighting_champions ? std::span<ObservedUnit>(enemies) : camps.group(farm_group);
     const bool has_retaliation =
         fighting_champions &&
         std::any_of(targets.begin(), targets.end(), [](const auto &u) { return u.retaliation() > 0; });
@@ -35,9 +33,13 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return buffs.has_shield() ? buffs.get<bc::buff_shield>().value : 0.0f;
     };
     float own_shield = read_shield();
-    std::vector<bool> relevant(targets.size(), true);
-    std::vector<float> controls(targets.size());
-    for (unsigned i = 0; i < targets.size(); ++i) {
+    // Storage kept between calls: a vector allocated afresh costs about 200
+    // fuel. Every entry is written below.
+    static std::vector<std::uint8_t> relevant;
+    static std::vector<float> controls;
+    relevant.resize(targets.size());
+    controls.resize(targets.size());
+    for (std::size_t i = 0; i < targets.size(); ++i) {
         relevant[i] = !squad_member() || !fighting_champions || relevant_enemy(targets[i]);
         controls[i] = squad_member() && fighting_champions
                           ? control_value(targets[i])
@@ -45,7 +47,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     }
     auto eligible = [&](const ObservedUnit &u) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
-               relevant[&u - targets.data()] && !(fighting_champions && enemy_spawn.is_set(u.position));
+               relevant[&u - targets.data()] && !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
     };
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
@@ -77,12 +79,11 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     auto basic_choice = [&]() -> int {
         if (!me.can_attack())
             return -1;
-        auto attack_tiles = me.attack_tiles();
+        me.attack_tiles_into(attack_area);
+        const auto &attack_tiles = attack_area;
         float best = 0;
         int index = -1;
         for (std::size_t i = 0; i < targets.size(); ++i) {
-            if (bc::fuel_remaining() < policy::action_reserve)
-                break;
             auto &u = targets[i];
             if (!eligible(u) || !attack_tiles.is_set(u.position) || !present(u))
                 continue;
@@ -118,7 +119,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                  (passive == bc::passive_type::splash_attack &&
                   distance(struck, t.position) <= bc::constants::passive_abilities::varg_splash_radius))) {
                 const float before = t.health;
-                t.health = t.unit().is_visible() ? t.unit().health() : 0;
+                t.health = live_health(t);
                 if (!fighting_champions)
                     record_camp_damage(t.group, std::max(0.0f, before - t.health));
             }
@@ -137,12 +138,11 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     vec2 best_tile{};
     float best_score = 0;
     auto abilities = me.abilities();
+    const bool can_cast = me.can_cast();
     for (int slot_index = 0; slot_index < 2; ++slot_index) {
-        if (bc::fuel_remaining() < policy::action_reserve)
-            break;
         const auto &a = abilities[slot_index];
         const auto &s = spells[slot_index];
-        if (!a.is_ready() || (walked && s.exclusive))
+        if (!ready(a, can_cast) || (walked && s.exclusive))
             continue;
         if (s.kind == bc::ability_kind::attack_reset) {
             if (me.can_attack())
@@ -180,7 +180,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 const auto &u = allies[i];
                 if (distance(position, u.position) > s.range)
                     continue;
-                const auto &ally = std::get<bc::champion>(u.ref);
+                const auto &ally = u.champion();
                 if (!ally.is_visible() || !ally.is_alive())
                     continue;
                 float score = a.heal_amount(ally) * 0.9f;
@@ -195,33 +195,80 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         } else if (s.kind == bc::ability_kind::aoe_damage) {
             // Evaluate each unit's surrounding centres, not only occupied tiles:
             // radius-one spells can hit targets five tiles from the caster.
-            float damage = a.damage_amount();
-            for (const auto &u : targets)
-                if (eligible(u) && distance(position, u.position) <= s.range + s.radius) {
-                    int radius = static_cast<int>(s.radius);
-                    for (int dx = -radius; dx <= radius; ++dx)
-                        for (int dy = -radius; dy <= radius; ++dy) {
-                            if (bc::fuel_remaining() < policy::action_reserve)
-                                break;
-                            vec2 tile = u.position + vec2{dx, dy};
-                            if (!bc::map::is_in_bounds(tile) || distance(position, tile) > s.range ||
-                                forbidden_centres.is_set(tile))
-                                continue;
-                            float score = 0;
-                            for (const auto &other : targets)
-                                if (distance(tile, other.position) <= s.radius)
-                                    score += weight(other, damage, s.duration > 0);
-                            if (squad_member())
-                                score -=
-                                    collateral_risk(tile, s.radius, fighting_champions ? -1 : farm_group);
-                            if (score > best_score) {
-                                best_score = score;
-                                best_slot = slot_index;
-                                best_target = -1;
-                                best_tile = tile;
-                            }
+            // A centre scores the weights of the eligible units in the radius.
+            // Each weight is computed once and added onto a grid of the centres
+            // in spell range, in unit order as a per-centre sum adds them.
+            // Ties go to the centre first reached scanning each unit's
+            // surroundings in unit order.
+            // The grids are kept between calls, each cell at zero and never
+            // reached until written; the cells the last call wrote are reset
+            // first. Only written cells are scanned: the choice does not
+            // depend on scan order, as each reached cell has its own first.
+            const float damage = a.damage_amount();
+            const int radius = static_cast<int>(s.radius), reach = static_cast<int>(s.range);
+            const int side = 2 * reach + 1;
+            static std::vector<float> score;
+            static std::vector<int> first, written;
+            static std::vector<std::uint8_t> touched;
+            for (const int cell : written) {
+                score[cell] = 0;
+                first[cell] = std::numeric_limits<int>::max();
+                touched[cell] = 0;
+            }
+            written.clear();
+            if (score.size() < std::size_t(side) * side) {
+                score.assign(std::size_t(side) * side, 0.0f);
+                first.assign(std::size_t(side) * side, std::numeric_limits<int>::max());
+                touched.assign(std::size_t(side) * side, 0);
+            }
+            // Each unit's surroundings are numbered in order (dx, then dy), and
+            // only those within spell range of us are visited.
+            const int around = 2 * radius + 1;
+            int order = 0;
+            for (const auto &u : targets) {
+                if (!eligible(u))
+                    continue;
+                const float w = weight(u, damage, s.duration > 0);
+                const bool scanned = distance(position, u.position) <= s.range + s.radius;
+                const int ox = u.position.x - position.x, oy = u.position.y - position.y;
+                const int dy_low = std::max(-radius, -reach - oy), dy_high = std::min(radius, reach - oy);
+                for (int dx = std::max(-radius, -reach - ox), dx_high = std::min(radius, reach - ox); dx <= dx_high;
+                     ++dx)
+                    for (int dy = dy_low; dy <= dy_high; ++dy) {
+                        const int cell = (oy + dy + reach) * side + ox + dx + reach;
+                        if (!touched[cell]) {
+                            touched[cell] = 1;
+                            written.push_back(cell);
                         }
+                        score[cell] += w;
+                        if (scanned)
+                            first[cell] = std::min(first[cell], order + (dx + radius) * around + dy + radius);
+                    }
+                order += around * around;
+            }
+            int chosen = -1;
+            float chosen_score = 0;
+            for (const int cell : written) {
+                if (first[cell] == std::numeric_limits<int>::max())
+                    continue;
+                const vec2 tile{position.x + cell % side - reach, position.y + cell / side - reach};
+                if (!bc::map::is_in_bounds(tile) || no_centre_tile[tile_index(tile)])
+                    continue;
+                float value = score[cell];
+                if (squad_member())
+                    value -= collateral_risk(tile, s.radius, fighting_champions ? -1 : farm_group);
+                if (chosen < 0 || value > chosen_score ||
+                    (value == chosen_score && first[cell] < first[chosen])) {
+                    chosen = cell;
+                    chosen_score = value;
                 }
+            }
+            if (chosen >= 0 && chosen_score > best_score) {
+                best_score = chosen_score;
+                best_slot = slot_index;
+                best_target = -1;
+                best_tile = {position.x + chosen % side - reach, position.y + chosen / side - reach};
+            }
         } else if (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) {
             if (fighting_champions ? !s.targets.contains(bc::ability_target_mask::enemies)
                                    : !s.targets.contains(bc::ability_target_mask::camps))
@@ -240,18 +287,18 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             }
         }
     }
-    if (best_slot >= 0 && best_score > 1 && bc::fuel_remaining() > policy::action_reserve) {
+    if (best_slot >= 0 && best_score > 1) {
         const auto &a = abilities[best_slot];
         const auto &s = spells[best_slot];
         bool success = false;
         if (s.kind == bc::ability_kind::attack_reset || s.kind == bc::ability_kind::shield)
             success = a.use();
         else if (s.kind == bc::ability_kind::heal)
-            success = a.use(std::get<bc::champion>(allies[best_target].ref));
+            success = a.use(allies[best_target].champion());
         else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
         else
-            success = std::visit([&](const auto &u) { return a.use(u); }, targets[best_target].ref);
+            success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
             if (farm_group >= 0)
@@ -263,7 +310,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                                     ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
                                      int(i) == best_target))) {
                     const float before = u.health;
-                    u.health = u.unit().is_visible() ? u.unit().health() : 0;
+                    u.health = live_health(u);
                     if (!fighting_champions)
                         record_camp_damage(u.group, std::max(0.0f, before - u.health));
                 }

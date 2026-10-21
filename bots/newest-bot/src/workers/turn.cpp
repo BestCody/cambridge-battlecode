@@ -19,6 +19,7 @@ bool Bot::worker_caught() const {
 }
 
 bool Bot::worker_escape() {
+    profiling::Scope scope(profiling::Stage::retreat);
     // Caught with nowhere to go: trade blows instead of dying with our back
     // turned. Recovery resumes once the attacker falls back or dies.
     if (policy::stand_when_caught && worker_caught() &&
@@ -35,7 +36,7 @@ bool Bot::worker_escape() {
 
 void Bot::worker_report() {
     if constexpr (policy::diagnostic) {
-        if ((int(round) - last_report >= 50 || stalls == 8) && bc::fuel_remaining() > 10000) {
+        if (int(round) - last_report >= 50 || stalls == 8) {
             std::printf("STATE r=%u id=%u type=%d pos=%d,%d hp=%d gems=%u gold=%u target=%d retreat=%d "
                         "bank=%d fuel=%llu\n",
                         round, id(bc::self()), int(type), position.x, position.y, int(health), gems,
@@ -94,10 +95,8 @@ void Bot::play_worker_turn() {
         publish(TeamMemory::unavailable);
         return;
     }
-    // Choose a camp before the rest of the turn spends the fuel. With many
-    // champions in view, observation alone can use half the budget, and a
-    // later choice never ran: the team stood in spawn all game.
-    if (target < 0 && bc::fuel_remaining() > policy::planning_reserve)
+    // A champion without a camp chooses one before anything else this turn.
+    if (target < 0)
         target = worker_choose_group();
     worker_disrupt_tribute();
     if (position == previous)
@@ -151,7 +150,7 @@ void Bot::play_worker_turn() {
                             distance(position, groups[target].centre) <= 2;
     bool nearly_clear = target >= 0 && groups[target].health < dps(groups[target]) * 3;
     if (!at_spawn && !about_to_capture && !nearly_clear && upgrade) {
-        if (gems && altar_field.get(position) <= 5) {
+        if (gems && altar_walk().get(position) <= 5) {
             banking = true;
             if (worker_tribute())
                 return;
@@ -190,9 +189,10 @@ void Bot::note_activity(Activity activity) {
 }
 
 void Bot::worker_priority() {
+    profiling::Scope scope(profiling::Stage::priority);
     // Priority applies next round. Put an available burst or finishing blow
     // early in the allied order instead of using a permanent champion order.
-    if (!initialised || bc::fuel_remaining() < policy::planning_reserve)
+    if (!initialised)
         return;
     auto &me = bc::self();
     int priority = passive == bc::passive_type::splash_attack ? priority_tier::idle + 200
@@ -206,9 +206,7 @@ void Bot::worker_priority() {
             ready[i] = abilities[i].cooldown() <= 1;
         int best = 0;
         for (const auto &e : enemies) {
-            if (!e.unit().is_visible())
-                continue;
-            const float hp = e.unit().health();
+            const float hp = live_health(e);
             if (hp <= 0)
                 continue;
             const int d = distance(position, e.position);

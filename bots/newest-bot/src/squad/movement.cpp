@@ -10,8 +10,6 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
     auto &me = bc::self();
     if (!me.can_move())
         return finish(MoveStatus::waiting, MoveReason::allowance, -1, round + 1);
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return finish(MoveStatus::deferred, MoveReason::fuel);
     const auto obstacles = static_blocked | known_camp_obstacles;
     goals &= ~obstacles;
     if (goals.is_empty())
@@ -23,8 +21,6 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         const auto staging = around(squad.plan.staging, 0);
         if (approach_route.revision != terrain_revision || !(approach_route.goals ^ staging).is_empty() ||
             approach_route.field.get(position) == bc::distance_field::unreachable) {
-            if (bc::fuel_remaining() < policy::observation_reserve)
-                return finish(MoveStatus::deferred, MoveReason::fuel);
             bc::bitboard visited;
             approach_route.field.compute_to(obstacles, staging, around(position, 0), visited);
             approach_route.goals = staging;
@@ -34,12 +30,8 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         if (approach != bc::distance_field::unreachable && approach > int(stats.vision_radius))
             goals = around(squad.plan.staging, 0);
     }
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return finish(MoveStatus::deferred, MoveReason::fuel);
     if (travel_route.revision != terrain_revision || !(travel_route.goals ^ goals).is_empty() ||
         travel_route.field.get(position) == bc::distance_field::unreachable) {
-        if (bc::fuel_remaining() < policy::observation_reserve)
-            return finish(MoveStatus::deferred, MoveReason::fuel);
         bc::bitboard visited;
         travel_route.field.compute_to(obstacles, goals, around(position, 0), visited);
         travel_route.goals = goals;
@@ -47,8 +39,6 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         // Distances to different goals are not comparable: restart the best.
         squad.route_best = travel_route.field.get(position);
     }
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return finish(MoveStatus::deferred, MoveReason::fuel);
     const auto &route = travel_route.field;
     const int original = route.get(position);
     if (original == bc::distance_field::unreachable)
@@ -58,8 +48,7 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
     std::array<const bc::distance_field *, TeamMemory::slots> paths{};
     std::array<std::optional<bc::distance_field>, TeamMemory::slots> local_support;
     for (unsigned i = 0; i < roster.size(); ++i)
-        if (i != slot && squad.contains(i) && observed_member(i) && !observed_member(i)->channel &&
-            bc::fuel_remaining() > policy::observation_reserve) {
+        if (i != slot && squad.contains(i) && observed_member(i) && !observed_member(i)->channel) {
             // Support is a local arrival question. A bounded terrain search
             // gives exact nearby distances without flooding the whole map.
             bc::bitboard visited;
@@ -72,7 +61,7 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
         const auto *member = observed_member(i);
         const auto at = i == slot ? position : member ? member->position : vec2{-1, -1};
         const bool holder = squad.camp >= 0 && at.x >= 0 && groups[squad.camp].status == CampGroup::capture &&
-                            groups[squad.camp].tiles.is_set(at);
+                            groups[squad.camp].tiles().is_set(at);
         const unsigned bag = i == slot ? gems : member ? member->gems : 0;
         return std::tuple{holder, squad.phase == SquadPhase::deposit ? bag : 0u, -int(i)};
     };
@@ -149,8 +138,6 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
     vec2 best = position;
     float best_score = std::numeric_limits<float>::infinity();
     for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
-        if (bc::fuel_remaining() < policy::action_reserve)
-            break;
         if (tile == position || blocked.is_set(tile) || tile == squad.last_step || !supported(tile))
             continue;
         int onward = route.get(tile);
@@ -166,8 +153,6 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
             // second legal step, rather than oscillating between equal tiles.
             int second = onward;
             for (auto after : blocked.reachable_tiles(tile, stats.base_move_speed).positions()) {
-                if (bc::fuel_remaining() < policy::action_reserve)
-                    break;
                 if (after != position && !blocked.is_set(after))
                     second = std::min(second, int(route.get(after)));
             }
@@ -180,7 +165,7 @@ MoveResult Bot::squad_move(bc::bitboard goals, bool urgent) {
             best_score = score;
         }
     }
-    if (best != position && bc::fuel_remaining() >= policy::action_reserve) {
+    if (best != position) {
         const auto before = position;
         if (move_step(best)) {
             squad.last_step = before;

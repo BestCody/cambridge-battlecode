@@ -19,7 +19,7 @@ enum class BankStage : unsigned {
 static_assert(unsigned(BankStage::count) == TeamMemory::bank_stages);
 
 enum class MoveStatus { moved, arrived, waiting, blocked, deferred };
-enum class MoveReason { none, allowance, occupancy, support, terrain, camp, fuel };
+enum class MoveReason { none, allowance, occupancy, support, terrain, camp };
 struct MoveResult {
     MoveStatus status = MoveStatus::arrived;
     MoveReason reason = MoveReason::none;

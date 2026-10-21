@@ -18,8 +18,6 @@ unsigned StellarTaviCassi::membership(std::span<const bc::champion_type> roster)
 } // namespace squads
 
 void Bot::squad_combat() {
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return;
     if (std::none_of(enemies.begin(), enemies.end(),
                      [&](const auto &enemy) { return relevant_enemy(enemy); }))
         return;
@@ -30,14 +28,12 @@ void Bot::squad_combat() {
 }
 
 void Bot::squad_resource_turn() {
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return;
     if (squad.camp < 0)
         return;
     auto &group = groups[squad.camp];
     if (group.status == CampGroup::cooling) {
-        if (group.tiles.is_set(position))
-            squad_move(around(group.centre, range) & ~group.tiles);
+        if (group.tiles().is_set(position))
+            squad_move(around(group.centre, range) & ~group.tiles());
         return;
     }
     squad_combat();
@@ -45,13 +41,13 @@ void Bot::squad_resource_turn() {
         return;
     if (group.status == CampGroup::capture) {
         squad.phase = SquadPhase::capture;
-        if (!group.tiles.is_set(position)) {
-            auto goals = group.tiles & ~blocked;
+        if (!group.tiles().is_set(position)) {
+            auto goals = group.tiles() & ~blocked;
             const auto &assigned = squad.plan.firing[slot];
             if (assigned.capture.x >= 0 && goals.is_set(assigned.capture))
                 goals = around(assigned.capture, 0);
             if (goals.is_empty())
-                goals = around(group.centre, range) & ~group.tiles & ~blocked;
+                goals = around(group.centre, range) & ~group.tiles() & ~blocked;
             squad_move(goals);
         }
         ward_ahead(group.centre);
@@ -65,11 +61,7 @@ void Bot::squad_resource_turn() {
     if (!resume_motion &&
         (squad.plan.camp != squad.camp || !squad.plan.complete || !(squad.plan.participants & (1u << slot))))
         prepare_objective();
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return;
     if (squad.plan.camp != squad.camp || !squad.plan.complete) {
-        if (!group.approach_known && bc::fuel_remaining() < policy::observation_reserve)
-            return;
         const auto staging = objective_staging(squad.camp);
         if (staging.x >= 0)
             squad_move(around(staging, 0));
@@ -95,10 +87,7 @@ void Bot::squad_resource_turn() {
             continue;
         }
         const auto &at = squad.plan.firing[i];
-        if (bc::fuel_remaining() > policy::observation_reserve)
-            ready &= member_route(i).get(at.tile) <= member->move_speed;
-        else
-            ready &= member->position == at.tile;
+        ready &= member_route(i).get(at.tile) <= member->move_speed;
     }
     // Clear at once when the reward lands before anyone can interfere.
     // Otherwise hold cooldowns for denial until the squad is in position.
@@ -143,8 +132,7 @@ void Bot::squad_resource_turn() {
     }
     // Refresh only after useful actions. Re-estimation must not consume every
     // travel/clear turn merely because the previous estimate has aged.
-    if (bc::fuel_remaining() > policy::observation_reserve)
-        prepare_objective();
+    prepare_objective();
 }
 
 bool Bot::needs_recovery() const {
@@ -163,10 +151,6 @@ bool Bot::needs_recovery() const {
 }
 
 void Bot::squad_recover(bool supply) {
-    if (bc::fuel_remaining() < policy::planning_reserve) {
-        squad.motion = {MoveStatus::deferred, MoveReason::fuel};
-        return;
-    }
     auto &me = bc::self();
     const auto spawn = bc::map::spawn_region(bc::team::ally);
     if (spawn.is_set(position)) {

@@ -2,15 +2,13 @@
 #include "../bot.h"
 
 Selection Bot::select_squad_job() {
-    if (squad.coordinator != int(slot) || bc::fuel_remaining() < policy::planning_reserve)
+    if (squad.coordinator != int(slot))
         return Selection::deferred;
     if (job_search.started < 0)
         job_search.started = round;
     if (job_search.order.empty()) {
         auto &ranked = job_search.ranked;
         while (job_search.rank_cursor < groups.size()) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return Selection::deferred;
             const unsigned i = job_search.rank_cursor++;
             const auto &g = groups[i];
             if (int(i) == squad.failed_camp && int(round) < squad.retry_after)
@@ -30,8 +28,6 @@ Selection Bot::select_squad_job() {
                 continue;
             ranked.push_back({{pressure, reward / cost}, i});
         }
-        if (bc::fuel_remaining() < policy::planning_reserve)
-            return Selection::deferred;
         std::sort(ranked.begin(), ranked.end(), std::greater<>());
         for (const auto &[priority, i] : ranked) {
             if (job_search.order.size() < policy::objective_finalists || int(i) == squad.camp ||
@@ -41,11 +37,13 @@ Selection Bot::select_squad_job() {
                 job_search.order.push_back(i);
         }
     }
-    while (job_search.cursor < job_search.order.size() && bc::fuel_remaining() > policy::planning_reserve &&
+    while (job_search.cursor < job_search.order.size() &&
            (squad.camp >= 0 || job_search.assessed.empty())) {
         const auto estimate = estimate_job(job_search.order[job_search.cursor], job_search.work);
         if (!estimate.complete) {
-            if (bc::fuel_remaining() < policy::observation_reserve)
+            // A search that reset cannot be estimated now (a member missing or
+            // channelling): resume next turn. Otherwise its next slice follows.
+            if (job_search.work.camp < 0)
                 break;
             continue;
         }
@@ -53,8 +51,6 @@ Selection Bot::select_squad_job() {
         if (estimate.camp >= 0)
             job_search.assessed.push_back(estimate);
     }
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return Selection::deferred;
     // Resume the remaining candidates next turn. Retain both the current job
     // and the best completed estimates; fuel exhaustion is not infeasibility.
     const bool pending = job_search.cursor < job_search.order.size();
@@ -104,8 +100,6 @@ Selection Bot::select_squad_job() {
         const auto objective = choice;
         float best_saved = 0;
         for (const auto &candidate : job_search.assessed) {
-            if (bc::fuel_remaining() < policy::observation_reserve)
-                break;
             const auto &camp = groups[candidate.camp];
             if (candidate.camp == objective.camp || candidate.siege || !camp.unit.gold_value())
                 continue;
@@ -113,7 +107,7 @@ Selection Bot::select_squad_job() {
             for (unsigned i = 0; i < roster.size(); ++i)
                 if (squad.contains(i) && observed_member(i))
                     ++participants;
-            const unsigned occupants = std::min(participants, camp.tiles.count());
+            const unsigned occupants = std::min(participants, camp.tiles().count());
             const unsigned share = camp.unit.gold_value() / std::max(1u, occupants);
             float improvement = 0;
             for (unsigned i = 0; i < roster.size(); ++i)

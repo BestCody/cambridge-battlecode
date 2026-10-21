@@ -34,7 +34,7 @@ vec2 Bot::objective_staging(int index) {
         if (camp.stats.base_strength > 0)
             fire |= around(camp.position, camp.stats.base_attack_range);
     }
-    candidates &= ~static_blocked & ~known_camp_obstacles & ~group.tiles & ~fire;
+    candidates &= ~static_blocked & ~known_camp_obstacles & ~group.tiles() & ~fire;
     vec2 best{-1, -1};
     int shortest = bc::distance_field::unreachable;
     for (auto tile : candidates.positions()) {
@@ -81,8 +81,6 @@ float Bot::position_output(const ObservedUnit &member, vec2 tile, const CampGrou
                 centres |= around(camp.position, spell.radius);
         centres &= sight & ~static_blocked & around(tile, spell.range);
         for (auto centre : centres.positions()) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return -1; // Retry this position; a partial estimate is not a plan.
             float value = 0;
             for (const auto &camp : group.camps) {
                 const float remaining =
@@ -135,10 +133,6 @@ FiringPosition Bot::firing_position(unsigned member_slot, int index, bool siege,
     const auto &member = member_slot == slot ? self : *observed_member(member_slot);
     const auto &group = groups[index];
     const auto &cached_route = member_routes[member_slot];
-    if ((search.stage == 1 || search.stage == 3) &&
-        (cached_route.origin != member.position || cached_route.revision != terrain_revision) &&
-        bc::fuel_remaining() < policy::observation_reserve)
-        return search.best;
     if (search.stage == 0) {
         int reach = member.range;
         for (const auto &spell : member.abilities)
@@ -170,8 +164,6 @@ FiringPosition Bot::firing_position(unsigned member_slot, int index, bool siege,
         // Read only candidate distances. Exporting an entire large map for a
         // handful of firing tiles costs more than the search itself.
         while (search.cursor < search.tiles.size()) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return search.best;
             const auto tile = search.tiles[search.cursor++];
             const int path = route.get(tile);
             if (path != bc::distance_field::unreachable) {
@@ -212,8 +204,6 @@ FiringPosition Bot::firing_position(unsigned member_slot, int index, bool siege,
     }
     const auto &route = member_route(member_slot);
     while (search.cursor < search.tiles.size()) {
-        if (bc::fuel_remaining() < policy::observation_reserve)
-            return search.best;
         const auto tile = search.tiles[search.cursor++];
         const int path = route.get(tile);
         if (path == bc::distance_field::unreachable)
@@ -275,8 +265,6 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
     };
     const ObservedUnit self(*this);
     if (!group.approach_known) {
-        if (bc::fuel_remaining() < policy::observation_reserve)
-            return result;
         objective_staging(index);
     }
     while (search.next_member < roster.size()) {
@@ -286,8 +274,6 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
             ++search.next_member;
             continue;
         }
-        if (bc::fuel_remaining() < policy::planning_reserve)
-            return result;
         bc::bitboard reserved;
         for (unsigned other = 0; other < i; ++other)
             if (result.participants & (1u << other))
@@ -301,8 +287,6 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
                 return result;
             search.firing = {};
             if (result.firing[i].tile.x < 0) {
-                if (!result.firing[i].evaluated && bc::fuel_remaining() < policy::planning_reserve)
-                    return result;
                 return reject();
             }
         }
@@ -312,13 +296,11 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
     }
     if (!result.participants)
         return reject();
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return result;
     const int capture =
         group.holding_since < 0
             ? rules::settings().capture_time + 1
             : std::max(1, rules::settings().capture_time + 1 - (int(round) - group.holding_since));
-    auto obstacles = static_blocked | (known_camp_obstacles & ~group.tiles);
+    auto obstacles = static_blocked | (known_camp_obstacles & ~group.tiles());
     bc::bitboard visited;
     if (search.stage == 0) {
         result.output = result.loss = 0;
@@ -388,13 +370,13 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
             if (!(result.participants & (1u << i)))
                 continue;
             auto &place = result.firing[i];
-            bc::bitboard remaining = group.tiles & ~static_blocked;
+            bc::bitboard remaining = group.tiles() & ~static_blocked;
             for (unsigned other = 0; other < i; ++other)
                 if (result.firing[other].capture.x >= 0)
                     remaining.set(result.firing[other].capture, false);
             const bool overflow = remaining.is_empty();
             if (overflow)
-                remaining = group.tiles & ~static_blocked;
+                remaining = group.tiles() & ~static_blocked;
             bc::distance_field from;
             from.compute_to(obstacles, around(place.tile, 0), remaining, visited);
             int nearest = bc::distance_field::unreachable;
@@ -436,8 +418,6 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
             return JobEstimate{};
         }
     if (search.stage == 2) {
-        if (!enemies.empty() && bc::fuel_remaining() < policy::observation_reserve)
-            return result;
         search.control_enemies.clear();
         search.next_enemy = 0;
         search.next_action = {};
@@ -450,9 +430,9 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
             search.interference_work +=
                 (search.clear_reward_time - result.interference) * policy::hidden_interference_weight;
         for (const auto &enemy : enemies)
-            search.control_enemies.push_back(id(std::get<bc::champion>(enemy.ref)));
+            search.control_enemies.push_back(id(enemy.champion()));
         if (!enemies.empty())
-            search.capture_routes.emplace().compute(obstacles, group.tiles & ~static_blocked, visited);
+            search.capture_routes.emplace().compute(obstacles, group.tiles() & ~static_blocked, visited);
         for (unsigned i = 0; i < roster.size(); ++i) {
             if (!(result.participants & (1u << i)))
                 continue;
@@ -470,14 +450,12 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
         // path search for every enemy in one actor turn.
         std::vector<unsigned> current;
         for (const auto &enemy : enemies)
-            current.push_back(id(std::get<bc::champion>(enemy.ref)));
+            current.push_back(id(enemy.champion()));
         if (current != search.control_enemies) {
             search.stage = 2;
             return result;
         }
         if (search.next_enemy < enemies.size()) {
-            if (bc::fuel_remaining() < policy::observation_reserve)
-                return result;
             const auto &enemy = enemies[search.next_enemy++];
             const int path = search.capture_routes->get(enemy.position);
             if (path == bc::distance_field::unreachable)
@@ -488,13 +466,14 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
             if (arrival > search.clear_reward_time)
                 return result;
             bc::distance_field enemy_route;
-            enemy_route.compute_to(obstacles, around(enemy.position, 0), group.tiles, visited);
-            const auto entries = group.tiles.positions();
+            enemy_route.compute_to(obstacles, around(enemy.position, 0), group.tiles(), visited);
+            const auto entries = group.tiles().positions();
             vec2 entry = entries.front();
             for (auto tile : entries)
                 if (enemy_route.get(tile) < enemy_route.get(entry))
                     entry = tile;
             std::array<std::optional<ObservedUnit>, TeamMemory::slots> defenders;
+            std::array<std::optional<bc::bitboard>, TeamMemory::slots> defender_sights;
             for (unsigned i = 0; i < roster.size(); ++i) {
                 if (!(result.participants & (1u << i)))
                     continue;
@@ -502,7 +481,8 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
                 auto &member = *defenders[i];
                 const auto &place = result.firing[i];
                 member.position = place.capture.x >= 0 ? place.capture : place.tile;
-                member.sight = bc::champion(member.type).visible_tiles_from(member.position);
+                defender_sights[i] = bc::champion(member.type).visible_tiles_from(member.position);
+                member.sight = &*defender_sights[i];
             }
             float hp_left = enemy.health + enemy.shield, dealt = 0;
             bool disabled = false;
@@ -511,13 +491,13 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
                     continue;
                 auto &member = *defenders[i];
                 const int reach = distance(member.position, entry);
-                if (!member.sight.is_set(entry))
+                if (!member.sees(entry))
                     continue;
                 std::array<bool, 2> legal{};
                 for (unsigned a = 0; a < member.abilities.size(); ++a) {
                     const auto &spell = member.abilities[a];
                     if (spell.kind == bc::ability_kind::aoe_damage) {
-                        const auto centres = around(entry, spell.radius) & member.sight & ~static_blocked &
+                        const auto centres = around(entry, spell.radius) & *member.sight & ~static_blocked &
                                              around(member.position, spell.range);
                         legal[a] = !centres.is_empty();
                     } else
@@ -596,7 +576,7 @@ JobEstimate Bot::estimate_job(int index, ObjectiveSearch &search) {
     if (delivery == bc::distance_field::unreachable)
         return reject();
     const unsigned occupants =
-        std::max(1u, std::min(unsigned(std::popcount(result.participants)), group.tiles.count()));
+        std::max(1u, std::min(unsigned(std::popcount(result.participants)), group.tiles().count()));
     result.delivery = delivery + channel_duration((group.unit.gem_value() + occupants - 1) / occupants);
     if (int(round) + result.reward_time + result.delivery >= int(rules::settings().max_rounds))
         return reject();
@@ -656,10 +636,8 @@ bool Bot::prepare_objective() {
         relevant_threats() <= current.threats &&
         (current.participants & living_core()) == current.participants)
         return true;
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return false;
     auto plan = estimate_job(squad.camp, active_search);
-    while (!plan.complete && active_search.camp >= 0 && bc::fuel_remaining() >= policy::observation_reserve)
+    while (!plan.complete && active_search.camp >= 0)
         plan = estimate_job(squad.camp, active_search);
     if (!plan.complete)
         return false;
@@ -699,8 +677,7 @@ void Bot::finish_clear_turn(int camp, float expected) {
         clear_progress.efficiency =
             std::min(1.0f, clear_progress.damage / std::max(1.0f, clear_progress.expected));
         if constexpr (policy::diagnostic)
-            if (bc::fuel_remaining() >= policy::planning_reserve)
-                std::printf("CLEAR_OUTPUT r=%u slot=%u camp=%d actual=%.1f expected=%.1f efficiency=%.2f\n",
+            std::printf("CLEAR_OUTPUT r=%u slot=%u camp=%d actual=%.1f expected=%.1f efficiency=%.2f\n",
                             round, slot, camp, clear_progress.damage, clear_progress.expected,
                             clear_progress.efficiency);
         clear_progress.damage = clear_progress.expected = 0;

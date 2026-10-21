@@ -10,11 +10,12 @@ float observed_power(const ObservedUnit &unit) {
 } // namespace
 
 void Bot::worker_update_formation() {
-    if (!TeamMemory::formations(groups.size()) || bc::fuel_remaining() < policy::observation_reserve)
+    profiling::Scope scope(profiling::Stage::formation);
+    if (!TeamMemory::formations(groups.size()))
         return;
     if (TeamMemory::fight_group(shared.get(slot), groups.size()) >= 0)
         publish(0);
-    const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    const auto &enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     const ObservedUnit *contact = nullptr;
     int closest = bc::distance_field::unreachable;
     for (const auto &enemy : enemies) {
@@ -30,8 +31,9 @@ void Bot::worker_update_formation() {
         return;
     int contact_group = -1;
     closest = bc::distance_field::unreachable;
+    const vec2 at = contact->position;
     for (std::size_t i = 0; i < groups.size(); ++i) {
-        const int d = distance(contact->position, groups[i].centre);
+        const int d = std::max(std::abs(at.x - group_cx[i]), std::abs(at.y - group_cy[i]));
         if (d < closest) {
             closest = d;
             contact_group = int(i);
@@ -46,7 +48,7 @@ void Bot::worker_update_formation() {
     for (std::size_t s = 0; s < roster.size(); ++s) {
         float power = s == slot ? own_power : roster_power[s];
         for (const auto &ally : allies)
-            if (std::get<bc::champion>(ally.ref) == roster[s]) {
+            if (ally.champion() == roster[s]) {
                 power = observed_power(ally);
                 break;
             }
@@ -62,10 +64,11 @@ void Bot::worker_update_formation() {
 }
 
 bool Bot::worker_reinforce() {
+    profiling::Scope scope(profiling::Stage::reinforce);
     if (!enemies.empty() || !TeamMemory::formations(groups.size()) ||
-        health < max_health * policy::retreat_health || bc::fuel_remaining() < policy::observation_reserve)
+        health < max_health * policy::retreat_health)
         return false;
-    if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles.is_set(position))
+    if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position))
         return false;
     const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
     bool requested = false;
@@ -90,7 +93,7 @@ bool Bot::worker_reinforce() {
         const int group = TeamMemory::fight_group(shared.get(leader), groups.size());
         vec2 rally = groups[group].centre;
         for (const auto &ally : allies)
-            if (std::get<bc::champion>(ally.ref) == roster[leader]) {
+            if (ally.champion() == roster[leader]) {
                 rally = ally.position;
                 break;
             }
@@ -110,7 +113,7 @@ bool Bot::worker_reinforce() {
                 continue;
             vec2 where = groups[claim - 1].centre;
             for (const auto &ally : allies)
-                if (std::get<bc::champion>(ally.ref) == roster[s]) {
+                if (ally.champion() == roster[s]) {
                     where = ally.position;
                     break;
                 }
@@ -132,13 +135,12 @@ bool Bot::worker_reinforce() {
         return false;
     publish(TeamMemory::joining(selected, groups.size()));
     const bool moved = move_to(around(destination, 1), false, true);
-    if (moved && bc::fuel_remaining() > policy::observation_reserve) {
+    if (moved) {
         observe_fight();
         combat(true);
     }
     if constexpr (policy::diagnostic)
-        if (moved && round % policy::replan_period == slot % policy::replan_period &&
-            bc::fuel_remaining() > 6000)
+        if (moved && round % policy::replan_period == slot % policy::replan_period)
             std::printf("FORMATION r=%u id=%u group=%d demand=%u\n", round, id(bc::self()), selected,
                         selected_force);
     return moved;

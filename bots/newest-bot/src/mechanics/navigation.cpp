@@ -6,81 +6,143 @@ bool Bot::move_step(vec2 tile) {
     auto &me = bc::self();
     if (!me.can_move() || tile == me.position())
         return false;
-    if (me.move_absolute(tile)) {
+    bool moved = false;
+    try {
+        moved = me.move_absolute(tile);
+    } catch (const bc::error &error) {
+        // A tile reserved since the occupancy was read (a teleport landing
+        // set during this turn) is refused outright; nothing is spent.
+        if (error.code() != bc::error_code::invalid_action_move_bad_destination)
+            throw;
+    }
+    if (moved) {
         walked = true;
         position = me.position();
-        blocked = static_blocked | bc::vision::champion_tiles() | bc::vision::camp_tiles() |
-                  bc::vision::teleport_tiles();
-        blocked.set(position, false);
+        refresh_blocked();
         return true;
     }
-    // Hidden occupancy reveals the blocked tile without spending the allowance.
-    blocked |= bc::vision::champion_tiles() | bc::vision::camp_tiles();
+    // A refusal reveals the blocking occupant without spending the allowance.
+    bc::vision::champion_tiles_into(bc::team::ally, occupancy);
+    blocked |= occupancy;
+    bc::vision::champion_tiles_into(bc::team::enemy, occupancy);
+    blocked |= occupancy;
+    bc::vision::camp_tiles_into(occupancy);
+    blocked |= occupancy;
+    bc::vision::teleport_tiles_into(occupancy);
+    blocked |= occupancy;
     blocked.set(me.position(), false);
     return false;
 }
 
 bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engaged_group) {
     auto &me = bc::self();
+    const bool can_cast = me.can_cast();
     for (auto a : me.abilities()) {
-        if (!a.is_dash() || !a.is_ready())
+        if (!a.is_dash() || !ready(a, can_cast))
             continue;
         const auto design = describe(a);
         if (walked && design.exclusive)
             continue;
-        auto dash_blocked = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy) |
-                            bc::vision::camp_tiles() | bc::vision::champion_tiles() |
-                            bc::vision::teleport_tiles();
-        dash_blocked.set(position, false);
-        auto legal = dash_blocked.reachable_tiles(position, static_cast<unsigned>(design.range)) & ~blocked;
-        auto choices = legal.positions();
-        for (int attempt = 0; attempt < 3; ++attempt) {
-            vec2 best = position;
-            float original = field.get(position), score = original;
-            for (auto tile : choices) {
-                if (bc::fuel_remaining() < policy::action_reserve)
-                    break;
-                if (tile == position || blocked.is_set(tile))
-                    continue;
-                float value = field.get(tile) + incoming(tile, engaged_group) * (urgent ? 0.06f : 0.012f);
-                if (value < score) {
-                    score = value;
-                    best = tile;
-                }
+        occupied_into(dash_blocked, dash_terrain);
+        dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(design.range), step_tiles);
+        subtract_into(search_goals, step_tiles, blocked);
+        // The landings in reading order, and their walks: from one export of
+        // the field when there are many (an export costs about one read per
+        // 150 tiles), else read one by one.
+        const std::size_t tiles = std::size_t(map_width) * map_height;
+        // Every landing is within the dash's range on both axes.
+        const std::size_t span = 2 * std::size_t(static_cast<std::uint16_t>(design.range)) + 1;
+        if (dash_landings.size() < span * span)
+            dash_landings.resize(span * span);
+        const std::uint32_t count = search_goals.positions_into(dash_landings);
+        const bool exported = std::size_t(count) * 150 > tiles;
+        if (exported) {
+            if (!dash_walks)
+                dash_walks.reset(new std::uint16_t[tiles]);
+            field.export_linear_buffer(std::span(dash_walks.get(), tiles));
+        }
+        const auto walk_at = [&](vec2 p) { return int(exported ? dash_walks[tile_index(p)] : field.get(p)); };
+        const vec2 *choices = dash_landings.data();
+        const int here = walk_at(position);
+        const float original = float(here);
+        // A landing scores its walk plus the incoming estimate, which only
+        // adds: one walking further than the best score so far cannot win, and
+        // unless urgent one saving under two steps is never taken (it saves
+        // less than the 1.75 asked even before its estimate). The rest, by
+        // walk then reading order, as a sorted scan visits them; a tie goes
+        // to the landing first in reading order.
+        const int limit = urgent ? here : here - 2;
+        static std::vector<std::int32_t> landing, walk;
+        landing.clear();
+        walk.clear();
+        for (std::uint32_t k = 0; k < count; ++k)
+            if (const int w = walk_at(choices[k]); w <= limit && choices[k] != position) {
+                landing.push_back(std::int32_t(k));
+                walk.push_back(w);
             }
-            if (best == position || (!urgent && original - score < 1.75f))
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            int best = -1;
+            float score = original;
+            for (int level = -1;;) {
+                int next = std::numeric_limits<int>::max();
+                for (const int w : walk)
+                    if (w > level && w < next)
+                        next = w;
+                if (next == std::numeric_limits<int>::max() || float(next) > score)
+                    break;
+                for (std::size_t j = 0; j < landing.size() && float(next) <= score; ++j)
+                    if (walk[j] == next) {
+                        const int k = landing[j];
+                        const float value =
+                            float(next) + incoming(choices[k], engaged_group) * (urgent ? 0.06f : 0.012f);
+                        if (value < score || (value == score && best >= 0 && k < best)) {
+                            score = value;
+                            best = k;
+                        }
+                    }
+                level = next;
+            }
+            if (best < 0 || (!urgent && original - score < 1.75f))
                 return false;
-            if (a.use(best)) {
+            if (a.use(choices[best])) {
                 position = me.position();
                 if (design.exclusive)
                     walked = true;
                 return true;
             }
             blocked |= bc::vision::champion_tiles();
-            blocked.set(best);
+            blocked.set(choices[best]);
             blocked.set(position, false);
+            // A refused landing reveals occupants: drop them from the choices.
+            std::size_t kept = 0;
+            for (std::size_t j = 0; j < landing.size(); ++j)
+                if (!blocked.is_set(choices[landing[j]])) {
+                    landing[kept] = landing[j];
+                    walk[kept++] = walk[j];
+                }
+            landing.resize(kept);
+            walk.resize(kept);
         }
     }
     return false;
 }
 
 bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_group, bool allow_teleport) {
+    profiling::Scope scope(profiling::Stage::move);
     auto &me = bc::self();
-    if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
+    const auto state = me.state();
+    if (state.contains(bc::champion_state::teleporting) || state.contains(bc::champion_state::recalling) ||
+        state.contains(bc::champion_state::submitting_gems))
         return false;
-    if (bc::fuel_remaining() < policy::planning_reserve)
-        return false;
-    goals &= ~static_blocked;
+    goals &= open_terrain;
     if (goals.is_empty() || goals.is_set(position))
         return false;
-    bc::distance_field field;
-    bc::bitboard visited;
-    field.compute_to(blocked, goals & ~blocked, around(position, 0), visited);
-    if (bc::fuel_remaining() < policy::action_reserve)
-        return false;
+    auto &field = move_field;
+    auto &visited = search_visited;
+    subtract_into(search_goals, goals, blocked);
+    field.compute_to(blocked, search_goals, origin_at(position), visited);
     bool breaking_through = false;
-    if (field.get(position) == bc::distance_field::unreachable &&
-        bc::fuel_remaining() > policy::planning_reserve) {
+    if (field.get(position) == bc::distance_field::unreachable) {
         // Camp bodies can seal an entire corridor. Route through destructible
         // obstacles, then clear the next blocking group instead of idling.
         auto temporary = static_blocked | bc::vision::champion_tiles() | bc::vision::teleport_tiles();
@@ -121,8 +183,7 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         }
         return false;
     }
-    if (breaking_through && !squad_member() && !urgent &&
-        bc::fuel_remaining() > policy::action_reserve + 5000) {
+    if (breaking_through && !squad_member() && !urgent) {
         int next_group = -1, best_distance = field.get(position);
         for (const auto &c : camps)
             if (distance(position, c.position) <= range) {
@@ -136,38 +197,39 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
             return true;
     }
     bool moved = false;
-    if (use_dash && bc::fuel_remaining() > policy::planning_reserve)
+    if (use_dash)
         moved = cast_mobility(field, urgent, engaged_group);
     if (moved) {
         // A dash can reveal previously hidden camps and champions. Their tiles
         // must be removed before choosing the ordinary step in the same turn.
-        blocked = static_blocked | bc::vision::champion_tiles() | bc::vision::camp_tiles() |
-                  bc::vision::teleport_tiles();
-        blocked.set(position, false);
+        refresh_blocked();
     }
     if (!me.can_move())
         return moved;
     for (int attempt = 0; attempt < 3; ++attempt) {
-        if (bc::fuel_remaining() < policy::action_reserve + 5000)
-            break;
-        auto legal = blocked.reachable_tiles(position, stats.base_move_speed);
+        // Reachable tiles exclude everything in blocked already.
+        blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
         vec2 best = position;
         float best_score = std::numeric_limits<float>::infinity();
         const int remaining = field.get(position);
-        for (auto p : legal.positions()) {
-            if (bc::fuel_remaining() < policy::action_reserve)
-                break;
-            if (p == position || blocked.is_set(p))
+        for (auto p : step_tiles.positions()) {
+            if (p == position)
                 continue;
             int d = field.get(p);
             if (d == bc::distance_field::unreachable)
                 continue;
             if (!urgent && d >= remaining)
                 continue;
+            const bool bush = bush_tile[tile_index(p)];
+            float least = float(d) * 10;
+            if (bush)
+                least -= 0.4f;
+            if (!(least < best_score))
+                continue; // The incoming estimate only adds: this tile cannot win.
             float score = float(d) * 10;
             score += incoming(p, engaged_group) * (urgent ? 0.8f : 0.14f);
             // Respect bush cover when taking an aggressive approach.
-            if (bc::map::bushes().is_set(p))
+            if (bush)
                 score -= 0.4f;
             if (score < best_score) {
                 best_score = score;
@@ -178,9 +240,8 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
             break;
         if (move_step(best))
             return true;
-        if (bc::fuel_remaining() < policy::planning_reserve)
-            break;
-        field.compute_to(blocked, goals & ~blocked, around(position, 0), visited);
+        subtract_into(search_goals, goals, blocked);
+        field.compute_to(blocked, search_goals, origin_at(position), visited);
     }
     return moved;
 }
@@ -216,7 +277,7 @@ void Bot::retreat_to_spawn() {
         if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range)
             threatened.draw_chebyshev(camp.position, camp.range);
     for (const auto &enemy : enemies) {
-        const auto design = std::get<bc::champion>(enemy.ref).base_stats();
+        const auto design = enemy.champion().base_stats();
         const int reach =
             std::max(enemy.range, enemy.spell_reach) + rules::settings().recall_time * design.base_move_speed;
         if (distance(position, enemy.position) <= stats.vision_radius + reach)
@@ -259,20 +320,16 @@ void Bot::retreat_to_spawn() {
         vec2 best = position;
         auto best_score = score(position);
         for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
-            if (bc::fuel_remaining() < policy::action_reserve)
-                break;
-            if (blocked.is_set(tile))
-                continue;
             const auto value = score(tile);
             if (value < best_score) {
                 best = tile;
                 best_score = value;
             }
         }
-        if (best != position && bc::fuel_remaining() >= policy::action_reserve)
+        if (best != position)
             move_step(best);
     }
-    if (!spawn.is_set(position) && bc::fuel_remaining() > policy::observation_reserve) {
+    if (!spawn.is_set(position)) {
         observe_fight();
         combat(true, -1, true);
     }

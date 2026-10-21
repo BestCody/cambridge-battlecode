@@ -19,21 +19,13 @@ void Bot::play_squad_turn() {
     }
     observe();
     reconcile_squad();
-    if (bc::fuel_remaining() < policy::planning_reserve) {
-        publish_squad();
-        return;
-    }
-    if ((squad.camp < 0 && altar_field.get(position) == bc::distance_field::unreachable &&
+    if ((squad.camp < 0 && altar_walk().get(position) == bc::distance_field::unreachable &&
          (altar_access.size() < altars.size() || (!altar_access.empty() && !altar_access.back().prepared))) ||
         squad.altar >= int(altar_access.size()) ||
         (squad.altar >= 0 && !altar_access[squad.altar].prepared)) {
         // A shared altar ID is valid even when this actor has not built its
         // route yet. Make that dependency useful work, not an idle bank turn.
         prepare_routes();
-        if (bc::fuel_remaining() < policy::planning_reserve) {
-            publish_squad();
-            return;
-        }
     }
     buy_equipment(squad.need_crystal || squad.access_preparation);
     if (position != previous)
@@ -85,11 +77,6 @@ void Bot::play_squad_turn() {
         begin_recovery();
     if (squad.phase == SquadPhase::recover) {
         squad_recover(squad.need_crystal);
-        publish_squad();
-        return;
-    }
-    if (bc::fuel_remaining() < policy::planning_reserve) {
-        squad.motion = {MoveStatus::deferred, MoveReason::fuel};
         publish_squad();
         return;
     }
@@ -151,8 +138,6 @@ void Bot::play_squad_turn() {
         // The next turn executes the newly published job with fresh
         // observations and a full budget after comparing complete routes.
         return;
-    } else if (bc::fuel_remaining() < policy::planning_reserve) {
-        squad.motion = {MoveStatus::deferred, MoveReason::fuel};
     } else if (squad.camp >= 0) {
         squad_resource_turn();
         // Productive actions get first use of the turn budget. Reassessment

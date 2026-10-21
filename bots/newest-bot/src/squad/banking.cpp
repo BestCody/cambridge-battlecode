@@ -38,8 +38,6 @@ bool Bot::channel_protected(vec2 tile, int start, int duration, unsigned guards,
     unsigned spent = committed_guards ? *committed_guards : 0;
     const int end = start + duration;
     for (const auto &enemy : enemies) {
-        if (bc::fuel_remaining() < policy::planning_reserve)
-            return false;
         if (enemy.health <= 0 || enemy.channel)
             continue;
         const int distance_to = distance(enemy.position, tile);
@@ -59,8 +57,7 @@ bool Bot::channel_protected(vec2 tile, int start, int duration, unsigned guards,
                                       enemy.stunned ? enemy.stun_time + 1 : 0, enemy.completed ? 1 : 0}));
         }
         const int altar = plan ? plan->altar : squad.altar;
-        if (altar >= 0 &&
-            std::get<bc::champion>(enemy.ref).consumables()[bc::consumable_type::altar_lock].count())
+        if (altar >= 0 && enemy.champion().consumables()[bc::consumable_type::altar_lock].count())
             interrupts = std::min(
                 interrupts, std::max(0, distance(enemy.position, altars[altar]) - rules::altar_lock_range) /
                                 enemy.move_speed);
@@ -68,18 +65,18 @@ bool Bot::channel_protected(vec2 tile, int start, int duration, unsigned guards,
             continue;
         bool covered = false;
         for (unsigned i = 0; i < roster.size() && !covered; ++i) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return false;
             if (!(guards & (1u << i)) || (spent & (1u << i)))
                 continue;
             const auto *member = i == slot ? &self : observed_member(i);
             if (!member || member->channel || member->stunned)
                 continue;
             auto defender = *member;
+            std::optional<bc::bitboard> defender_sight;
             int ready = member->completed ? 1 : 0;
             if (plan) {
                 defender.position = plan->positions[i];
-                defender.sight = bc::champion(member->type).visible_tiles_from(defender.position);
+                defender_sight = bc::champion(member->type).visible_tiles_from(defender.position);
+                defender.sight = &*defender_sight;
                 ready = std::max(ready, plan->arrivals[i]);
             }
             // Do not assume that our cast precedes an interleaved enemy turn.
@@ -157,8 +154,6 @@ bool Bot::schedule_bank(BankEstimate &plan, const std::array<unsigned, TeamMemor
         for (unsigned wave = remaining; wave; wave = (wave - 1) & remaining) {
             if (first && (wave & already_channeling) != already_channeling)
                 continue;
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return;
             const unsigned guards = plan.participants & ~wave;
             int starts = earliest;
             for (unsigned i = 0; i < roster.size(); ++i)
@@ -243,12 +238,7 @@ BankEstimate Bot::estimate_bank(int altar) {
         if (distance(member->position, altars[altar]) <= rules::settings().submit_gems_range) {
             best = member->position;
         } else if (!crossing) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                return BankEstimate{};
             const auto &cached = member_routes[i];
-            if ((cached.origin != member->position || cached.revision != terrain_revision) &&
-                bc::fuel_remaining() < policy::observation_reserve)
-                return BankEstimate{};
             const auto &from = member_route(i);
             int nearest = bc::distance_field::unreachable;
             for (auto tile : destinations.positions()) {
@@ -336,8 +326,6 @@ BankEstimate Bot::estimate_bank(int altar) {
 BankEstimate Bot::choose_bank() {
     BankEstimate best;
     for (unsigned i = 0; i < altar_access.size(); ++i) {
-        if (bc::fuel_remaining() < policy::observation_reserve)
-            break;
         if (int(i) == squad.failed_altar && int(round) < squad.altar_retry)
             continue;
         const auto candidate = estimate_bank(i);
@@ -348,7 +336,7 @@ BankEstimate Bot::choose_bank() {
 }
 
 bool Bot::review_banking(bool urgent) {
-    if ((!urgent && squad.coordinator != int(slot)) || bc::fuel_remaining() < policy::planning_reserve)
+    if (!urgent && squad.coordinator != int(slot))
         return false;
     if (squad.access_preparation)
         return false;
@@ -473,10 +461,6 @@ bool Bot::teleport_assignment(vec2 &landing) const {
 }
 
 void Bot::squad_bank() {
-    if (bc::fuel_remaining() < policy::planning_reserve) {
-        squad.motion = {MoveStatus::deferred, MoveReason::fuel};
-        return;
-    }
     if (squad.need_crystal) {
         squad_recover(true);
         return;
@@ -529,7 +513,7 @@ void Bot::squad_bank() {
         vec2 landing;
         if (can_protect_channel(rules::settings().tp_crystal_time) &&
             !me.restrictions().contains(bc::buff_restrictions::consumable)) {
-            while (bc::fuel_remaining() > policy::action_reserve && teleport_assignment(landing)) {
+            while (teleport_assignment(landing)) {
                 if (incoming(landing) * rules::settings().tp_crystal_time < health &&
                     me.consumables()[bc::consumable_type::tp_crystal].use(landing)) {
                     squad.bank_stage = BankStage::crossing;

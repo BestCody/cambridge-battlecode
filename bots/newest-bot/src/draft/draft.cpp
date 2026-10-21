@@ -54,7 +54,43 @@ struct DraftState {
             plan.dangerous_fraction = dangerous / groups.size();
         }
         plan.spacing = std::sqrt(float((~walls).count()) / std::max(1u, productive));
+        measure_groups(groups);
         ready = true;
+    }
+
+    void measure_groups(const std::vector<bc::map::camp_group> &groups) {
+        // The same searches a champion's initialisation would run (world.cpp).
+        if (groups.size() > DraftPlan::max_groups)
+            return;
+        const auto static_blocked = terrain();
+        bc::distance_field home, enemy, altar;
+        bc::bitboard visited;
+        home.compute(static_blocked, bc::map::spawn_region(bc::team::ally), visited);
+        enemy.compute(bc::map::walls() | bc::map::holes() | bc::map::altars(),
+                      bc::map::spawn_region(bc::team::enemy), visited);
+        altar.compute(static_blocked, altar_goals_of(bc::map::altars().positions(), static_blocked), visited);
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            auto &distance = plan.group_distance[i];
+            distance.fill(bc::distance_field::unreachable);
+            for (const auto &c : groups[i]) {
+                const auto p = c.spawn_position();
+                distance[DraftPlan::home] = std::min(distance[DraftPlan::home], home.get(p));
+                distance[DraftPlan::enemy] = std::min(distance[DraftPlan::enemy], enemy.get(p));
+                distance[DraftPlan::altar] = std::min(distance[DraftPlan::altar], altar.get(p));
+            }
+        }
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            int shape = 1;
+            for (const auto &a : groups[i]) {
+                int hits = 0;
+                for (const auto &b : groups[i])
+                    hits += distance(a.spawn_position(), b.spawn_position()) <=
+                            bc::constants::passive_abilities::varg_splash_radius;
+                shape = std::max(shape, hits);
+            }
+            plan.group_splash[i] = static_cast<std::uint8_t>(std::min(shape, 255));
+        }
+        plan.group_count = static_cast<std::uint16_t>(groups.size());
     }
 
     void write_roster(const compositions::Entry &entry) {

@@ -63,7 +63,7 @@ const ObservedUnit *Bot::hunt_enemy() const {
     if (squad.hunt_target < 0 || unsigned(squad.hunt_target) >= enemy_roster.size())
         return nullptr;
     for (const auto &enemy : enemies)
-        if (std::get<bc::champion>(enemy.ref) == enemy_roster[squad.hunt_target] && enemy.health > 0)
+        if (enemy.champion() == enemy_roster[squad.hunt_target] && enemy.health > 0)
             return &enemy;
     return nullptr;
 }
@@ -83,7 +83,7 @@ void Bot::end_hunt(const char *reason) {
 
 void Bot::update_hunt() {
     static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
-    if (squad.coordinator != int(slot) || bc::fuel_remaining() < policy::planning_reserve)
+    if (squad.coordinator != int(slot))
         return;
     const bool outnumbered = enemy_power(position) > friendly_power(position) * policy::hunt_abort_margin;
     if (squad.hunt_target >= 0) {
@@ -156,7 +156,7 @@ void Bot::update_hunt() {
 }
 
 bool Bot::squad_hunt_turn() {
-    if (squad.hunt_target < 0 || bc::fuel_remaining() < policy::planning_reserve)
+    if (squad.hunt_target < 0)
         return false;
     // Chasing is progress for the underlying job, which resumes afterwards.
     squad.progress = round;
@@ -173,7 +173,7 @@ bool Bot::squad_hunt_turn() {
     auto &me = bc::self();
     if (!me.is_alive())
         return true;
-    if (me.can_move() && bc::fuel_remaining() > policy::action_reserve) {
+    if (me.can_move()) {
         // Kite: stay inside our spell range but outside the target's reach if
         // we can, and prefer tiles other enemies cannot hit.
         int reach = range;

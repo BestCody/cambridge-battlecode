@@ -6,7 +6,8 @@ float Bot::collateral_risk(vec2 centre, float radius, int engaged_group) const {
         return 0;
     float damage = 0;
     int previous_group = -1;
-    // Observations are ordered by camp group. A splash wakes the entire group,
+    // Observations are ordered by camp group (a group's records together, as
+    // CampList::group() gives them). A splash wakes the entire group,
     // including monsters outside the spell radius, not just the struck monster.
     for (const auto &struck : camps) {
         if (struck.group == previous_group || struck.health <= 0 ||
@@ -18,8 +19,8 @@ float Bot::collateral_risk(vec2 centre, float radius, int engaged_group) const {
         if (groups[struck.group].health < groups[struck.group].max_health ||
             groups[struck.group].attacked >= int(round) - 1)
             continue;
-        for (const auto &camp : camps) {
-            if (camp.group != struck.group || camp.health <= 0 || camp.strength <= 0)
+        for (const auto &camp : camps.group(struck.group)) {
+            if (camp.health <= 0 || camp.strength <= 0)
                 continue;
             int nearest = distance(position, camp.position);
             for (const auto &ally : allies)
@@ -41,7 +42,7 @@ FiringOpportunity Bot::firing(const ObservedUnit &member, const ObservedUnit &en
         return result;
     const int reach = distance(member.position, enemy.position);
     const bool moved = !next_turn && member.movement_spent;
-    if (squad_member() && !member.sight.is_set(enemy.position))
+    if (squad_member() && !member.sees(enemy.position))
         return result;
     float basic = (next_turn || member.can_attack) && reach <= member.range ? member.strength : 0;
     float spell = 0;
@@ -59,7 +60,7 @@ FiringOpportunity Bot::firing(const ObservedUnit &member, const ObservedUnit &en
                 for (int dx = -int(ability.radius); dx <= int(ability.radius) && !centre_available; ++dx)
                     for (int dy = -int(ability.radius); dy <= int(ability.radius); ++dy) {
                         const auto centre = enemy.position + vec2{dx, dy};
-                        if (bc::map::is_in_bounds(centre) && !static_blocked.is_set(centre) &&
+                        if (bc::map::is_in_bounds(centre) && !static_blocked_tile[tile_index(centre)] &&
                             distance(member.position, centre) <= ability.range) {
                             centre_available = true;
                             break;
@@ -88,7 +89,7 @@ unsigned Bot::living_core() const {
 
 const ObservedUnit *Bot::observed_member(unsigned member) const {
     for (const auto &ally : allies)
-        if (std::get<bc::champion>(ally.ref) == roster[member])
+        if (ally.champion() == roster[member])
             return &ally;
     return nullptr;
 }
@@ -104,7 +105,7 @@ unsigned Bot::squad_claim() const {
         return TeamMemory::hunting;
     if (squad.camp < 0)
         return squad.access_preparation ? TeamMemory::supplies_needed : 0;
-    if (groups[squad.camp].status == CampGroup::capture && groups[squad.camp].tiles.is_set(position))
+    if (groups[squad.camp].status == CampGroup::capture && groups[squad.camp].tiles().is_set(position))
         return TeamMemory::holding(squad.camp, groups.size());
     return squad.phase == SquadPhase::travel && TeamMemory::formations(groups.size())
                ? TeamMemory::joining(squad.camp, groups.size())
@@ -344,7 +345,7 @@ int Bot::hidden_interference(const CampGroup &group) const {
     for (unsigned i = 0; i < enemy_roster.size(); ++i) {
         const auto &enemy = enemy_roster[i];
         if (std::any_of(enemies.begin(), enemies.end(),
-                        [&](const auto &seen) { return std::get<bc::champion>(seen.ref) == enemy; }))
+                        [&](const auto &seen) { return seen.champion() == enemy; }))
             continue; // Visible enemies are timed from their actual position.
         // Champions walk one tile per round, and a dead one restarts at spawn.
         // Once an enemy could already be anywhere the bound says nothing, so
@@ -504,7 +505,7 @@ void Bot::squad_focus() {
             score += 2;
         score += control_value(enemy) / std::max(1.0f, enemy.max_health);
         for (unsigned i = 0; i < enemy_roster.size(); ++i)
-            if (std::get<bc::champion>(enemy.ref) == enemy_roster[i]) {
+            if (enemy.champion() == enemy_roster[i]) {
                 if (shared.focus() == i + 1)
                     score *= policy::commit_bonus;
                 if (score > best) {
@@ -518,7 +519,7 @@ void Bot::squad_focus() {
 
 void Bot::squad_priority() {
     auto &me = bc::self();
-    if (!me.is_alive() || bc::fuel_remaining() < policy::planning_reserve)
+    if (!me.is_alive())
         return;
     int priority = priority_tier::idle - int(slot);
     if (me.is_submitting_gems())
@@ -526,8 +527,6 @@ void Bot::squad_priority() {
     else if (!me.is_recalling() && !me.is_teleporting()) {
         const ObservedUnit self(*this);
         for (const auto &enemy : enemies) {
-            if (bc::fuel_remaining() < policy::planning_reserve)
-                break;
             if (!relevant_enemy(enemy))
                 continue;
             const auto next = firing(self, enemy, true);

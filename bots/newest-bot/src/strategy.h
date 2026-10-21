@@ -43,11 +43,25 @@ inline constexpr float depleted_rally_bonus = 3.0f;
 // Fraction of the team that must still be alive for the squad to count as
 // assembled. Below it the rally bias turns on. 0.0 disables regrouping entirely.
 inline constexpr float depleted_alive_fraction = 0.5f;
-inline constexpr std::uint64_t planning_reserve = 30000;
-inline constexpr std::uint64_t action_reserve = 12000;
-inline constexpr std::uint64_t ward_reserve = 15000;
-inline constexpr std::uint64_t observation_reserve = 50000;
-inline constexpr bool diagnostic = true;
+// Decisions never depend on the fuel left, so the same game plays the same at
+// any fuel budget.
+// Tiles of the crystal hop map built per turn (two passes over the map).
+inline constexpr unsigned hop_tiles_per_turn = 400;
+// Walking distance a camp choice first searches to, before groups have their
+// own fields. A choice the groups beyond it could still win searches on.
+inline constexpr std::uint16_t path_bound = 32;
+// Work limits, measured as the fuel this turn has used so far: the same at
+// any budget, unlike the fuel left, so they change no game between budgets.
+// Background precomputation runs a map-wide search only while the turn's work
+// so far plus that search's cost (the last one measured) stays under the
+// first limit, and its smaller steps while the work is under the second.
+inline constexpr std::uint64_t background_search_work = 80000;
+inline constexpr std::uint64_t background_step_work = 60000;
+// Log lines (ACTIVITY, DEATH, CRYSTAL...) for local analysis. Off in ladder
+// builds; turning them on changes no decision.
+inline constexpr bool diagnostic = false;
+// Fuel profiler for local test builds (mechanics/profile.h). Off in ladder builds.
+inline constexpr bool profile = false;
 // Bounded search widths, not map/champion-specific rules.
 inline constexpr unsigned objective_finalists = 6;
 inline constexpr unsigned firing_trials = 6;
@@ -200,7 +214,12 @@ inline const bc::detail::game_settings &settings() {
 }
 } // namespace rules
 
-inline int distance(vec2 a, vec2 b) { return static_cast<int>(a.chebyshev_distance(b)); }
+// vec2's own distance works in 64 bits; map tiles fit 32 with room to spare.
+inline int distance(vec2 a, vec2 b) { return std::max(std::abs(a.x - b.x), std::abs(a.y - b.y)); }
+// Exact ability::is_ready() for our own champion: off cooldown while it can
+// cast. The SDK's version rebuilds the owner's whole champion view on every
+// call (about 580 fuel); this reads the cooldown alone (about 140).
+inline bool ready(const bc::ability &a, bool can_cast) { return can_cast && a.info() && a.cooldown() <= 0; }
 inline bc::bitboard around(vec2 p, float radius) {
     bc::bitboard b;
     b.draw_chebyshev(p, radius);
@@ -356,8 +375,28 @@ struct DraftPlan {
     std::uint8_t cheap_gem_groups = 0;
     float spacing = 0;
     float mean_splash = 1, dangerous_fraction = 0;
+    // Walking distance from each camp group, in camp_groups() order, to our
+    // spawn, the enemy spawn and an altar's tribute tiles: three map-wide
+    // searches the draft affords on its first turn, which a champion's first
+    // turn cannot. group_count is 0 when they are not here.
+    static constexpr std::size_t max_groups = 130;
+    enum Ground { home, enemy, altar };
+    std::uint16_t group_count = 0;
+    std::array<std::array<std::uint16_t, 3>, max_groups> group_distance{};
+    // And each group's splash shape: the most camps within splash radius of
+    // one of its camps (at least 1), counted over every pair.
+    std::array<std::uint8_t, max_groups> group_splash{};
 };
 static_assert(sizeof(DraftPlan) <= 1024);
+
+// Tiles within tribute range of an altar, for the altar field.
+inline bc::bitboard altar_goals_of(const std::vector<vec2> &altars, const bc::bitboard &static_blocked) {
+    bc::bitboard goals;
+    for (auto p : altars)
+        goals |= around(p, rules::settings().submit_gems_range);
+    goals &= ~static_blocked;
+    return goals;
+}
 
 // The draft found gems on the map but none of them behind a farmable camp, so
 // every gem on the map sits behind a fortress (contest: 20 gold clusters and two
