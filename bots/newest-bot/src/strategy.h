@@ -15,7 +15,13 @@ using bc::vec2;
 
 // Policy coefficients, deliberately separate from engine-provided game rules.
 namespace policy {
-inline constexpr float early_gold_value = 0.26f;
+// A gold's value in gems in camp choice: early_gold_value at round 0, falling
+// linearly to late_gold_value by half the game. Early gold buys the first
+// shards that decide the first fights: after the clear-model calibrations
+// favoured long gem clears, 0.26 left the team without them on small maps,
+// where rushing enemies arrived mid-clear. 0.65 won 14 more of 490 games and
+// cut 2.8 deaths a game against the old bots.
+inline constexpr float early_gold_value = 0.65f;
 inline constexpr float late_gold_value = 0.10f;
 inline constexpr float aggression = 1.60f;
 // Camp choice's factor on contested camps (enemy no more than 8 tiles further
