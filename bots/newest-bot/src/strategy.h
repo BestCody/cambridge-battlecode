@@ -202,9 +202,12 @@ inline constexpr float respawn_wait_weight = 3.0f;
 // Team cohesion in camp choice. The top team farms neighbouring camps about
 // 8 tiles apart, close enough to join each other's fights. A camp farther than cohesion_radius from every
 // teammate's claimed camp or visible position has its value divided by
-// 1 + cohesion_weight * excess / cohesion_radius. 0 disables.
+// 1 + cohesion_weight * excess / cohesion_radius. 0 disables. Since camp
+// choice counts free nearby allies as helpers, 1.0 kept the whole team in one
+// blob where the top team splits into groups of 3-4; 0.25 beat 1.0 by 22 wins
+// in 560 games over five opponent sets (0.75 by 6), while 0 and 1.5 lost.
 inline constexpr int cohesion_radius = 8;
-inline constexpr float cohesion_weight = 1.0f;
+inline constexpr float cohesion_weight = 0.25f;
 // Camp choice counts the living allies within partner_radius that are free (no
 // claim, or a claim on a finished camp) as helpers on every camp, besides the
 // camp's claimants: a group moving together clears any camp at the group's
