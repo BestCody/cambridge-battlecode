@@ -151,7 +151,7 @@ int Bot::worker_choose_group() {
             status[i] = int(g.status);
             respawn[i] = g.respawn;
             path[i] = paths[i];
-            siege[i] = g.siege_open > 0 ? -1 : 0;
+            siege[i] = (range > 1 || policy::siege_melee) && g.siege_open > 0 ? -1 : 0;
             mark[i] = marks[i];
             remaining[i] = g.status == CampGroup::cooling ? g.max_health : g.health;
             splash[i] = g.splash;
@@ -435,7 +435,8 @@ void Bot::worker_farm() {
         if (s.modifier > 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
                                s.kind == bc::ability_kind::aoe_damage))
             spell_range = std::max(spell_range, s.range);
-    bool siege = spell_range > 3 && clear_loss(g, clear) > health * (1 - policy::casualty_margin);
+    bool siege = (range > 1 || policy::siege_melee) && spell_range > 3 &&
+                 clear_loss(g, clear) > health * (1 - policy::casualty_margin);
     if (siege && policy::siege_alone_only && ally_draws_attacks(g))
         siege = false;
     bc::bitboard goals;

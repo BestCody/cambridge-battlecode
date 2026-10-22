@@ -18,7 +18,9 @@ namespace policy {
 inline constexpr float early_gold_value = 0.26f;
 inline constexpr float late_gold_value = 0.10f;
 inline constexpr float aggression = 1.60f;
-inline constexpr float contest_bonus = 0.22f;
+// Camp choice's factor on contested camps (enemy no more than 8 tiles further
+// than us) is 1 + contest_bonus: steering away from them cut deaths by a fifth.
+inline constexpr float contest_bonus = -0.30f;
 inline constexpr float commit_bonus = 1.08f;
 inline constexpr float retreat_health = 0.28f;
 inline constexpr float casualty_margin = 0.12f;
@@ -178,6 +180,10 @@ inline constexpr int crystal_min_saving = 8;
 // Camps attack the nearest champion, so with a closer ally we attack from
 // normal range. false sieges whenever a solo clear would be too costly.
 inline constexpr bool siege_alone_only = true;
+// Whether melee champions with a long-range spell (Ren, Ryth) siege too: they
+// then stand beyond the camps' reach casting once a cooldown (about 150 turns a
+// game each). false leaves sieges to the ranged casters.
+inline constexpr bool siege_melee = false;
 // Team cohesion in camp choice. The top team farms neighbouring camps about
 // 8 tiles apart, close enough to join each other's fights. A camp farther than cohesion_radius from every
 // teammate's claimed camp or visible position has its value divided by
