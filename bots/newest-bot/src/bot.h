@@ -90,6 +90,20 @@ struct CampGroup {
   private:
     mutable std::optional<bc::bitboard> tile_mask;
 };
+
+// The share of strength x clear time a clear costs the champions clearing it.
+// Without policy::fitted_camp_loss, 0.68 for any group of several camps.
+// With it, by the camps that strike back, fitted to measured clears: one
+// 0.68, two 0.5, three or more 0.35 (they die one by one, and ranged
+// attackers stay within reach of fewer of them).
+inline float camp_loss_factor(const CampGroup &g) {
+    if constexpr (!policy::fitted_camp_loss)
+        return g.camps.size() > 1 ? 0.68f : 1.0f;
+    int strikers = 0;
+    for (const auto &c : g.camps)
+        strikers += c.stats.base_strength > 0;
+    return strikers <= 1 ? (g.camps.size() > 1 ? 0.68f : 1.0f) : strikers == 2 ? 0.5f : 0.35f;
+}
 // A champion's two spells, kept once per type (ours in the Bot): a unit
 // record refers to them instead of carrying a copy.
 struct SpellsRef {

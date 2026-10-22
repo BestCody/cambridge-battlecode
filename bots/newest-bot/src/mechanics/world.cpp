@@ -1261,7 +1261,7 @@ float Bot::dps(const CampGroup &g) const {
 float Bot::clear_loss(const CampGroup &g, float clear_time) const {
     float loss = g.pressure * clear_time * camp_mitigation;
     if (g.camps.size() > 1)
-        loss *= 0.68f; // Sequential kills remove attackers during a clear.
+        loss *= camp_loss_factor(g); // Sequential kills remove attackers during a clear.
     for (const auto &s : spells) {
         if (s.kind == bc::ability_kind::shield)
             loss -= focus * s.modifier * (1 + clear_time / s.cooldown);

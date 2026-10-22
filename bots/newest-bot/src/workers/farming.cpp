@@ -117,7 +117,7 @@ int Bot::worker_choose_group(int excluded) {
         // and the enemy's side; the gem reward, the gold, the altar term and
         // the centre.
         std::int32_t *several, *contested, *gem, *enemy_side, *x, *y;
-        float *gem_reward, *gold, *altar;
+        float *gem_reward, *gold, *altar, *loss_factor;
         // This choice's state.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
         float *remaining, *splash, *pressure, *claims, *scores;
@@ -126,7 +126,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[12 * padded]);
-        lanes.floats.reset(new float[8 * padded]);
+        lanes.floats.reset(new float[9 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.several, &lanes.contested, &lanes.gem, &lanes.enemy_side, &lanes.x, &lanes.y,
@@ -136,7 +136,7 @@ int Bot::worker_choose_group(int excluded) {
         }
         float *next_float = lanes.floats.get();
         for (auto **lane : {&lanes.gem_reward, &lanes.gold, &lanes.altar, &lanes.remaining, &lanes.splash,
-                            &lanes.pressure, &lanes.claims, &lanes.scores}) {
+                            &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.loss_factor}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -145,7 +145,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.status, lanes.respawn, lanes.siege_open, lanes.marks})
                 lane[i] = 0;
             for (auto *lane : {lanes.gem_reward, lanes.gold, lanes.altar, lanes.remaining, lanes.splash,
-                               lanes.pressure, lanes.claims})
+                               lanes.pressure, lanes.claims, lanes.loss_factor})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -163,6 +163,7 @@ int Bot::worker_choose_group(int excluded) {
             lanes.gem_reward[i] = gem_value * gem_weight;
             lanes.gold[i] = float(g.unit.gold_value());
             lanes.altar[i] = std::min(20, g.altar_distance) * 0.25f;
+            lanes.loss_factor[i] = camp_loss_factor(g);
         }
     }
     const auto gather = [&] {
@@ -272,7 +273,10 @@ int Bot::worker_choose_group(int excluded) {
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // clear_loss(g, clear).
             v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear), splat(camp_mitigation));
-            loss = pick(wasm_f32x4_mul(loss, splat(0.68f)), loss, wasm_v128_load(&lanes.several[i]));
+            if constexpr (policy::fitted_camp_loss)
+                loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
+            else
+                loss = pick(wasm_f32x4_mul(loss, splat(0.68f)), loss, wasm_v128_load(&lanes.several[i]));
             for (const auto &spell : spells) {
                 const v128_t cooldown = splat(float(spell.cooldown));
                 if (spell.kind == bc::ability_kind::shield)

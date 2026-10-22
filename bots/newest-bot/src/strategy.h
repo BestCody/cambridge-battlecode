@@ -225,6 +225,12 @@ inline constexpr int partner_radius = 6;
 // small ones; 1.3 won 10 more of 490 games and raised gems by round 300 from
 // 85 to 97, with more elk and fewer wolf clears early.
 inline constexpr float helper_speed = 1.3f;
+// Camp loss (camp choice's risk, the siege decision) by the number of camps
+// that strike back, fitted to measured clears (see camp_loss_factor in bot.h);
+// false: 0.68 for every group of several camps, which overstated the cost of
+// two- and three-monster camps 1.4-3x. Won 16 more of 490 games (46 of 70 head
+// to head) and raised gems by round 300 from 97 to 107.
+inline constexpr bool fitted_camp_loss = true;
 // One holder per capture: with no enemy in view, a champion on its way to (or
 // standing on) a camp being captured that sees a higher-ranked ally on it
 // takes the next camp instead. Carries (Stellar, Heart of Ruin) rank first, so
