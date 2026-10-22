@@ -2,7 +2,15 @@
 #include "../bot.h"
 #include <wasm_simd128.h>
 
-int Bot::worker_choose_group() {
+namespace {
+// Carries take capture rewards first: the holder gets the gold, and the top
+// team spends it on these two.
+bool carry(bc::champion_type t) {
+    return t == bc::champion_type::stellar || t == bc::champion_type::heart_of_ruin;
+}
+} // namespace
+
+int Bot::worker_choose_group(int excluded) {
     profiling::Scope scope(profiling::Stage::choose);
     measure_paths(1);
     float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
@@ -42,7 +50,7 @@ int Bot::worker_choose_group() {
     // view: teammates' claims (each claimant can supply the next clear's
     // damage, so each claim is also a partner), a living squad member's
     // objective, and an ally or an enemy standing on it.
-    enum : std::uint8_t { reserved = 1, ally_on = 2, enemy_on = 4 };
+    enum : std::uint8_t { reserved = 1, ally_on = 2, enemy_on = 4, carry_on = 8 };
     static std::vector<std::uint8_t> claims, marks;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
@@ -61,7 +69,9 @@ int Bot::worker_choose_group() {
     };
     for (const auto &a : allies)
         if (const int g = standing_on(a.position); g >= 0)
-            marks[g] |= ally_on;
+            marks[g] |= ally_on | (policy::single_holder && carry(a.type) ? carry_on : 0);
+    // A held camp is left to its holder; a carry only leaves one a carry holds.
+    const std::int32_t holder_on = policy::single_holder && carry(type) ? carry_on : ally_on;
     for (const auto &e : enemies)
         if (const int g = standing_on(e.position); g >= 0)
             marks[g] |= enemy_on;
@@ -205,7 +215,7 @@ int Bot::worker_choose_group() {
             const v128_t is_held = wasm_i32x4_eq(status, splat_int(CampGroup::capture));
             const v128_t is_cooling = wasm_i32x4_eq(status, splat_int(CampGroup::cooling));
             const v128_t is_here = wasm_i32x4_eq(index, splat_int(here));
-            const v128_t ally_here = wasm_v128_and(is_held, mark_set(mark, ally_on));
+            const v128_t ally_here = wasm_v128_and(is_held, mark_set(mark, holder_on));
             const v128_t enemy_here = wasm_v128_and(is_held, mark_set(mark, enemy_on));
             // Not a candidate: a squad member's objective (unless we hold it),
             // out of reach, or held by an ally with no enemy contesting it.
@@ -215,6 +225,8 @@ int Bot::worker_choose_group() {
                              wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             if constexpr (policy::worker_pure_resource)
                 skip = wasm_v128_or(skip, enemy_here); // Contesting a held reward is the squad's job.
+            if constexpr (policy::single_holder)
+                skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
             const v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(range)), no_bits);
             const v128_t waiting_steps = wasm_v128_and(
                 is_cooling, wasm_i32x4_max(wasm_i32x4_sub(wasm_i32x4_sub(wasm_v128_load(&lanes.respawn[i]),
@@ -425,6 +437,11 @@ void Bot::worker_farm() {
         if (before >= 0 && target >= 0 && target != before && !finished)
             ++target_switches;
     }
+    // One holder per capture: the reward is the team's whoever holds it, so
+    // the others take the next camp instead of waiting on this one.
+    if (policy::single_holder && target >= 0 && last_plan != int(round) &&
+        groups[target].status == CampGroup::capture && enemies.empty() && capture_outranked(groups[target]))
+        target = worker_choose_group(target);
     if (target < 0) {
         publish(0);
         return;
@@ -578,6 +595,24 @@ bc::bitboard Bot::siege_tiles(const CampGroup &g, float reach, bool assume_alive
     threatened &= tiles;
     tiles ^= threatened;
     return tiles;
+}
+
+bool Bot::capture_outranked(const CampGroup &g) const {
+    // A visible ally on the capture holds it instead of us: a carry before
+    // anyone else; between equals, any holder when we are off the tiles, then
+    // the bigger bag, then the lower id. Every holder ranks the same way, so
+    // exactly one stays, and a carry arriving takes over from a non-carry.
+    const bool on = g.tiles().is_set(position);
+    for (const auto &ally : allies) {
+        if (ally.health <= 0 || !g.tiles().is_set(ally.position))
+            continue;
+        if (carry(ally.type) != carry(type) ? carry(ally.type)
+            : !on                           ? true
+            : ally.gems != int(gems)        ? ally.gems > int(gems)
+                                            : id(ally.champion()) < id(bc::self()))
+            return true;
+    }
+    return false;
 }
 
 bool Bot::ally_draws_attacks(const CampGroup &g) const {

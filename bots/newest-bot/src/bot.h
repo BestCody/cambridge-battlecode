@@ -685,8 +685,10 @@ class Bot {
     void worker_report();
     bool worker_escape();
     bool worker_caught() const;
-    int worker_choose_group();
+    // excluded: a group never chosen (-1: none).
+    int worker_choose_group(int excluded = -1);
     void worker_farm();
+    bool capture_outranked(const CampGroup &g) const;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;

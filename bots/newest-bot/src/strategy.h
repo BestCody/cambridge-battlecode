@@ -208,6 +208,14 @@ inline constexpr float cohesion_weight = 1.0f;
 // deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
 // gained less, and counting every nearby ally, free or not, lost.
 inline constexpr int partner_radius = 6;
+// One holder per capture: with no enemy in view, a champion on its way to (or
+// standing on) a camp being captured that sees a higher-ranked ally on it
+// takes the next camp instead. Carries (Stellar, Heart of Ruin) rank first, so
+// they collect the rewards' gold. The top team holds 91% of captures with one
+// champion and its carries earn most of its gold. Won 48 of 70 against the
+// previous commit with a better margin against every opponent; first come
+// holding (no carry rank) raised deaths and lost to the old bots.
+inline constexpr bool single_holder = true;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
