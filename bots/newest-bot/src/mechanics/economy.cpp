@@ -3,7 +3,8 @@
 
 namespace {
 using Item = bc::item_type;
-// The top team's purchase order: a few single shards early, then one item
+// The top team's purchase order: a few whole emblems early (policy::
+// full_emblems; only a finished emblem gives its passive), then one item
 // bought indefinitely. Every shard adds one growth of its stat; five identical
 // shards combine into an emblem automatically (a power emblem counts as six).
 struct BuildStep {
@@ -19,6 +20,13 @@ Build build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::stellar:
         case bc::champion_type::heart_of_ruin: // Carries: damage after a little growth.
+            if constexpr (policy::full_emblems)
+                return {{{{Item::treasure_shard_of_focus, 5},
+                          {Item::power_shard_of_focus, 5},
+                          {Item::home_shard_of_health, 5},
+                          {Item::durability_shard_of_health, 5}}},
+                        4,
+                        Item::power_shard_of_focus};
             return {{{{Item::treasure_shard_of_focus, 1},
                       {Item::power_shard_of_focus, 1},
                       {Item::home_shard_of_health, 1},
@@ -26,6 +34,10 @@ Build build_for(bc::champion_type type) {
                     4,
                     Item::power_shard_of_focus};
         case bc::champion_type::ren: // Tank first, then focus for its stun.
+            if constexpr (policy::full_emblems)
+                return {{{{Item::bruiser_shard_of_health, 5}, {Item::durability_shard_of_health, 5}}},
+                        2,
+                        Item::power_shard_of_focus};
             return {{{{Item::bruiser_shard_of_health, 2}, {Item::durability_shard_of_health, 2}}},
                     2,
                     Item::power_shard_of_focus};

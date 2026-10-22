@@ -163,6 +163,12 @@ inline constexpr unsigned fish_bag_nearby = 10;
 // Gold, in shards, that sends a champion home to shop. Carries earn about
 // three times the gold of the others and shop about every 100 rounds.
 inline constexpr int carry_shopping_shards = 10;
+// Builds of whole emblems, as the top team buys them (only a finished emblem
+// gives its passive): carries Treasure, Power, Home and Durability emblems,
+// then Power of Focus; Ren Bruiser and Durability emblems, then Power of
+// Focus. One shard of each instead (no passives) lost 150 to 121 in 210
+// games, with 5.5 more deaths a game.
+inline constexpr bool full_emblems = true;
 // Heart of Ruin hits up to 50% harder at low health and shields itself, so it
 // stays in fights longer than the others.
 inline constexpr float heart_retreat_health = 0.15f;
