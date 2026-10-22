@@ -72,6 +72,22 @@ int Bot::worker_choose_group() {
     const bool issac_link = squad.members && type == bc::champion_type::issac;
     const float link = issac_link ? linked_risk() : 0.0f;
     const bool weak = health < max_health * policy::retreat_health;
+    // Allies close enough to share the next clear and committed to no other
+    // camp (no claim, or a claim on a finished one): every camp counts them
+    // as helpers, as it counts its claimants.
+    int free_partners = 0;
+    if constexpr (policy::partner_radius > 0)
+        for (const auto &ally : allies) {
+            if (ally.health <= 0 || distance(position, ally.position) > policy::partner_radius)
+                continue;
+            for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+                if (s != slot && ally.champion() == roster[s]) {
+                    const unsigned code = shared.get(s);
+                    const int claimed = TeamMemory::objective(code, groups.size());
+                    free_partners += code == 0 || (claimed >= 0 && groups[claimed].status == CampGroup::cooling);
+                    break;
+                }
+        }
     constexpr float skipped = -std::numeric_limits<float>::infinity();
 
     // Each group's inputs in lanes of four, the tail padded with lanes that
@@ -237,9 +253,10 @@ int Bot::worker_choose_group() {
             }
             if (passive == bc::passive_type::retaliation)
                 rate = wasm_f32x4_add(rate, splat(retaliation));
+            const v128_t helpers = wasm_f32x4_add(claimants, splat(float(free_partners)));
             const v128_t speed =
                 wasm_f32x4_mul(wasm_f32x4_pmax(one, wasm_f32x4_mul(rate, splat(camp_multiplier))),
-                               wasm_f32x4_add(one, wasm_f32x4_mul(claimants, splat(0.65f))));
+                               wasm_f32x4_add(one, wasm_f32x4_mul(helpers, splat(0.65f))));
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // clear_loss(g, clear).
             v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear), splat(camp_mitigation));

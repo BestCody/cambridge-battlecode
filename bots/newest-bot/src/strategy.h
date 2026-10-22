@@ -199,6 +199,15 @@ inline constexpr float respawn_wait_weight = 3.0f;
 // 1 + cohesion_weight * excess / cohesion_radius. 0 disables.
 inline constexpr int cohesion_radius = 8;
 inline constexpr float cohesion_weight = 1.0f;
+// Camp choice counts the living allies within partner_radius that are free (no
+// claim, or a claim on a finished camp) as helpers on every camp, besides the
+// camp's claimants: a group moving together clears any camp at the group's
+// pace. Scored alone, an elk camp loses to the gold cluster the group already
+// shares, so the group never starts one; the top team opens on elk camps
+// together. 6 beat claimants only (0) by 16 wins in 350 games, with fewer
+// deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
+// gained less, and counting every nearby ally, free or not, lost.
+inline constexpr int partner_radius = 6;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
