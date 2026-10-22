@@ -1334,6 +1334,17 @@ fn camp_groups_use_host_membership_and_state_variants() {
     );
 }
 #[test]
+fn bytemuck_traits_round_trip_sdk_types() {
+    let values = [Vec2::new(-1, 2), Vec2::new(3, -4)];
+    let bytes: &[u8] = bytemuck::cast_slice(&values);
+    assert_eq!(bytemuck::cast_slice::<u8, Vec2>(bytes), values);
+    assert_eq!(bytemuck::cast::<_, u32>(ChampionState::ALIVE | ChampionState::CAN_CAST), 1 | 1 << 11);
+    assert_eq!(bytemuck::checked::try_cast::<u32, ItemType>(41), Ok(ItemType::BruiserEmblemOfHealth));
+    assert!(bytemuck::checked::try_cast::<u32, ItemType>(42).is_err());
+    assert!(bytemuck::checked::try_cast::<u8, PassiveType>(9).is_err());
+    assert_eq!(bytemuck::cast::<_, i32>(ChampionType::Tavi), 11);
+}
+#[test]
 fn aligned_boards_and_fields_clone_own_their_storage() {
     setup();
     crate::init().unwrap();

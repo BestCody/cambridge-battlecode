@@ -5165,8 +5165,8 @@ inline void pick(champion_draft pick)
 
 } // namespace draft
 
-/// Drawings are available during draft and gameplay and last for the current round.
-/// Both teams' drawings clear at the next round; the final draft round clears when gameplay begins.
+/// Gameplay drawings last until the start of the drawing champion's next turn.
+/// Draft drawings clear at the next draft round, or when gameplay begins.
 namespace debug
 {
 /// Emit a debug dot on a tile using a packed 0xRRGGBB colour.

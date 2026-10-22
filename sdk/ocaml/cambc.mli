@@ -1879,8 +1879,8 @@ module Draft_memory : sig
 end
 
 module Debug : sig
-  (** Drawing is available during draft and gameplay. Both teams' drawings last
-      for the current round and clear at the next round, or when gameplay begins. *)
+  (** Gameplay drawings last until the start of the drawing champion's next turn.
+      Draft drawings clear at the next draft round, or when gameplay begins. *)
   (** [draw_dot p rgb] draws a debug dot in the replay.
       @param p Tile to mark.
       @param rgb Packed [0xRRGGBB] colour. *)
