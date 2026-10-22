@@ -268,7 +268,7 @@ int Bot::worker_choose_group(int excluded) {
             const v128_t helpers = wasm_f32x4_add(claimants, splat(float(free_partners)));
             const v128_t speed =
                 wasm_f32x4_mul(wasm_f32x4_pmax(one, wasm_f32x4_mul(rate, splat(camp_multiplier))),
-                               wasm_f32x4_add(one, wasm_f32x4_mul(helpers, splat(0.65f))));
+                               wasm_f32x4_add(one, wasm_f32x4_mul(helpers, splat(policy::helper_speed))));
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // clear_loss(g, clear).
             v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear), splat(camp_mitigation));

@@ -217,6 +217,14 @@ inline constexpr float cohesion_weight = 0.25f;
 // deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
 // gained less, and counting every nearby ally, free or not, lost.
 inline constexpr int partner_radius = 6;
+// Camp choice's clear rate with helpers: our own rate times 1 + helper_speed
+// per helper, for both the clear time and the health it costs. Fitted to our
+// measured clear times by group size (1.3; 0.65 fitted worst): each helper
+// adds about a champion's damage and more, as one tank takes the camp's hits.
+// The old 0.65 made big camps look slow and risky to a group, so it took
+// small ones; 1.3 won 10 more of 490 games and raised gems by round 300 from
+// 85 to 97, with more elk and fewer wolf clears early.
+inline constexpr float helper_speed = 1.3f;
 // One holder per capture: with no enemy in view, a champion on its way to (or
 // standing on) a camp being captured that sees a higher-ranked ally on it
 // takes the next camp instead. Carries (Stellar, Heart of Ruin) rank first, so
