@@ -184,6 +184,11 @@ inline constexpr bool siege_alone_only = true;
 // then stand beyond the camps' reach casting once a cooldown (about 150 turns a
 // game each). false leaves sieges to the ranged casters.
 inline constexpr bool siege_melee = false;
+// Weight of the rounds spent waiting for a respawning camp in camp choice's
+// duration, against the rounds spent travelling and clearing. Waiting wastes
+// the turns another camp could use; the top team moves on and comes back.
+// 2-3 beat 1 by about 40 wins in 630 games; 5 was worse again.
+inline constexpr float respawn_wait_weight = 3.0f;
 // Team cohesion in camp choice. The top team farms neighbouring camps about
 // 8 tiles apart, close enough to join each other's fights. A camp farther than cohesion_radius from every
 // teammate's claimed camp or visible position has its value divided by

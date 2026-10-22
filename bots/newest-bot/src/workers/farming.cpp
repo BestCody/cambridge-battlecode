@@ -297,9 +297,12 @@ int Bot::worker_choose_group() {
             const v128_t reward =
                 wasm_f32x4_add(wasm_v128_load(&lanes.gem_reward[i]),
                                wasm_f32x4_mul(splat(gold_value), wasm_v128_load(&lanes.gold[i])));
+            v128_t waiting = wasm_f32x4_convert_i32x4(waiting_steps);
+            if constexpr (policy::respawn_wait_weight != 1.0f)
+                waiting = wasm_f32x4_mul(waiting, splat(policy::respawn_wait_weight));
             v128_t duration = wasm_f32x4_add(
                 wasm_f32x4_add(wasm_f32x4_add(wasm_f32x4_add(wasm_f32x4_convert_i32x4(travel_steps), clear),
-                                              wasm_f32x4_convert_i32x4(waiting_steps)),
+                                              waiting),
                                splat(float(capture_time))),
                 one);
             duration = wasm_f32x4_add(duration, wasm_v128_load(&lanes.altar[i]));
