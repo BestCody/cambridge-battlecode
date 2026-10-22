@@ -657,9 +657,10 @@ bool Bot::attack_combo(bool escaping) {
     // what scoring its combo alone does, operation for operation and in the
     // same order (an operation that does not apply to a lane leaves its values
     // as they are), and the scores are then offered in the usual order. Used
-    // for an attack and a run of casts, in both orders, with one standing tile.
+    // for an attack and a run of casts, in both orders, from the tile we stand
+    // on; a combo legal only from a step is scored on its own in its place.
     constexpr std::size_t batch_foes = 16;
-    const bool batchable = origins.size() == 1 && foe_count <= batch_foes;
+    const bool batchable = foe_count <= batch_foes;
     struct Batch {
         v128_t score, own_health, own_shield;
         v128_t left[batch_foes], touched[batch_foes], stunned[batch_foes];
@@ -727,7 +728,7 @@ bool Bot::attack_combo(bool escaping) {
         b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat((200 + gems * 7 + strength * 3) * link)), b.score,
                          wasm_f32x4_le(b.own_health, zero));
     };
-    // The credits evaluate() adds after the actions, standing on the only tile.
+    // The credits evaluate() adds after the actions, standing on our own tile.
     const auto credit = [&](Batch &b) {
         for (std::size_t i = 0; i < foe_count; ++i) {
             if (!wasm_v128_any_true(b.touched[i]))
@@ -779,7 +780,7 @@ bool Bot::attack_combo(bool escaping) {
     std::size_t run_count = 0;
     // Each lane's cast applied to a batch, as apply() applies it, where `live`.
     const auto cast_lanes = [&](Batch &b, const CastRun &run, std::uint32_t live) {
-        // A cast: its support (one standing tile), the unused cast, the shield.
+        // A cast: its support (from our own tile), the unused cast, the shield.
         b.score = wasm_f32x4_add(b.score, run.support);
         b.score = wasm_f32x4_sub(b.score, wasm_f32x4_splat(policy::unused_cast_cost));
         b.own_shield = wasm_f32x4_pmax(b.own_shield, run.shield);
@@ -833,7 +834,7 @@ bool Bot::attack_combo(bool escaping) {
             for (std::size_t i = 0; i < foe_count; ++i)
                 run.hit[i] = lane_mask(std::uint32_t(hits[0] >> i & 1) | std::uint32_t(hits[1] >> i & 1) << 1 |
                                        std::uint32_t(hits[2] >> i & 1) << 2 | std::uint32_t(hits[3] >> i & 1) << 3);
-            // The start (one standing tile: begin_combo()), then each cast.
+            // The start (our own tile: begin_combo()), then each cast.
             Batch &b = run.alone;
             b.score = zero;
             b.own_health = wasm_f32x4_splat(health);
@@ -931,7 +932,7 @@ bool Bot::attack_combo(bool escaping) {
                         going_on = wasm_v128_andnot(going_on, wasm_f32x4_le(b.left[a.target], zero));
                     attack_scored = std::uint32_t(wasm_i32x4_bitmask(going_on));
                     if (attack_scored) {
-                        // An attack: its support (one standing tile) and shield.
+                        // An attack: its support (from our own tile) and shield.
                         b.score = wasm_f32x4_add(b.score, wasm_f32x4_splat(a.support));
                         b.own_shield = wasm_f32x4_pmax(b.own_shield, wasm_f32x4_splat(a.shield));
                         v128_t recoil = zero;
@@ -947,6 +948,13 @@ bool Bot::attack_combo(bool escaping) {
                 }
             }
             for (int j = 0; j < run.used; ++j) {
+                if (!(legal >> j & 1) && origins.size() > 1) {
+                    // Not from this tile but maybe from a step: scored alone, here.
+                    evaluate({first, run.cast[j], -1});
+                    if (first >= 0)
+                        evaluate({run.cast[j], first, -1});
+                    continue;
+                }
                 if ((cast_scored >> j & 1) && then_cast[j] > best.score)
                     best = {{first, run.cast[j], -1}, then_cast[j], 0};
                 if ((attack_scored >> j & 1) && cast_first[j] > best.score)
