@@ -33,7 +33,11 @@ inline constexpr float assist_finish_credit = 0.55f;
 inline constexpr float stun_followup_credit = 0.5f;
 inline constexpr float unused_cast_cost = 0.01f;
 inline constexpr float formation_advantage = 1.10f;
-inline constexpr float partner_penalty = 0.35f;
+// Camp choice divides a group's score by 1 + partner_penalty per teammate
+// already claiming it (whose help it also counts as faster clearing). The team
+// gets the whole reward whoever captures it, so no penalty: champions join each
+// other on big groups, as the top team does.
+inline constexpr float partner_penalty = 0.0f;
 // Cassi and Issac share one fate: one death drops both bags, so the pair banks
 // smaller amounts more often than a solo champion. 1.0 disables the adjustment.
 inline constexpr float twin_bank_scale = 0.6f;
