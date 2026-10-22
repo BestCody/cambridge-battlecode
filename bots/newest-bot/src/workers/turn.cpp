@@ -142,7 +142,7 @@ void Bot::play_worker_turn() {
 
     bool upgrade =
         me.gold_count() >= bc::item_type::power_shard_of_strength.cost() *
-                               (type == bc::champion_type::stellar || type == bc::champion_type::heart_of_ruin
+                               (is_carry(type)
                                     ? policy::carry_shopping_shards
                                     : policy::shopping_shards) &&
         passive != bc::passive_type::remote_shop;

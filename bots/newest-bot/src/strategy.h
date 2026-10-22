@@ -245,7 +245,24 @@ inline constexpr bool fitted_camp_loss = true;
 // previous commit with a better margin against every opponent; first come
 // holding (no carry rank) raised deaths and lost to the old bots.
 inline constexpr bool single_holder = true;
+// The draft. 0: the top team's earlier lineup (Stellar, Heart of Ruin, Ren;
+// Twins at 4 picks, Ryth at 5). 1: its lineup since engine 1.0.3 (Vesper,
+// Vendetta, Heart of Ruin; Twins at 4, Ryth at 5), where Vesper and Vendetta
+// collect most of its gems and gold. Lineup 1 won 65 of 80 head to head
+// against lineup 0 and 194 vs 168 of 210 against the old bots (deaths 12.3
+// vs 19.4 a game).
+inline constexpr int lineup = 1;
 } // namespace policy
+
+// Carries take capture rewards first (and so the gold), bank bigger bags and
+// shop on more gold.
+inline bool is_carry(bc::champion_type t) {
+    if (t == bc::champion_type::heart_of_ruin)
+        return true;
+    if constexpr (policy::lineup == 1)
+        return t == bc::champion_type::vesper_vale || t == bc::champion_type::vendetta;
+    return t == bc::champion_type::stellar;
+}
 
 // Next-round action order. Tiers are disjoint so an enabling stun never
 // outranks a finishing blow, whatever the raw damage values.

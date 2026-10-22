@@ -5,9 +5,7 @@
 namespace {
 // Carries take capture rewards first: the holder gets the gold, and the top
 // team spends it on these two.
-bool carry(bc::champion_type t) {
-    return t == bc::champion_type::stellar || t == bc::champion_type::heart_of_ruin;
-}
+bool carry(bc::champion_type t) { return is_carry(t); }
 } // namespace
 
 int Bot::worker_choose_group(int excluded) {

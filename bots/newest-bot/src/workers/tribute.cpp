@@ -18,7 +18,7 @@ bool Bot::worker_tribute() {
     bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Small bags banked often: the top team's carries bank around 28 gems and
     // everyone else around 20, so a death rarely costs much.
-    const bool carry = type == bc::champion_type::stellar || type == bc::champion_type::heart_of_ruin;
+    const bool carry = is_carry(type);
     float threshold = float(carry ? policy::fish_bag_carry : policy::fish_bag_other);
     // Near victory, each champion should bank its share of the remaining score.
     threshold = std::min(threshold, float(remaining) / std::max(std::size_t(1), roster.size()));

@@ -18,8 +18,26 @@ struct Build {
 };
 Build build_for(bc::champion_type type) {
     switch (type) {
-        case bc::champion_type::stellar:
-        case bc::champion_type::heart_of_ruin: // Carries: damage after a little growth.
+        case bc::champion_type::vesper_vale: // The top team's 1.0.3 builds (lineup 1).
+            return {{{{Item::treasure_shard_of_strength, 5},
+                      {Item::bruiser_shard_of_strength, 5},
+                      {Item::durability_shard_of_health, 5}}},
+                    3,
+                    Item::power_shard_of_strength};
+        case bc::champion_type::vendetta:
+            return {{{{Item::treasure_shard_of_health, 5},
+                      {Item::jungle_shard_of_strength, 5},
+                      {Item::bruiser_shard_of_health, 5},
+                      {Item::durability_shard_of_health, 5}}},
+                    4,
+                    Item::bruiser_shard_of_strength};
+        case bc::champion_type::heart_of_ruin:
+            if constexpr (policy::lineup == 1)
+                return {{{{Item::treasure_shard_of_health, 5}, {Item::jungle_shard_of_focus, 5}}},
+                        2,
+                        Item::bruiser_shard_of_health};
+            [[fallthrough]];
+        case bc::champion_type::stellar: // Carries: damage after a little growth.
             if constexpr (policy::full_emblems)
                 return {{{{Item::treasure_shard_of_focus, 5},
                           {Item::power_shard_of_focus, 5},
