@@ -165,9 +165,11 @@ inline constexpr bool buy_altar_locks = false;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
 inline constexpr float worker_commit_bonus = 1.08f;
-// A low-health champion an enemy can reach next turn fights back instead of
-// fleeing, which only gives away free hits. false always flees.
-inline constexpr bool stand_when_caught = true;
+// Whether a low-health champion an enemy can reach next turn fights back
+// instead of fleeing. Fleeing loses some free hits but survives far more often:
+// standing traded down to death in two thirds of the fights we were losing,
+// where the top team breaks contact. false always flees.
+inline constexpr bool stand_when_caught = false;
 // Teleport crystals: buy one at spawn, and use it, only when one hop over a
 // wall or hole strip saves at least this many turns over walking to the next
 // camp or altar, after paying for the channel. Shards are bought first.
