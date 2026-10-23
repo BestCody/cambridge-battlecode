@@ -183,7 +183,7 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         }
         return false;
     }
-    if (breaking_through && !squad_member() && !urgent) {
+    if (breaking_through && !urgent) {
         int next_group = -1, best_distance = field.get(position);
         for (const auto &c : camps)
             if (distance(position, c.position) <= range) {
@@ -250,18 +250,11 @@ bool Bot::health_recovery_needed() const {
     if (bc::map::spawn_region(bc::team::ally).is_set(position))
         return health < max_health;
     float threshold = policy::retreat_health;
-    // A pure-resource worker never wins its way out of a fight, so it leaves
-    // while it can still outwalk one. Twins leave earliest: two bodies at stake.
-    if (policy::worker_pure_resource && !squad_member())
-        threshold = type == bc::champion_type::cassi || type == bc::champion_type::issac
-                        ? policy::twin_retreat_health
-                        : policy::worker_retreat_health;
     if (type == bc::champion_type::heart_of_ruin)
         threshold = policy::heart_retreat_health; // Stronger when hurt, and it shields itself.
-    if (policy::worker_pure_resource && !policy::worker_damage_retreat && !squad_member())
-        return health < max_health * threshold;
-    return health < max_health * threshold ||
-           health <= incoming(position, squad_member() ? squad.camp : target) * 2;
+    // Also home when the health left is twice the damage it is taking (camp
+    // damage included).
+    return health < max_health * threshold || health <= incoming(position, target) * 2;
 }
 
 void Bot::retreat_to_spawn() {

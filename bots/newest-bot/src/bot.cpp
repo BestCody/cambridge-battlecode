@@ -1,4 +1,4 @@
-// Per-turn dispatch between the squad and worker controllers.
+// Per-turn dispatch: the worker controller, then background precomputation.
 #include "bot.h"
 
 void Bot::play_turn() {
@@ -15,7 +15,6 @@ void Bot::take_turn() {
     turn_start_fuel = bc::fuel_remaining();
     round = bc::round_number();
     walked = false;
-    fought = false;
     if (!initialised) {
         // The first turn only sets up: on a large map initialisation takes
         // most of even this turn's doubled fuel. Champions shop and measure
@@ -23,10 +22,7 @@ void Bot::take_turn() {
         // the next turn.
         initialise();
         buy_equipment();
-        if (squad_member())
-            squad_priority();
-        else
-            worker_priority();
+        worker_priority();
         // The search the first camp choice starts from, as far as the second
         // bound: the doubled fuel of this turn takes the walks a choice would
         // otherwise search for on the next, and the largest map still fits.
@@ -41,13 +37,8 @@ void Bot::take_turn() {
         report_death();
     }
     try {
-        if (squad_member()) {
-            play_squad_turn();
-            squad_priority();
-        } else {
-            play_worker_turn();
-            worker_priority();
-        }
+        play_worker_turn();
+        worker_priority();
     } catch (const ChampionGone &) {
         // Killed by one of its own actions: the background work still runs.
     }
@@ -87,7 +78,7 @@ void Bot::record_life() {
         return;
     // End-of-turn snapshot: deaths happen during the turns that follow ours,
     // so this is the last state we chose before the fatal damage.
-    const int engaged = squad_member() ? squad.camp : target;
+    const int engaged = target;
     auto &life = last_life;
     life.round = round;
     life.position = position;
@@ -105,7 +96,7 @@ void Bot::record_life() {
         if (life.nearest_enemy < 0 || d < life.nearest_enemy)
             life.nearest_enemy = d;
     }
-    life.phase = squad_member() ? int(squad.phase) : 100 + int(current_activity); // 100+: worker activity
+    life.phase = 100 + int(current_activity); // 100+: worker activity
     life.job = engaged;
     life.retreating = retreating;
 }
@@ -118,10 +109,10 @@ void Bot::report_death() {
     const auto &life = last_life;
     const bool twin = type == bc::champion_type::cassi || type == bc::champion_type::issac;
     std::printf(
-        "DEATH r=%u last=%d slot=%u type=%d role=%s twin=%d pos=%d,%d hp=%d/%d gems=%u enemy_threat=%.0f "
+        "DEATH r=%u last=%d slot=%u type=%d twin=%d pos=%d,%d hp=%d/%d gems=%u enemy_threat=%.0f "
         "camp_threat=%.0f enemies_near=%d nearest=%d phase=%d job=%d retreating=%d\n",
-        round, life.round, slot, int(type), squad_member() ? "squad" : "worker", twin, life.position.x,
-        life.position.y, int(life.health), int(life.max_health), life.gems, life.enemy_threat,
-        life.camp_threat, life.enemies_near, life.nearest_enemy, life.phase, life.job, life.retreating);
+        round, life.round, slot, int(type), twin, life.position.x, life.position.y, int(life.health),
+        int(life.max_health), life.gems, life.enemy_threat, life.camp_threat, life.enemies_near,
+        life.nearest_enemy, life.phase, life.job, life.retreating);
     last_life.round = -1; // Report each death once; the next life starts a new snapshot.
 }

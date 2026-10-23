@@ -4,7 +4,6 @@
 #include <cambc.h>
 #include <cstdint>
 #include <span>
-#include "../strategy.h"
 
 // The fixed draft. Archived alternatives are in docs/design-notes.md.
 namespace compositions {
@@ -21,18 +20,17 @@ struct Entry {
     Mask picks;
     constexpr unsigned size() const { return std::popcount(picks); }
 };
-// One roster per pick count, copied from the top ladder team (policy::lineup):
-// three core picks; Twins (Cassi and Issac) add two farming bodies at 4 picks
-// and Ryth a melee fighter at 5. Lineup 0: Stellar and Heart of Ruin carry,
-// Ren tanks. Lineup 1: Vesper, Vendetta and Heart of Ruin carry.
-inline constexpr Mask core_picks = policy::lineup == 1
-                                       ? roster(Pick::vesper_vale, Pick::vendetta, Pick::heart_of_ruin)
-                                       : roster(Pick::stellar, Pick::heart_of_ruin, Pick::ren);
+// One roster per pick count, copied from the top ladder team's lineup since
+// engine 1.0.3: Vesper, Vendetta and Heart of Ruin carry, Twins (Cassi and
+// Issac) add two farming bodies at 4 picks and Ryth a melee fighter at 5.
+// Vesper and Vendetta collect most of its gems and gold. It won 65 of 80 head
+// to head against its earlier lineup (Stellar, Heart of Ruin, Ren) and 194 vs
+// 168 of 210 against the old bots (deaths 12.3 vs 19.4 a game).
+inline constexpr Mask core_picks = roster(Pick::vesper_vale, Pick::vendetta, Pick::heart_of_ruin);
 inline constexpr std::array rosters{
-    Entry{policy::lineup == 1 ? "Vesper/Vendetta/HeartOfRuin" : "Stellar/HeartOfRuin/Ren", core_picks},
-    Entry{policy::lineup == 1 ? "Vesper/Vendetta/HeartOfRuin/Twins" : "Stellar/HeartOfRuin/Ren/Twins",
-          Mask(core_picks | bit(Pick::cassi_and_issac))},
-    Entry{policy::lineup == 1 ? "Vesper/Vendetta/HeartOfRuin/Twins/Ryth" : "Stellar/HeartOfRuin/Ren/Twins/Ryth",
+    Entry{"Vesper/Vendetta/HeartOfRuin", core_picks},
+    Entry{"Vesper/Vendetta/HeartOfRuin/Twins", Mask(core_picks | bit(Pick::cassi_and_issac))},
+    Entry{"Vesper/Vendetta/HeartOfRuin/Twins/Ryth",
           Mask(core_picks | roster(Pick::cassi_and_issac, Pick::ryth))}};
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 

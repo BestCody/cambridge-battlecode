@@ -27,12 +27,8 @@ inline constexpr float aggression = 1.60f;
 // Camp choice's factor on contested camps (enemy no more than 8 tiles further
 // than us) is 1 + contest_bonus: steering away from them cut deaths by a fifth.
 inline constexpr float contest_bonus = -0.30f;
-inline constexpr float commit_bonus = 1.08f;
 inline constexpr float retreat_health = 0.28f;
 inline constexpr float casualty_margin = 0.12f;
-inline constexpr float bank_base = 56.0f;
-inline constexpr float bank_distance = 1.6f;
-inline constexpr float bank_cap = 120.0f;
 inline constexpr int shopping_shards = 5;
 inline constexpr int replan_period = 4;
 inline constexpr float assist_finish_credit = 0.55f;
@@ -44,9 +40,6 @@ inline constexpr float formation_advantage = 1.10f;
 // gets the whole reward whoever captures it, so no penalty: champions join each
 // other on big groups, as the top team does.
 inline constexpr float partner_penalty = 0.0f;
-// Cassi and Issac share one fate: one death drops both bags, so the pair banks
-// smaller amounts more often than a solo champion. 1.0 disables the adjustment.
-inline constexpr float twin_bank_scale = 0.6f;
 // Squad assembly. Avoiding contested camps when depleted concedes the map;
 // converging on surviving allies is the real regroup.
 // depleted_penalty 1.0 disables the avoid-contest variant.
@@ -74,9 +67,6 @@ inline constexpr std::uint64_t background_step_work = 60000;
 inline constexpr bool diagnostic = false;
 // Fuel profiler for local test builds (mechanics/profile.h). Off in ladder builds.
 inline constexpr bool profile = false;
-// Bounded search widths, not map/champion-specific rules.
-inline constexpr unsigned objective_finalists = 6;
-inline constexpr unsigned firing_trials = 6;
 // Gem sourcing on maps with no farmable gem camp. `contest` carries 20 gold
 // clusters and 2 monoliths and nothing else: no gem cluster, no wolf, no elk.
 // Every camp on the map is therefore either worth 0 gems (gold clusters) or
@@ -95,72 +85,19 @@ inline constexpr float siege_gem_weight = 2.0f;
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
 inline constexpr float siege_risk_weight = 0.06f;
-// Worker policy (Issac, Ryth, Varg). true runs them as pure resource gatherers:
-// they never start fights, step away from approaching enemies, avoid
-// contested camps and bank smaller bags. Offense and defense belong to the
-// squad. false restores the older aggressive worker loop entirely.
-inline constexpr bool worker_pure_resource = false;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
-// A worker in danger range keeps farming unless an enemy can already hit it,
-// is closing in, or enemy power nearby exceeds ours times this margin.
-// 0.0 restores leaving whenever any enemy is in danger range.
-inline constexpr float worker_strength_margin = 1.0f;
-// Health fraction at which a worker goes home; twins may differ because a
-// death also kills their partner. Both currently match retreat_health.
-inline constexpr float worker_retreat_health = 0.28f;
-inline constexpr float twin_retreat_health = 0.28f;
-// Whether a worker also goes home when its health drops to twice the damage it
-// is taking (camp damage included). The old bots retreat on low health only.
-// false: a pure worker leaves clears only for low health or approaching enemies.
-inline constexpr bool worker_damage_retreat = true;
-// Value multiplier for camps closer to the enemy spawn than ours. 1.0 disables.
-inline constexpr float worker_enemy_side_penalty = 0.7f;
-// Rounds a worker remembers an enemy near a camp, and the value multiplier
-// applied to that camp meanwhile. 0 rounds disables the memory.
+// Breaking contact with a stronger group: a champion an enemy can soon reach,
+// where the enemy outweighs us by more than aggression, steps away instead of
+// farming on, and the camps near those enemies are worth worker_sighting_penalty
+// of their value for worker_sighting_memory rounds. Without it lone champions
+// walked into a waiting group one at a time: half our ladder fights started
+// outnumbered.
 inline constexpr int worker_sighting_memory = 20;
 inline constexpr float worker_sighting_penalty = 0.2f;
-// Multiplier on worker bank thresholds: smaller bags are lost less often.
-// 1.0 restores the old thresholds.
-inline constexpr float worker_bank_scale = 0.5f;
-// Obstruction squad (stage 1). true lets the squad break off its camp job to
-// interrupt enemy tributes and hunt carriers it can kill, and biases its camp
-// choice toward the enemy side and the altar enemies use. false restores the
-// farming-only squad.
-inline constexpr bool squad_obstruction = false;
-// Tiles from the coordinator within which an enemy can become a hunt target.
-inline constexpr int hunt_radius = 8;
-// Bag size that makes a lone enemy worth chasing even without a sure kill.
-inline constexpr unsigned hunt_min_gems = 20;
-// Hunts are refused or abandoned when enemy power near the squad exceeds ours
-// times this margin.
-inline constexpr float hunt_abort_margin = 1.2f;
-// Rounds before an unfinished hunt is abandoned.
-inline constexpr int hunt_max_rounds = 15;
-// Camp selection multipliers for the squad's fallback farming: camps on the
-// enemy's side, and camps near the watched altar. 1.0 disables each.
-inline constexpr float squad_enemy_side_bonus = 1.5f;
-inline constexpr float squad_altar_bonus = 1.5f;
-inline constexpr int squad_altar_watch_radius = 10;
-// Whether Stellar, Tavi and Cassi run the coordinated squad controller. false
-// plays every champion with the independent worker policy.
-inline constexpr bool squad_enabled = false;
-// Squad job planning. A plan is refreshed on any material change; without one
-// it expires after this many work windows. 1 restores the old age-only refresh.
-inline constexpr int plan_lifetime_windows = 3;
-// Expected delay per round of overlap between a hidden enemy's earliest arrival
-// and our reward. Hidden enemies may be elsewhere, so this is below 1.
-// 0 ignores hidden enemies entirely.
-inline constexpr float hidden_interference_weight = 0.5f;
-// Capture timers lost to contest before the current job loses its commitment
-// bonus and must win the comparison against other jobs on its own merit.
-inline constexpr unsigned capture_reset_limit = 2;
-// Control credit multiplier for stunning an enemy other than the shared focus
-// target while it threatens a member. 1.0 disables the preference.
-inline constexpr float secondary_control_bonus = 1.25f;
 // Replica of the top ladder team's play (see docs/design-notes.md): every
 // champion farms its own side and fights, banking small bags often.
-// Carries are Stellar and Heart of Ruin.
+// Carries are Vesper, Vendetta and Heart of Ruin (is_carry).
 // Gems carried before a champion walks to bank. They also bank on passing an
 // altar with policy::fish_bag_nearby or more.
 inline constexpr unsigned fish_bag_carry = 28;
@@ -169,43 +106,16 @@ inline constexpr unsigned fish_bag_nearby = 10;
 // Gold, in shards, that sends a champion home to shop. Carries earn about
 // three times the gold of the others and shop about every 100 rounds.
 inline constexpr int carry_shopping_shards = 10;
-// Builds of whole emblems, as the top team buys them (only a finished emblem
-// gives its passive): carries Treasure, Power, Home and Durability emblems,
-// then Power of Focus; Ren Bruiser and Durability emblems, then Power of
-// Focus. One shard of each instead (no passives) lost 150 to 121 in 210
-// games, with 5.5 more deaths a game.
-inline constexpr bool full_emblems = true;
 // Heart of Ruin hits up to 50% harder at low health and shields itself, so it
 // stays in fights longer than the others.
 inline constexpr float heart_retreat_health = 0.15f;
-// The top team never buys altar locks.
-inline constexpr bool buy_altar_locks = false;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
 inline constexpr float worker_commit_bonus = 1.08f;
-// Whether a low-health champion an enemy can reach next turn fights back
-// instead of fleeing. Fleeing loses some free hits but survives far more often:
-// standing traded down to death in two thirds of the fights we were losing,
-// where the top team breaks contact. false always flees.
-inline constexpr bool stand_when_caught = false;
-// Break contact with a stronger group: a champion an enemy can soon reach,
-// where the enemy outweighs us by more than aggression, steps away instead
-// of farming on, and avoids the camps near those enemies for
-// worker_sighting_memory rounds. Without it lone champions walk into a
-// waiting group one at a time: half our ladder fights started outnumbered.
-inline constexpr bool avoid_stronger = true;
 // Teleport crystals: buy one at spawn, and use it, only when one hop over a
 // wall or hole strip saves at least this many turns over walking to the next
 // camp or altar, after paying for the channel. Shards are bought first.
 inline constexpr int crystal_min_saving = 8;
-// Spell-range siege (Stellar, Cassi): only when no ally is closer to the camp.
-// Camps attack the nearest champion, so with a closer ally we attack from
-// normal range. false sieges whenever a solo clear would be too costly.
-inline constexpr bool siege_alone_only = true;
-// Whether melee champions with a long-range spell (Ren, Ryth) siege too: they
-// then stand beyond the camps' reach casting once a cooldown (about 150 turns a
-// game each). false leaves sieges to the ranged casters.
-inline constexpr bool siege_melee = false;
 // Weight of the rounds spent waiting for a respawning camp in camp choice's
 // duration, against the rounds spent travelling and clearing. Waiting wastes
 // the turns another camp could use; the top team moves on and comes back.
@@ -229,12 +139,6 @@ inline constexpr float cohesion_weight = 0.25f;
 // deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
 // gained less, and counting every nearby ally, free or not, lost.
 inline constexpr int partner_radius = 6;
-// Whether a champion leaving a capture to its holder counts the teammates
-// still on it as helpers. It chooses the group's next camp, and they follow
-// its claim three times in four; counted alone, it led the group to small
-// camps. Gems and gold by round 300 both rose (head to head 112 vs 97 gems,
-// 1221 vs 1173 gold), where a lower gold value only traded one for the other.
-inline constexpr bool group_leader = true;
 // Camp choice's clear rate with helpers: our own rate times 1 + helper_speed
 // per helper, for both the clear time and the health it costs. Fitted to our
 // measured clear times by group size (1.3; 0.65 fitted worst): each helper
@@ -243,45 +147,20 @@ inline constexpr bool group_leader = true;
 // small ones; 1.3 won 10 more of 490 games and raised gems by round 300 from
 // 85 to 97, with more elk and fewer wolf clears early.
 inline constexpr float helper_speed = 1.3f;
-// Camp loss (camp choice's risk, the siege decision) by the number of camps
-// that strike back, fitted to measured clears (see camp_loss_factor in bot.h);
-// false: 0.68 for every group of several camps, which overstated the cost of
-// two- and three-monster camps 1.4-3x. Won 16 more of 490 games (46 of 70 head
-// to head) and raised gems by round 300 from 97 to 107.
-inline constexpr bool fitted_camp_loss = true;
-// One holder per capture: with no enemy in view, a champion on its way to (or
-// standing on) a camp being captured that sees a higher-ranked ally on it
-// takes the next camp instead. Carries (Stellar, Heart of Ruin) rank first, so
-// they collect the rewards' gold. The top team holds 91% of captures with one
-// champion and its carries earn most of its gold. Won 48 of 70 against the
-// previous commit with a better margin against every opponent; first come
-// holding (no carry rank) raised deaths and lost to the old bots.
-inline constexpr bool single_holder = true;
-// The draft. 0: the top team's earlier lineup (Stellar, Heart of Ruin, Ren;
-// Twins at 4 picks, Ryth at 5). 1: its lineup since engine 1.0.3 (Vesper,
-// Vendetta, Heart of Ruin; Twins at 4, Ryth at 5), where Vesper and Vendetta
-// collect most of its gems and gold. Lineup 1 won 65 of 80 head to head
-// against lineup 0 and 194 vs 168 of 210 against the old bots (deaths 12.3
-// vs 19.4 a game).
-inline constexpr int lineup = 1;
 } // namespace policy
 
 // Carries take capture rewards first (and so the gold), bank bigger bags and
 // shop on more gold.
 inline bool is_carry(bc::champion_type t) {
-    if (t == bc::champion_type::heart_of_ruin)
-        return true;
-    if constexpr (policy::lineup == 1)
-        return t == bc::champion_type::vesper_vale || t == bc::champion_type::vendetta;
-    return t == bc::champion_type::stellar;
+    return t == bc::champion_type::heart_of_ruin || t == bc::champion_type::vesper_vale ||
+           t == bc::champion_type::vendetta;
 }
 
-// Next-round action order. Tiers are disjoint so an enabling stun never
-// outranks a finishing blow, whatever the raw damage values.
+// Next-round action order. Tiers are disjoint so plain damage never outranks
+// a finishing blow, whatever the raw damage values.
 namespace priority_tier {
 inline constexpr int idle = 1000;
 inline constexpr int damage = 2000;
-inline constexpr int control = 3000;
 inline constexpr int finish = 4000;
 inline constexpr int span = 999;
 } // namespace priority_tier
@@ -289,7 +168,6 @@ inline constexpr int span = 999;
 // Published mechanics not exposed in the SDK settings structure.
 namespace rules {
 inline constexpr int crystal_range = 3;
-inline constexpr int altar_lock_range = 2;
 
 // Engine settings, read from the engine on first use. Never use the SDK's
 // bc::constants copies of them: those are filled during static initialisation
@@ -369,13 +247,6 @@ struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
-    static constexpr unsigned recovered = mask - 3;
-    static constexpr unsigned supplies_needed = mask - 4;
-    // A worker stepping away from an approaching enemy. Squad defense will
-    // read it; deposit codes stop below it so the two can never collide.
-    static constexpr unsigned under_threat = mask - 5;
-    // The squad is hunting the enemy named by the shared focus field.
-    static constexpr unsigned hunting = mask - 6;
     static constexpr unsigned slots = 64 / bits;
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and desired total squad size, or
@@ -386,20 +257,8 @@ struct TeamMemory {
         return groups + 1 + group * slots + std::clamp(force, 1u, slots) - 1;
     }
     static unsigned joining(unsigned group, unsigned groups) { return groups * (slots + 1) + 1 + group; }
-    // Holders retain ownership of the current resource operation.
-    static bool captures(unsigned groups) { return groups && groups * (slots + 3) < supplies_needed; }
-    static unsigned holding(unsigned group, unsigned groups) {
-        return captures(groups) ? groups * (slots + 2) + 1 + group : group + 1;
-    }
-    static int held_group(unsigned code, unsigned groups) {
-        const unsigned start = groups * (slots + 2) + 1;
-        return captures(groups) && code >= start && code < start + groups ? int(code - start) : -1;
-    }
     static int objective(unsigned code, unsigned groups) {
-        if (code && code <= groups)
-            return int(code - 1);
-        const int held = held_group(code, groups);
-        return held >= 0 ? held : fight_group(code, groups);
+        return code && code <= groups ? int(code - 1) : fight_group(code, groups);
     }
     static int fight_group(unsigned code, unsigned groups) {
         if (!formations(groups) || code <= groups || code >= bank)
@@ -416,27 +275,9 @@ struct TeamMemory {
             return 0;
         return (code - groups - 1) % slots + 1;
     }
-    // These codes follow all worker formation/capture codes. One altar and a
-    // small owner state fit without claiming another actor's slot or vision.
-    static constexpr unsigned bank_stages = 10;
-    static unsigned bank_start(unsigned groups) { return groups * (slots + 3) + 1; }
-    static unsigned deposit(unsigned altar, unsigned stage, unsigned groups) {
-        const unsigned code = bank_start(groups) + altar * bank_stages + stage;
-        return code < hunting ? code : unavailable;
-    }
-    static int deposit_altar(unsigned code, unsigned groups, unsigned altars) {
-        const unsigned start = bank_start(groups);
-        return code >= start && code < hunting && code - start < altars * bank_stages
-                   ? int((code - start) / bank_stages)
-                   : -1;
-    }
-    static unsigned deposit_stage(unsigned code, unsigned groups) {
-        return (code - bank_start(groups)) % bank_stages;
-    }
     std::uint64_t raw = 0;
     void read() { bc::shared_memory.read(0, std::span{&raw, 1}); }
     unsigned get(unsigned slot) const { return slot < slots ? (raw >> (slot * bits)) & mask : 0; }
-    unsigned focus() const { return static_cast<unsigned>(raw >> 60); }
     void set(unsigned slot, unsigned value) {
         // Observation refreshed the word and no teammate acts during this
         // turn. Each owner is the only writer of its own claim.
@@ -445,14 +286,6 @@ struct TeamMemory {
         read(); // Preserve claims written by earlier teammates this round.
         raw =
             (raw & ~(std::uint64_t(mask) << (slot * bits))) | (std::uint64_t(value & mask) << (slot * bits));
-        bc::shared_memory.write(0, std::span{&raw, 1});
-    }
-    void commit(unsigned slot, unsigned value, unsigned victim) {
-        if (slot >= slots || value > mask || victim >= 15)
-            return;
-        read();
-        raw = (raw & ~(std::uint64_t(mask) << (slot * bits))) | (std::uint64_t(value) << (slot * bits));
-        raw = (raw & ((std::uint64_t(1) << 60) - 1)) | (std::uint64_t(victim) << 60);
         bc::shared_memory.write(0, std::span{&raw, 1});
     }
 };
@@ -466,7 +299,6 @@ struct DraftPlan {
     // fortress camps more highly when the full map has no cheaper gem source.
     std::uint8_t cheap_gem_groups = 0;
     float spacing = 0;
-    float mean_splash = 1, dangerous_fraction = 0;
     // Walking distance from each camp group, in camp_groups() order, to our
     // spawn, the enemy spawn and an altar's tribute tiles: three map-wide
     // searches the draft affords on its first turn, which a champion's first

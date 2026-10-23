@@ -35,19 +35,13 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     float own_shield = read_shield();
     // Storage kept between calls: a vector allocated afresh costs about 200
     // fuel. Every entry is written below.
-    static std::vector<std::uint8_t> relevant;
     static std::vector<float> controls;
-    relevant.resize(targets.size());
     controls.resize(targets.size());
-    for (std::size_t i = 0; i < targets.size(); ++i) {
-        relevant[i] = !squad_member() || !fighting_champions || relevant_enemy(targets[i]);
-        controls[i] = squad_member() && fighting_champions
-                          ? control_value(targets[i])
-                          : (targets[i].strength + targets[i].burst) * (escaping ? 3 : 1);
-    }
+    for (std::size_t i = 0; i < targets.size(); ++i)
+        controls[i] = (targets[i].strength + targets[i].burst) * (escaping ? 3 : 1);
     auto eligible = [&](const ObservedUnit &u) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
-               relevant[&u - targets.data()] && !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
+               !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
     };
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
@@ -88,11 +82,6 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             if (!eligible(u) || !attack_tiles.is_set(u.position) || !present(u))
                 continue;
             float value = weight(u, strength, false);
-            if (passive == bc::passive_type::splash_attack)
-                for (std::size_t j = 0; j < targets.size(); ++j)
-                    if (j != i && distance(u.position, targets[j].position) <=
-                                      bc::constants::passive_abilities::varg_splash_radius)
-                        value += weight(targets[j], strength, false);
             if (value > best) {
                 best = value;
                 index = i;
@@ -111,18 +100,11 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         acted = true;
         if (u.group >= 0)
             groups[u.group].attacked = round;
-        // Splash and retaliation can change several units. Refresh health before
-        // the reset selection so dead or overkilled units cannot consume actions.
+        // Refresh health before the reset selection so a dead or overkilled
+        // unit cannot consume actions, and ours after any retaliation.
         for (auto &t : targets)
-            if (eligible(t) &&
-                (t.position == struck ||
-                 (passive == bc::passive_type::splash_attack &&
-                  distance(struck, t.position) <= bc::constants::passive_abilities::varg_splash_radius))) {
-                const float before = t.health;
+            if (eligible(t) && t.position == struck)
                 t.health = live_health(t);
-                if (!fighting_champions)
-                    record_camp_damage(t.group, std::max(0.0f, before - t.health));
-            }
         refresh_self();
         own_shield = read_shield();
         return true;
@@ -149,15 +131,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 continue;
             float score = 0;
             for (const auto &u : targets)
-                if (eligible(u) && distance(position, u.position) <= range && present(u)) {
-                    float v = weight(u, strength, s.enhanced);
-                    if (passive == bc::passive_type::splash_attack)
-                        for (const auto &other : targets)
-                            if (&other != &u && distance(u.position, other.position) <=
-                                                    bc::constants::passive_abilities::varg_splash_radius)
-                                v += weight(other, strength, false);
-                    score = std::max(score, v);
-                }
+                if (eligible(u) && distance(position, u.position) <= range && present(u))
+                    score = std::max(score, weight(u, strength, s.enhanced));
             if (score > best_score) {
                 best_score = score;
                 best_slot = slot_index;
@@ -254,9 +229,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 const vec2 tile{position.x + cell % side - reach, position.y + cell / side - reach};
                 if (!bc::map::is_in_bounds(tile) || no_centre_tile[tile_index(tile)])
                     continue;
-                float value = score[cell];
-                if (squad_member())
-                    value -= collateral_risk(tile, s.radius, fighting_champions ? -1 : farm_group);
+                const float value = score[cell];
                 if (chosen < 0 || value > chosen_score ||
                     (value == chosen_score && first[cell] < first[chosen])) {
                     chosen = cell;
@@ -308,12 +281,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 if (eligible(u) && ((s.kind == bc::ability_kind::aoe_damage &&
                                      distance(u.position, best_tile) <= s.radius) ||
                                     ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
-                                     int(i) == best_target))) {
-                    const float before = u.health;
+                                     int(i) == best_target)))
                     u.health = live_health(u);
-                    if (!fighting_champions)
-                        record_camp_damage(u.group, std::max(0.0f, before - u.health));
-                }
             }
             refresh_self();
             own_shield = read_shield();

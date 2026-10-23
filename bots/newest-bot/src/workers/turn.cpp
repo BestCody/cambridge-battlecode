@@ -1,30 +1,15 @@
-// Worker turn for Issac, Ryth and Varg: independent per-champion policy.
+// Worker turn: the independent policy every champion plays.
 #include "../bot.h"
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <tuple>
 
-bool Bot::worker_caught() const {
-    // An enemy that can hit us next turn wherever we step: melee can walk and
-    // attack in one turn, ranged hit from three tiles, so fleeing only gives
-    // away free hits.
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
-    return std::any_of(enemies.begin(), enemies.end(), [&](const auto &enemy) {
-        return enemy.health > 0 && !enemy.channel && !(enemy.stunned && enemy.stun_time > 0) &&
-               !enemy_spawn.is_set(enemy.position) &&
-               distance(position, enemy.position) <=
-                   std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
-    });
-}
-
 bool Bot::worker_escape() {
     profiling::Scope scope(profiling::Stage::retreat);
-    // Caught with nowhere to go: trade blows instead of dying with our back
-    // turned. Recovery resumes once the attacker falls back or dies.
-    if (policy::stand_when_caught && worker_caught() &&
-        !bc::map::spawn_region(bc::team::ally).is_set(position) && combat(true))
-        return true;
+    // Flee even when an enemy can reach us next turn: fleeing loses some free
+    // hits but survives far more often. Standing traded down to death in two
+    // thirds of the fights we were losing, where the top team breaks contact.
     publish(TeamMemory::recall);
     if (bc::map::spawn_region(bc::team::ally).is_set(position) && health >= max_health) {
         retreating = false;
@@ -47,8 +32,8 @@ void Bot::worker_report() {
     }
 }
 
-// Workers earn gems. In pure-resource mode they never choose a fight: they
-// step away from danger and leave offense and defense to the squad.
+// Every champion earns gems, fights the skirmishes it can win and steps away
+// from stronger groups.
 void Bot::play_worker_turn() {
     auto &me = bc::self();
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
@@ -68,8 +53,6 @@ void Bot::play_worker_turn() {
         return;
     }
     observe();
-    if constexpr (policy::worker_pure_resource)
-        worker_track_sightings();
     if (me.is_submitting_gems()) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);
@@ -98,7 +81,6 @@ void Bot::play_worker_turn() {
     // A champion without a camp chooses one before anything else this turn.
     if (target < 0)
         target = worker_choose_group();
-    worker_disrupt_tribute();
     if (position == previous)
         ++stalls;
     else
@@ -112,40 +94,23 @@ void Bot::play_worker_turn() {
         worker_tribute();
         return;
     }
-    if constexpr (policy::worker_pure_resource) {
-        // Danger first: an approaching enemy ends farming for this turn.
-        if (worker_disengage())
-            return;
-        if (worker_tribute())
-            return;
-    } else {
-        worker_update_formation();
-        if (squad.members && type == bc::champion_type::issac && gems && !enemies.empty() &&
-            incoming(position) > 0) {
-            banking = true;
-            if (worker_tribute())
-                return;
-        }
-        if (worker_skirmish()) {
-            note_activity(Activity::fight);
-            return;
-        }
-        if (worker_tribute()) {
-            note_activity(Activity::bank);
-            return;
-        }
-        if (worker_reinforce()) {
-            note_activity(Activity::reinforce);
-            return;
-        }
+    worker_update_formation();
+    if (worker_skirmish()) {
+        note_activity(Activity::fight);
+        return;
+    }
+    if (worker_tribute()) {
+        note_activity(Activity::bank);
+        return;
+    }
+    if (worker_reinforce()) {
+        note_activity(Activity::reinforce);
+        return;
     }
 
     bool upgrade =
         me.gold_count() >= bc::item_type::power_shard_of_strength.cost() *
-                               (is_carry(type)
-                                    ? policy::carry_shopping_shards
-                                    : policy::shopping_shards) &&
-        passive != bc::passive_type::remote_shop;
+                               (is_carry(type) ? policy::carry_shopping_shards : policy::shopping_shards);
     bool about_to_capture = target >= 0 && groups[target].status == CampGroup::capture &&
                             distance(position, groups[target].centre) <= 2;
     bool nearly_clear = target >= 0 && groups[target].health < dps(groups[target]) * 3;
@@ -195,9 +160,7 @@ void Bot::worker_priority() {
     if (!initialised)
         return;
     auto &me = bc::self();
-    int priority = passive == bc::passive_type::splash_attack ? priority_tier::idle + 200
-                   : type == bc::champion_type::willow        ? priority_tier::idle + 600
-                                                              : priority_tier::idle - static_cast<int>(slot);
+    int priority = priority_tier::idle - static_cast<int>(slot);
     if (me.is_alive() && !me.is_recalling() && !me.is_submitting_gems() && !me.is_teleporting() &&
         !enemies.empty()) {
         const auto abilities = me.abilities();

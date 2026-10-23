@@ -1,7 +1,5 @@
 #pragma once
 #include "mechanics/profile.h"
-#include "squad/squad.h"
-#include "squad/stellar_tavi_cassi.h"
 #include "strategy.h"
 #include <new>
 #include <span>
@@ -53,10 +51,7 @@ struct CampGroup {
         }
         return *tile_mask;
     }
-    vec2 centre{}, approach{-1, -1};
-    bool approach_known = false;
-    int obstacle_status = -1;
-    float obstacle_health = -1;
+    vec2 centre{};
     float max_health = 0, health = 0, pressure = 0, max_pressure = 0, splash = 1, shape_splash = 1,
           full_splash = 1;
     int seen = -1, respawn = 0, attacked = -10000;
@@ -91,55 +86,33 @@ struct CampGroup {
     mutable std::optional<bc::bitboard> tile_mask;
 };
 
-// The share of strength x clear time a clear costs the champions clearing it.
-// Without policy::fitted_camp_loss, 0.68 for any group of several camps.
-// With it, by the camps that strike back, fitted to measured clears: one
-// 0.68, two 0.5, three or more 0.35 (they die one by one, and ranged
-// attackers stay within reach of fewer of them).
+// The share of strength x clear time a clear costs the champions clearing it
+// (camp choice's risk, the siege decision), by the camps that strike back,
+// fitted to measured clears: one 0.68, two 0.5, three or more 0.35 (they die
+// one by one, and ranged attackers stay within reach of fewer of them). A flat
+// 0.68 for every group of several camps overstated the cost of two- and
+// three-monster camps 1.4-3x; the fit won 16 more of 490 games (46 of 70 head
+// to head) and raised gems by round 300 from 97 to 107.
 inline float camp_loss_factor(const CampGroup &g) {
-    if constexpr (!policy::fitted_camp_loss)
-        return g.camps.size() > 1 ? 0.68f : 1.0f;
     int strikers = 0;
     for (const auto &c : g.camps)
         strikers += c.stats.base_strength > 0;
     return strikers <= 1 ? (g.camps.size() > 1 ? 0.68f : 1.0f) : strikers == 2 ? 0.5f : 0.35f;
 }
-// A champion's two spells, kept once per type (ours in the Bot): a unit
-// record refers to them instead of carrying a copy.
-struct SpellsRef {
-    const std::array<Spell, 2> *spells;
-    const Spell &operator[](std::size_t i) const { return (*spells)[i]; }
-    static constexpr std::size_t size() { return 2; }
-    auto begin() const { return spells->begin(); }
-    auto end() const { return spells->end(); }
-    operator const std::array<Spell, 2> &() const { return *spells; }
-};
-inline const std::array<Spell, 2> no_spells{};
-
 struct ObservedUnit {
     // The roster's champion or the camp group's camp: those never move.
     std::variant<const bc::champion *, const bc::camp *> ref;
     vec2 position;
     float health = 0, max_health = 0, strength = 0, focus = 0, shield = 0, mitigation = 1;
     float damage_rate = 0, burst = 0, ready_shield = 0, healing_rate = 0;
-    float camp_multiplier = 1, camp_mitigation = 1;
     int move_speed = 1;
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
-    bool stunned = false, channel = false, depositing = false, recalling = false, immune = false;
-    bool completed = false, can_attack = false, can_cast = false, can_move = false;
-    bool movement_spent = false;
-    // Vision only the squad controller uses, kept by whoever computed it (a
-    // record is plain data, and copies refer to the same mask); none
-    // otherwise, because a map-sized mask per observed unit costs fuel.
-    const bc::bitboard *sight = nullptr;
-    SpellsRef abilities{&no_spells};
-    std::array<int, 2> cooldowns{};
+    bool stunned = false, channel = false, immune = false, completed = false;
     bc::champion_type type{};
     explicit ObservedUnit(const bc::champion &c);
     // From live fields already read with one engine call (see sighting()).
     ObservedUnit(const bc::champion &c, const bc::detail::champion_info &info);
-    explicit ObservedUnit(const Bot &bot);
     // A sleeping camp carries no buffs, so they are read only when awake.
     ObservedUnit(const CampMemory &c, int group_index, const bc::detail::camp_state &info,
                  bool asleep = false);
@@ -154,7 +127,6 @@ struct ObservedUnit {
     const bc::champion &champion() const { return *std::get<const bc::champion *>(ref); }
     const bc::camp &camp() const { return *std::get<const bc::camp *>(ref); }
     bool enemy() const { return std::holds_alternative<const bc::champion *>(ref); }
-    bool sees(vec2 p) const { return sight && sight->is_set(p); }
     float retaliation() const {
         return enemy() && type == bc::champion_type::ren
                    ? focus * bc::constants::passive_abilities::ren_retaliation_focus_ratio
@@ -302,15 +274,6 @@ void read_buffs(ObservedUnit &out);
 // The unit's shield now, 0 when it has none.
 float live_shield(const ObservedUnit &u);
 
-// Diagnostic snapshot of this champion's last chosen state, reported when it
-// is next seen dead. Explains what each death was exposed to.
-// Where an enemy champion was on the last two observations, to tell an
-// enemy closing in from one merely standing nearby.
-struct EnemyTrack {
-    vec2 last{-1, -1}, previous{-1, -1};
-    int last_round = -1000, previous_round = -1000;
-};
-
 // What a worker spent each turn on, for the time-use diagnostic.
 enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, shop, farm, travel, count };
 
@@ -374,6 +337,8 @@ struct CrystalPlan {
     std::vector<Route> routes;
 };
 
+// Diagnostic snapshot of this champion's last chosen state, reported when it
+// is next seen dead. Explains what each death was exposed to.
 struct LifeSnapshot {
     int round = -1;
     vec2 position{-1, -1};
@@ -389,9 +354,7 @@ struct LifeSnapshot {
 struct ChampionGone {};
 
 class Bot {
-    friend struct ObservedUnit;
     bool initialised = false, walked = false, retreating = false, banking = false;
-    bool fought = false; // This turn searched a fight (attack_combo).
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.
@@ -418,8 +381,6 @@ class Bot {
     std::vector<bc::champion> roster;
     std::vector<ObservedUnit> enemies, allies;
     CampList camps;
-    // The squad's vision of each roster slot, which allies' records point at.
-    std::vector<std::optional<bc::bitboard>> ally_sight;
     std::vector<ObservedUnit> fight_scratch; // observe_fight()'s next enemies
     // The camps that can strike (positive strength, not stunned), as their
     // records' slots in camps' order, listed as each observation lists the
@@ -454,20 +415,11 @@ class Bot {
     bc::bitboard static_blocked, blocked, visible, altar_goals;
     bc::distance_field home_field, altar_field, origin_field;
     std::vector<bc::distance_field> altar_routes;
-    std::vector<AltarAccess> altar_access;
     TeamMemory shared;
     DraftPlan opening;
-    SquadState squad;
-    JobSearch job_search;
-    ObjectiveSearch active_search;
-    ClearProgress clear_progress;
-    std::array<OriginRoute, TeamMemory::slots> member_routes;
-    TravelRoute travel_route, approach_route;
-    unsigned terrain_revision = 0;
-    bc::bitboard known_camp_obstacles;
     std::vector<float> roster_power;
     std::vector<bc::champion> enemy_roster;
-    std::vector<int> enemy_respawn, enemy_spawned;
+    std::vector<int> enemy_respawn;
     float enemy_average_power = 0;
     LifeSnapshot last_life;
     // Shards this champion has bought, by item type, for its build order.
@@ -489,7 +441,6 @@ class Bot {
     // be centred on (walls, holes and altars), and the enemy spawn.
     std::unique_ptr<std::uint16_t[]> tile_group;
     TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile;
-    TileBits static_blocked_tile; // static_blocked, for lookups without an engine call
     // Camps in view, refreshed by each observation (with the sleeping ones
     // when asleep_known, and the living ones); unseen ward placements.
     TileBits camp_in_view, camp_asleep, camp_living, unseen_tile;
@@ -559,79 +510,8 @@ class Bot {
     void subtract(bc::bitboard &a, const bc::bitboard &b);
     // A one-tile mask at p, in search_origin.
     const bc::bitboard &origin_at(vec2 p);
-    std::vector<EnemyTrack> enemy_track;
-    // Per altar: enemy tributes observed there, and terrain distance from the
-    // enemy spawn. Together they pick the altar the squad watches.
-    std::vector<int> altar_tributes, altar_enemy_distance;
 
-    bool squad_member() const { return squad.contains(slot); }
-
-    // Squad controller (squad/). Stellar, Tavi and Cassi share one job.
-    // turn.cpp, coordination.cpp: shared claims, leadership and supervision.
-    void play_squad_turn();
-    void reconcile_squad();
-    void publish_squad(bool reset_focus = false);
-    unsigned squad_claim() const;
-    unsigned living_core() const;
-    const ObservedUnit *observed_member(unsigned member) const;
-    bool same_job(unsigned code) const;
-    void adopt_job(unsigned code);
-    void begin_recovery();
-    void enter_selection();
-    void supervise_progress();
-    void detect_material_events();
-    int work_window() const;
-    bool relevant_enemy(const ObservedUnit &enemy) const;
-    int relevant_threats() const;
-    float control_value(const ObservedUnit &enemy) const;
-    FiringOpportunity firing(const ObservedUnit &member, const ObservedUnit &enemy,
-                             bool next_turn = false) const;
-    float collateral_risk(vec2 centre, float radius, int engaged_group = -1) const;
-    void squad_focus();
-    void squad_priority();
-    // selection.cpp, objectives.cpp: job choice and estimates.
-    Selection select_squad_job();
-    JobEstimate estimate_job(int index, ObjectiveSearch &search);
-    int hidden_interference(const CampGroup &group) const;
-    FiringPosition firing_position(unsigned member, int camp, bool siege, bc::bitboard reserved,
-                                   FiringSearch &search);
-    float position_output(const ObservedUnit &member, vec2 tile, const CampGroup &group,
-                          const bc::bitboard &sight, int arrival, int &ready) const;
-    const bc::distance_field &member_route(unsigned member);
-    vec2 objective_staging(int camp);
-    bool prepare_objective();
-    void record_camp_damage(int camp, float damage);
-    void finish_clear_turn(int camp, float expected);
-    // movement.cpp, stellar_tavi_cassi.cpp: executing the job.
-    MoveResult squad_move(bc::bitboard goals, bool urgent = false);
-    void squad_resource_turn();
-    void squad_combat();
-    void squad_recover(bool supply = false);
-    bool needs_recovery() const;
-    // obstruction.cpp: tribute interruption, carrier hunts, enemy-side bias.
-    void observe_enemy_tributes();
-    int watched_altar() const;
-    float obstruction_bonus(int camp) const;
-    float squad_burst(const ObservedUnit &enemy) const;
-    const ObservedUnit *hunt_enemy() const;
-    void update_hunt();
-    void end_hunt(const char *reason);
-    bool squad_hunt_turn();
-    // banking.cpp: delivery.
-    void observe_cargo();
-    void squad_bank();
-    BankEstimate estimate_bank(int altar);
-    BankEstimate choose_bank();
-    bool review_banking(bool urgent = false);
-    bool can_protect_channel(int duration) const;
-    bool channel_protected(vec2 tile, int start, int duration, unsigned guards,
-                           const BankEstimate *plan = nullptr, unsigned *committed_guards = nullptr) const;
-    bool schedule_bank(BankEstimate &plan, const std::array<unsigned, TeamMemory::slots> &bags,
-                       unsigned already_channeling = 0) const;
-    bool crossing_ready();
-    bool teleport_assignment(vec2 &landing) const;
-
-    // Shared mechanics (mechanics/). Both controllers execute through these.
+    // Shared mechanics (mechanics/).
     // world.cpp: observation and estimates.
     void initialise();
     void record_life();
@@ -678,13 +558,8 @@ class Bot {
     bool advance_attack(vec2 victim);
     bool follow_through();
     // economy.cpp
-    void buy_equipment(bool crystal_required = false);
+    void buy_equipment();
     void refresh_equipment();
-    float upgrade_gain(bc::champion_type champion, float hp, float attack, float spell, unsigned gold) const;
-    float upgrade_output(unsigned member, unsigned reward, bool siege, float splash) const;
-    bool clear_altar_lock(int altar);
-    ActionResult deposit_at(int altar);
-    void interrupt_deposit();
     void ward_ahead(vec2 goal);
     // crystal.cpp: teleport crystal shortcuts.
     void prepare_hops();
@@ -692,13 +567,11 @@ class Bot {
     bool crystal_hop();
     bool crystal_safe() const;
 
-    // Worker controller (workers/): independent policy for Issac, Ryth and
-    // Varg. The squad uses the shared mechanics, never these decisions.
+    // Worker controller (workers/): every champion's independent policy.
     void play_worker_turn();
     void worker_priority();
     void worker_report();
     bool worker_escape();
-    bool worker_caught() const;
     // excluded: a group never chosen (-1: none).
     int worker_choose_group(int excluded = -1);
     void worker_farm();
@@ -710,16 +583,13 @@ class Bot {
     void worker_update_formation();
     bool worker_reinforce();
     bool worker_tribute();
-    void worker_disrupt_tribute();
     void note_activity(Activity activity);
-    // safety.cpp: pure-resource disengagement.
+    // safety.cpp: danger from enemy champions, remembered sightings, and
+    // stepping away.
     bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const;
-    int enemy_index(const ObservedUnit &enemy) const;
-    bool enemy_closing(const ObservedUnit &enemy) const;
     void worker_track_sightings();
     std::pair<int, int> worker_danger(vec2 tile) const;
     bool worker_step_away();
-    bool worker_disengage();
 
     void take_turn();
 

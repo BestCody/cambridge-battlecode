@@ -1,4 +1,4 @@
-// Worker tribute decisions and enemy tribute disruption.
+// Worker tribute decisions.
 #include "../bot.h"
 
 bool Bot::worker_tribute() {
@@ -42,13 +42,9 @@ bool Bot::worker_tribute() {
         if (d == bc::distance_field::unreachable)
             continue;
         float risk = 0;
-        // Pure workers weigh enemies near an altar twice as heavily and from
-        // further out: a bag lost on the way to bank is the worst outcome.
-        const int watch = policy::worker_pure_resource ? 8 : 6;
-        const float scale = policy::worker_pure_resource ? 2.0f : 1.0f;
         for (const auto &e : enemies)
-            if (distance(e.position, altar) <= watch)
-                risk += (6 + e.strength * 0.05f) * scale;
+            if (distance(e.position, altar) <= 6)
+                risk += 6 + e.strength * 0.05f;
         bool locked = visible.is_set(altar) && bc::vision::has_altar_lock(altar) &&
                       bc::vision::altar_lock_at(altar).is_enemy();
         float value = d + risk + (locked ? rules::settings().altar_lock_hits : 0);
@@ -77,16 +73,13 @@ bool Bot::worker_tribute() {
         // Damage cannot cancel this channel. Stuns and a lethal burst can.
         float hazard = incoming(position);
         if (health > hazard * (channel_duration(gems) + 1) || win || hazard == 0) {
-            auto lock = me.consumables()[bc::consumable_type::altar_lock];
-            if (lock.count() && !bc::vision::has_altar_lock(selected))
-                lock.use(selected);
             if constexpr (policy::diagnostic)
                 if (capture_combo)
                     std::printf("CAPTURE_TRIBUTE r=%u gems=%u group=%d\n", round, gems, target);
             me.submit_gems(selected);
             return true;
         }
-        if (!policy::worker_pure_resource && worker_skirmish())
+        if (worker_skirmish())
             return true;
         retreating = true;
         return worker_escape();
@@ -98,29 +91,4 @@ bool Bot::worker_tribute() {
     move_to(approach, false, true);
     ward_ahead(selected);
     return true;
-}
-
-void Bot::worker_disrupt_tribute() {
-    if (enemies.empty())
-        return;
-    auto &me = bc::self();
-    auto lock = me.consumables()[bc::consumable_type::altar_lock];
-    if (!lock.count() || me.restrictions().contains(bc::buff_restrictions::consumable))
-        return;
-    for (const auto &e : enemies)
-        if (e.depositing && e.gems > 0) {
-            for (auto altar : altars) {
-                // The tribute radius is a conservative subset of lock placement
-                // range, and is available directly from the engine settings.
-                if (distance(position, altar) > rules::settings().submit_gems_range ||
-                    distance(e.position, altar) > rules::settings().submit_gems_range ||
-                    bc::vision::has_altar_lock(altar))
-                    continue;
-                if (lock.use(altar)) {
-                    if constexpr (policy::diagnostic)
-                        std::printf("TRIBUTE_INTERRUPTED r=%u gems=%d\n", round, e.gems);
-                    return;
-                }
-            }
-        }
 }

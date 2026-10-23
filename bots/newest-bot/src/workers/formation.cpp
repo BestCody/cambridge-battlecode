@@ -4,8 +4,7 @@
 namespace {
 float observed_power(const ObservedUnit &unit) {
     return std::sqrt(std::max(1.0f, unit.health + unit.shield + unit.ready_shield) *
-                     (unit.damage_rate + unit.retaliation() + unit.burst * 0.2f + unit.healing_rate) /
-                     unit.mitigation);
+                     (unit.damage_rate + unit.burst * 0.2f + unit.healing_rate) / unit.mitigation);
 }
 } // namespace
 
@@ -40,9 +39,8 @@ void Bot::worker_update_formation() {
         }
     }
     float team_power = 0;
-    const float splash = passive == bc::passive_type::splash_attack ? opening.mean_splash : 1;
     const float own_power =
-        std::sqrt(std::max(1.0f, health) * spell_dps(spells, strength, focus, splash) / mitigation);
+        std::sqrt(std::max(1.0f, health) * spell_dps(spells, strength, focus) / mitigation);
     // Unseen allies contribute their public starting kit. Visible allies use
     // their current health and upgrades; no hidden live state is queried.
     for (std::size_t s = 0; s < roster.size(); ++s) {
@@ -85,8 +83,6 @@ bool Bot::worker_reinforce() {
     vec2 destination{};
     unsigned selected_force = 0;
     for (unsigned leader = 0; leader < count; ++leader) {
-        if (squad.contains(leader))
-            continue; // Worker reinforcement stays within the resource pool.
         const unsigned demand = TeamMemory::requested_force(shared.get(leader), groups.size());
         if (!alive[leader] || !demand || leader == slot)
             continue;
