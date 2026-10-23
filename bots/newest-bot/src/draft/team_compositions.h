@@ -20,18 +20,19 @@ struct Entry {
     Mask picks;
     constexpr unsigned size() const { return std::popcount(picks); }
 };
-// One roster per pick count, copied from the top ladder team's lineup since
-// engine 1.0.3: Vesper, Vendetta and Heart of Ruin carry, Twins (Cassi and
-// Issac) add two farming bodies at 4 picks and Ryth a melee fighter at 5.
-// Vesper and Vendetta collect most of its gems and gold. It won 65 of 80 head
-// to head against its earlier lineup (Stellar, Heart of Ruin, Ren) and 194 vs
-// 168 of 210 against the old bots (deaths 12.3 vs 19.4 a game).
+// One roster per pick count. Vesper, Vendetta and Heart of Ruin carry (from
+// the top ladder team's lineup since engine 1.0.3: 65 of 80 head to head
+// against the earlier Stellar, Heart of Ruin, Ren). Ryth joins at 4 picks and
+// Marcella, which most ladder teams draft, at 5. The Twins they replace died
+// together, both bodies to one kill: 43% of our ladder deaths. Without them
+// the team died 14-16 times a game instead of 24-26 and won 135 of 240 head
+// to head (level with the old bots and the version before the lineup).
 inline constexpr Mask core_picks = roster(Pick::vesper_vale, Pick::vendetta, Pick::heart_of_ruin);
 inline constexpr std::array rosters{
     Entry{"Vesper/Vendetta/HeartOfRuin", core_picks},
-    Entry{"Vesper/Vendetta/HeartOfRuin/Twins", Mask(core_picks | bit(Pick::cassi_and_issac))},
-    Entry{"Vesper/Vendetta/HeartOfRuin/Twins/Ryth",
-          Mask(core_picks | roster(Pick::cassi_and_issac, Pick::ryth))}};
+    Entry{"Vesper/Vendetta/HeartOfRuin/Ryth", Mask(core_picks | bit(Pick::ryth))},
+    Entry{"Vesper/Vendetta/HeartOfRuin/Ryth/Marcella",
+          Mask(core_picks | roster(Pick::ryth, Pick::marcella))}};
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 
 // The roster for this pick count, or the largest one for an unsupported count.

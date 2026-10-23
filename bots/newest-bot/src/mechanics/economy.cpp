@@ -40,15 +40,11 @@ Build build_for(bc::champion_type type) {
             return {{{{Item::bruiser_shard_of_health, 1}, {Item::durability_shard_of_health, 1}}},
                     2,
                     Item::power_shard_of_strength};
-        case bc::champion_type::cassi: // Becomes tanky: a death also kills Issac.
-            return {{{{Item::power_shard_of_focus, 1}, {Item::durability_shard_of_focus, 2}}},
-                    2,
-                    Item::bruiser_shard_of_health};
-        case bc::champion_type::issac:
-            return {{{{Item::treasure_shard_of_strength, 1},
-                      {Item::power_shard_of_strength, 1},
-                      {Item::home_shard_of_health, 1},
-                      {Item::durability_shard_of_health, 1}}},
+        case bc::champion_type::marcella: // As the ladder teams that draft it buy.
+            return {{{{Item::jungle_shard_of_health, 5},
+                      {Item::treasure_shard_of_strength, 5},
+                      {Item::durability_shard_of_health, 5},
+                      {Item::bruiser_shard_of_strength, 5}}},
                     4,
                     Item::power_shard_of_strength};
         default: // Not drafted.

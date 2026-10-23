@@ -375,7 +375,6 @@ bool Bot::attack_combo(bool escaping) {
         }
     }
     Sequence best;
-    const float link = linked_risk();
     // Per enemy, what the evaluator reads, computed once as it would compute
     // it: plain arrays rather than the observed units.
     struct Foe {
@@ -421,9 +420,9 @@ bool Bot::attack_combo(bool escaping) {
     const auto begin_combo = [&](ComboState &s, float *left, int origin) {
         std::copy(original.begin(), original.end(), left);
         s = {};
-        if (origin && pressure[origin] * link >= health + initial_shield)
+        if (origin && pressure[origin] >= health + initial_shield)
             return;
-        s.score = origin ? -policy::unused_cast_cost - std::max(0.0f, pressure[origin] - pressure[0]) * link : 0;
+        s.score = origin ? -policy::unused_cast_cost - std::max(0.0f, pressure[origin] - pressure[0]) : 0;
         s.own_health = health;
         s.own_shield = initial_shield;
         s.enhanced = initially_enhanced;
@@ -481,9 +480,9 @@ bool Bot::attack_combo(bool escaping) {
         const float absorbed = std::min(s.own_shield, recoil);
         s.own_shield -= absorbed;
         s.own_health -= recoil - absorbed;
-        s.score -= recoil * (1 + std::min(2.0f, gems / 100.0f)) * link;
+        s.score -= recoil * (1 + std::min(2.0f, gems / 100.0f));
         if (s.own_health <= 0)
-            s.score -= (200 + gems * 7 + strength * 3) * link;
+            s.score -= 200 + gems * 7 + strength * 3;
     };
     // The states after a first action, per standing tile and action, made on
     // first use in this search (marked with its serial), and the last state
@@ -666,9 +665,8 @@ bool Bot::attack_combo(bool escaping) {
         const v128_t absorbed = wasm_f32x4_pmin(b.own_shield, recoil);
         b.own_shield = wasm_f32x4_sub(b.own_shield, absorbed);
         b.own_health = wasm_f32x4_sub(b.own_health, wasm_f32x4_sub(recoil, absorbed));
-        b.score = wasm_f32x4_sub(b.score, wasm_f32x4_mul(wasm_f32x4_mul(recoil, wasm_f32x4_splat(1 + std::min(2.0f, gems / 100.0f))),
-                                                          wasm_f32x4_splat(link)));
-        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat((200 + gems * 7 + strength * 3) * link)), b.score,
+        b.score = wasm_f32x4_sub(b.score, wasm_f32x4_mul(recoil, wasm_f32x4_splat(1 + std::min(2.0f, gems / 100.0f))));
+        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(200 + gems * 7 + strength * 3)), b.score,
                          wasm_f32x4_le(b.own_health, zero));
     };
     // The credits evaluate() adds after the actions, standing on our own tile.
@@ -1013,7 +1011,7 @@ bool Bot::follow_through() {
     float best_score = value(position);
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
     for (auto tile : step_tiles.positions()) {
-        if (incoming(tile) * linked_risk() >= health)
+        if (incoming(tile) >= health)
             continue; // Not onto a tile the attack search would refuse as lethal.
         const float score = value(tile);
         if (score > best_score + 0.01f) {

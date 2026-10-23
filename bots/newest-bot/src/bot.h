@@ -571,7 +571,6 @@ class Bot {
     // combat.cpp, micro.cpp
     bool combat(bool fighting_champions, int farm_group = -1, bool escaping = false);
     float kill_value(const ObservedUnit &enemy) const;
-    float linked_risk() const;
     bool attack_combo(bool escaping);
     bool attack_dash(vec2 victim);
     bool impact_dash(bool fighting_champions, int farm_group);

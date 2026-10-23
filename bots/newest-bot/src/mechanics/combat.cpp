@@ -318,14 +318,3 @@ float Bot::kill_value(const ObservedUnit &enemy) const {
     return value;
 }
 
-float Bot::linked_risk() const {
-    if (type != bc::champion_type::cassi && type != bc::champion_type::issac)
-        return 1;
-    float risk = 1.5f; // Losing a second body matters even when its bag is unseen.
-    const auto sibling =
-        type == bc::champion_type::cassi ? bc::champion_type::issac : bc::champion_type::cassi;
-    for (const auto &ally : allies)
-        if (ally.type == sibling)
-            risk += std::min(2.0f, ally.gems / 100.0f);
-    return risk;
-}
