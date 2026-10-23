@@ -38,7 +38,7 @@ bool Bot::attack_combo(bool escaping) {
     int reach = can_attack ? range : 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
-        if (!is_ready[i] || (walked && s.exclusive))
+        if (!is_ready[i] || ((walked || escaping) && s.exclusive))
             continue;
         if (s.kind == bc::ability_kind::attack_reset && !attack_available)
             reach = std::max(reach, range);
@@ -252,7 +252,8 @@ bool Bot::attack_combo(bool escaping) {
     for (int slot_index = 0; slot_index < 2; ++slot_index) {
         const auto &spell = spells[slot_index];
         const auto &ability = abilities[slot_index];
-        if (!is_ready[slot_index] || (walked && spell.exclusive))
+        // Escaping, a cast that stops the walk would hold us in the fight.
+        if (!is_ready[slot_index] || ((walked || escaping) && spell.exclusive))
             continue;
         Strike a;
         a.slot = slot_index;
@@ -1011,6 +1012,8 @@ bool Bot::follow_through() {
     float best_score = value(position);
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
     for (auto tile : step_tiles.positions()) {
+        if (incoming(tile) * linked_risk() >= health)
+            continue; // Not onto a tile the attack search would refuse as lethal.
         const float score = value(tile);
         if (score > best_score + 0.01f) {
             best = tile;
@@ -1109,6 +1112,7 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         struct Hittable {
             vec2 position;
             float dealt, extra;
+            bool twin = false; // Kills a twin, whose value already counts its sibling.
         };
         static std::vector<Hittable> hittable;
         hittable.clear();
@@ -1125,7 +1129,9 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                     else if (!unit.immune && !(unit.stunned && unit.stun_time > 0))
                         extra = unit.strength + unit.burst + (unit.channel ? 120 + unit.gems * 3 : 0);
                 }
-                hittable.push_back({unit.position, dealt, extra});
+                const bool twin = fighting_champions && dealt >= unit.health + unit.shield &&
+                                  (unit.type == bc::champion_type::cassi || unit.type == bc::champion_type::issac);
+                hittable.push_back({unit.position, dealt, extra, twin});
             }
         if (hittable.empty())
             continue;
@@ -1146,13 +1152,15 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 continue;
             float score = 0;
             int hits = 0;
+            bool twin_counted = false;
             for (const auto &hit : hittable) {
                 if (distance(tile, hit.position) > spell.radius)
                     continue;
                 score += hit.dealt;
                 ++hits;
-                if (fighting_champions)
+                if (fighting_champions && !(hit.twin && twin_counted))
                     score += hit.extra;
+                twin_counted |= hit.twin;
             }
             if (!hits || !(score > best_score))
                 continue; // Danger only lowers the score: this landing cannot win.

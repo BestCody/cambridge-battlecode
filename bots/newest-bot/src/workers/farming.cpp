@@ -50,7 +50,7 @@ int Bot::worker_choose_group(int excluded) {
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (s != slot && shared.get(s) >= 1 && shared.get(s) <= groups.size())
+        if (s != slot && living(s) && shared.get(s) >= 1 && shared.get(s) <= groups.size())
             ++claims[shared.get(s) - 1];
     const auto standing_on = [&](vec2 p) {
         const int g = group_at(p);
@@ -89,6 +89,8 @@ int Bot::worker_choose_group(int excluded) {
                 const unsigned code = shared.get(s);
                 const int claimed = TeamMemory::objective(code, groups.size());
                 free_partners += code == 0 || (claimed >= 0 && groups[claimed].status == CampGroup::cooling);
+                if (claimed >= 0 && groups[claimed].status == CampGroup::cooling && claims[claimed])
+                    --claims[claimed]; // Counted as a free partner on every camp, that one included.
                 group_mates += leading && claimed == excluded;
                 break;
             }
@@ -210,7 +212,8 @@ int Bot::worker_choose_group(int excluded) {
             v128_t skip = wasm_v128_or(wasm_i32x4_eq(path, splat_int(bc::distance_field::unreachable)),
                                        wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
-            const v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(range)), no_bits);
+            v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(range)), no_bits);
+            travel_steps = pick(path, travel_steps, is_held); // Holding means standing on a tile.
             const v128_t waiting_steps = wasm_v128_and(
                 is_cooling, wasm_i32x4_max(wasm_i32x4_sub(wasm_i32x4_sub(wasm_v128_load(&lanes.respawn[i]),
                                                                          splat_int(int(round))),
@@ -237,7 +240,8 @@ int Bot::worker_choose_group(int excluded) {
                                wasm_f32x4_add(one, wasm_f32x4_mul(helpers, splat(policy::helper_speed))));
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // clear_loss(g, clear).
-            v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear), splat(camp_mitigation));
+            v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear),
+                                         splat(camp_mitigation * mitigation));
             loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
             for (const auto &spell : spells) {
                 const v128_t cooldown = splat(float(spell.cooldown));
@@ -331,7 +335,8 @@ int Bot::worker_choose_group(int excluded) {
             // wasting a long reset whenever that still produces score safely.
             if (weak)
                 value = pick(wasm_f32x4_mul(value, splat(0.1f)), value,
-                             wasm_v128_and(wasm_f32x4_gt(pressure, zero), wasm_f32x4_eq(ranged_dps, zero)));
+                             wasm_v128_andnot(wasm_v128_and(wasm_f32x4_gt(pressure, zero), wasm_f32x4_eq(ranged_dps, zero)),
+                                              is_held));
             wasm_v128_store(&lanes.scores[i], pick(splat(skipped), value, skip));
         }
     };
@@ -457,6 +462,10 @@ void Bot::worker_farm() {
             goals = std::move(stand);
     }
     if (!nearest) {
+        // Every camp remembered dead though the group lives: it respawned
+        // unseen. Go and look instead of standing idle.
+        if (move_to(around(g.centre, range), false, true))
+            return;
         target = -1;
         return;
     }

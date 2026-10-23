@@ -723,20 +723,6 @@ void Bot::observe() {
         else if (const auto info = sighting(c))
             allies.emplace_back(c, *info);
     ++threat_revision; // New units: what incoming() listed from them is stale.
-    // Track enemy death timers across turns so an engagement beside their
-    // spawn can price in a fresh body arriving at full strength.
-    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_respawn.size(); ++i) {
-        bool alive = false;
-        try {
-            alive = enemy_roster[i].is_alive();
-        } catch (...) {
-            continue;
-        }
-        if (alive)
-            enemy_respawn[i] = -1;
-        else if (enemy_respawn[i] < 0)
-            enemy_respawn[i] = int(round) + rules::settings().respawn_time;
-    }
     for (const auto &a : allies)
         if (distance(position, a.position) <= 6)
             nearby_healing += a.healing_rate;
@@ -1077,7 +1063,7 @@ float Bot::dps(const CampGroup &g) const {
 }
 
 float Bot::clear_loss(const CampGroup &g, float clear_time) const {
-    float loss = g.pressure * clear_time * camp_mitigation;
+    float loss = g.pressure * clear_time * camp_mitigation * mitigation;
     if (g.camps.size() > 1)
         loss *= camp_loss_factor(g); // Sequential kills remove attackers during a clear.
     for (const auto &s : spells) {
@@ -1104,7 +1090,7 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
         std::size_t n = 0;
         for (const auto &e : enemies) {
             // A stun whose timer has run out ends before the enemy acts.
-            if (e.stunned && e.stun_time > 0)
+            if ((e.stunned && e.stun_time > 0) || e.channel)
                 continue;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
@@ -1209,6 +1195,30 @@ float Bot::friendly_power(vec2 at) const {
              0.9f / (1 + arrival * 0.4f);
     }
     return p;
+}
+
+void Bot::track_enemy_respawns() {
+    // Enemy death timers across turns, so an engagement beside their spawn can
+    // price in a fresh body arriving at full strength. Needs no vision.
+    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_respawn.size(); ++i) {
+        bool alive = false;
+        try {
+            alive = enemy_roster[i].is_alive();
+        } catch (...) {
+            continue;
+        }
+        if (alive)
+            enemy_respawn[i] = -1;
+        else if (enemy_respawn[i] < 0)
+            enemy_respawn[i] = int(round) + rules::settings().respawn_time;
+    }
+}
+
+bool Bot::camp_dormant(const ObservedUnit &c) const {
+    // Asleep and not woken by us: untouched at full health, or shown asleep.
+    const auto &g = groups[c.group];
+    return g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
+           (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)]));
 }
 
 float Bot::enemy_power(vec2 at) const {

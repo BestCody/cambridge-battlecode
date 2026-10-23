@@ -267,7 +267,8 @@ void Bot::retreat_to_spawn() {
     // whose current stun can expire, rather than just their current attack tile.
     bc::bitboard threatened;
     for (const auto &camp : camps)
-        if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range)
+        if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range &&
+            !camp_dormant(camp))
             threatened.draw_chebyshev(camp.position, camp.range);
     for (const auto &enemy : enemies) {
         const auto design = enemy.champion().base_stats();
@@ -324,6 +325,7 @@ void Bot::retreat_to_spawn() {
     }
     if (!spawn.is_set(position)) {
         observe_fight();
-        combat(true, -1, true);
+        // Ranged and unmoved, a shot costs no walk: fire back.
+        combat(true, -1, !(range > 1 && !walked));
     }
 }

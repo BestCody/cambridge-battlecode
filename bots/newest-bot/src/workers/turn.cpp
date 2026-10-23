@@ -37,6 +37,7 @@ void Bot::worker_report() {
 void Bot::play_worker_turn() {
     auto &me = bc::self();
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
+    track_enemy_respawns(); // Needs no vision: also while dead, recalling or banking.
     if (!me.is_alive()) {
         note_activity(Activity::dead);
         publish(TeamMemory::unavailable);

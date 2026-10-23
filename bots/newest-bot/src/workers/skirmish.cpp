@@ -77,9 +77,11 @@ bool Bot::worker_skirmish() {
         // than walk into it alone: half our ladder fights started outnumbered.
         if (!favourable && worker_danger(position).first) {
             worker_track_sightings(); // The camps by these enemies wait out the sighting.
-            target = -1;
-            if (worker_step_away())
+            // A failed step keeps the camp, so the turn is not spent idle.
+            if (worker_step_away()) {
+                target = -1;
                 return true;
+            }
         }
         if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
             retreating = health < max_health * 0.45f;

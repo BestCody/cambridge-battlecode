@@ -200,7 +200,8 @@ inline bc::bitboard terrain() {
 }
 inline int channel_duration(unsigned gems) {
     return std::max(rules::settings().submit_gem_minimum_duration,
-                    static_cast<int>(std::ceil(gems * rules::settings().submit_gem_duration_multiplier)) +
+                    // The epsilon keeps ceil(30 * 0.1) at 3: the double product is 3.0000000000000004.
+                    static_cast<int>(std::ceil(gems * rules::settings().submit_gem_duration_multiplier - 1e-9)) +
                         rules::settings().submit_gem_base_duration);
 }
 inline unsigned id(const bc::champion &c) {
