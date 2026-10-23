@@ -56,8 +56,10 @@ void Bot::play_worker_turn() {
     if (me.is_submitting_gems()) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);
-        // Protect a valuable bag only when the remaining channel is lethal.
-        if (health < incoming(position) * (me.remaining_channel_time() + 1)) {
+        // Protect a valuable bag only when the remaining channel is lethal; a
+        // winning deposit stands unless we die before our next turn.
+        const bool wins = gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems;
+        if (health < incoming(position) * (wins ? 1 : me.remaining_channel_time() + 1)) {
             me.cancel_submit_gems();
             retreating = true;
             worker_escape();
@@ -67,6 +69,14 @@ void Bot::play_worker_turn() {
     const bool at_spawn = bc::map::spawn_region(bc::team::ally).is_set(position);
     if (at_spawn && health >= max_health)
         retreating = false;
+    // A winning bag within three steps of an altar is banked even when hurt:
+    // the deposit ends the game, and damage does not interrupt it.
+    if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems &&
+        altar_walk().get(position) <= 3) {
+        banking = true;
+        worker_tribute();
+        return;
+    }
     // Health recovery precedes fighting, capture, bank travel and shopping.
     // Empty bags and a nearly cleared camp never waive this obligation.
     retreating |= health_recovery_needed();
@@ -113,7 +123,10 @@ void Bot::play_worker_turn() {
                                (is_carry(type) ? policy::carry_shopping_shards : policy::shopping_shards);
     bool about_to_capture = target >= 0 && groups[target].status == CampGroup::capture &&
                             distance(position, groups[target].centre) <= 2;
-    bool nearly_clear = target >= 0 && groups[target].health < dps(groups[target]) * 3;
+    // A camp waiting to respawn or being captured reads 0 health: only one
+    // being cleared is nearly clear.
+    bool nearly_clear = target >= 0 && groups[target].status == CampGroup::alive &&
+                        groups[target].health < dps(groups[target]) * 3;
     if (!at_spawn && !about_to_capture && !nearly_clear && upgrade) {
         if (gems && altar_walk().get(position) <= 5) {
             banking = true;

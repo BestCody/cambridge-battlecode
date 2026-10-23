@@ -240,6 +240,13 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
             spell_reach = std::max(spell_reach, int(s.range + s.radius));
             if (ready)
                 burst = std::max(burst, focus * s.modifier);
+        } else if (s.kind == bc::ability_kind::dash && s.modifier > 0) {
+            // A damaging dash (Heart of Ruin) lands its area its steps plus
+            // its radius away.
+            damage_rate += focus * s.modifier / s.cooldown;
+            spell_reach = std::max(spell_reach, int(s.range + s.radius));
+            if (ready)
+                burst = std::max(burst, focus * s.modifier);
         } else if (s.kind == bc::ability_kind::shield && ready)
             ready_shield = focus * s.modifier;
         else if (s.kind == bc::ability_kind::heal)
@@ -1096,7 +1103,8 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
         }
         std::size_t n = 0;
         for (const auto &e : enemies) {
-            if (e.stunned)
+            // A stun whose timer has run out ends before the enemy acts.
+            if (e.stunned && e.stun_time > 0)
                 continue;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
@@ -1149,7 +1157,7 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
         const auto &c = camps.slot(std::uint32_t(camp_threats[k]));
         const auto &g = groups[c.group];
         if (c.group != engaged_group && g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
-            g.health >= g.max_health)
+            (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
             return;
         // Camps attack the nearest champion, including our enemy. Avoid taking
         // aggro from the current tank (a unit nearer the camp than the tile);
@@ -1204,8 +1212,13 @@ float Bot::friendly_power(vec2 at) const {
 }
 
 float Bot::enemy_power(vec2 at) const {
+    // Only enemies that can fight now: not channelling, stunned or on their
+    // spawn (as friendly_power leaves out channelling and stunned allies).
+    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     float p = 0;
     for (const auto &e : enemies) {
+        if (e.channel || (e.stunned && e.stun_time > 0) || enemy_spawn.is_set(e.position))
+            continue;
         int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
         if (arrival > 6)
             continue;
