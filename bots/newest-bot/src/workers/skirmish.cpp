@@ -13,11 +13,13 @@ bool Bot::worker_skirmish() {
         for (unsigned i = 0; i < is_ready.size(); ++i)
             is_ready[i] = ready(abilities[i], can_cast);
     }
+    // A damaging dash (Heart of Ruin) counts as a damage spell.
     int ready_reach = range;
     for (unsigned i = 0; i < spells.size(); ++i)
         if (is_ready[i] && spells[i].modifier > 0 &&
             (spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
-             spells[i].kind == bc::ability_kind::aoe_damage))
+             spells[i].kind == bc::ability_kind::aoe_damage ||
+             spells[i].kind == bc::ability_kind::dash))
             ready_reach = std::max(ready_reach, int(spells[i].range + spells[i].radius));
     int selected = -1;
     float best = -1;
@@ -60,6 +62,11 @@ bool Bot::worker_skirmish() {
                       spells[i].kind == bc::ability_kind::aoe_damage) &&
                      distance(position, victim.position) <= spells[i].range + spells[i].radius)
                 spell_burst = std::max(spell_burst, focus * spells[i].modifier);
+            else if (spells[i].kind == bc::ability_kind::dash &&
+                     spells[i].modifier > 0 &&
+                     distance(position, victim.position) <= spells[i].range + spells[i].radius)
+                // The engine's damage for it, with Heart of Ruin's passive.
+                spell_burst = std::max(spell_burst, abilities[i].damage_amount());
         }
     float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;

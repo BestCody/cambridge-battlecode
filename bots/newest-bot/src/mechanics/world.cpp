@@ -229,7 +229,8 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         const auto &s = kit.spells[ability_slot];
         std::int32_t cooldown = 0;
         bc::detail::check(bc::detail::sdk_champion_cooldown(handle, ability_slot, &cooldown));
-        const bool ready = cooldown <= 1;
+        // Castable at its next action: a slot at 1 is not (measured).
+        const bool ready = cooldown <= 0;
         if (s.kind == bc::ability_kind::attack_reset) {
             damage_rate += strength / s.cooldown;
             if (ready)
@@ -251,6 +252,16 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
             ready_shield = focus * s.modifier;
         else if (s.kind == bc::ability_kind::heal)
             healing_rate = focus * s.modifier / s.cooldown;
+    }
+    if (type == bc::champion_type::heart_of_ruin) {
+        // Its passive adds up to half again to all its damage with missing
+        // health; the readings leave it out.
+        const float bonus =
+            1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
+                    (1 - health / std::max(1.0f, max_health));
+        strength *= bonus;
+        damage_rate *= bonus;
+        burst *= bonus;
     }
     // The engine writes every entry, so the array is not zero-filled first.
     std::array<std::uint32_t, static_cast<std::size_t>(bc::item_type::count)> items;
@@ -329,6 +340,9 @@ void Bot::initialise() {
             if (spell.kind == bc::ability_kind::shield)
                 hp += design.base_focus * spell.modifier;
         roster_power.push_back(std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus)));
+        roster_kits.push_back({described, design.camp_damage_multiplier,
+                               camp_dps(described, design.base_strength, design.base_focus, 1) *
+                                   design.camp_damage_multiplier});
     }
     float ally_power_sum = 0;
     for (auto p : roster_power)
@@ -402,6 +416,7 @@ void Bot::initialise() {
         const std::size_t room = camps.slots_total() + 8;
         camp_threats.reset(new int[room]);
         threat_nearest.reset(new int[room]);
+        threat_ties.reset(new int[room]);
         threat_stamp.assign(room, 0);
         for (auto *lanes : {&threat_x, &threat_y, &threat_reach})
             lanes->reset(new std::int16_t[room]);
@@ -819,17 +834,10 @@ void Bot::observe_group(std::size_t i) {
         camps.restart(int(i));
         if (g.status == CampGroup::capture && int(round) > g.seen + rules::settings().capture_time + 1) {
             // Unseen past its capture timer: taken by then, so it respawns
-            // after its slowest camp's cooldown (the rules' table).
-            int cooldown = 0;
-            for (const auto &c : g.camps) {
-                const auto kind = c.unit.kind();
-                cooldown = std::max(cooldown, kind == bc::camp_type::wolf       ? 40
-                                              : kind == bc::camp_type::monolith ? 150
-                                              : kind == bc::camp_type::elk || kind == bc::camp_type::golem ? 60
-                                                                                                           : 50);
-            }
+            // after the engine's group cooldown (80 for golems, where the
+            // rules' table says 60).
             g.status = CampGroup::cooling;
-            g.respawn = g.seen + rules::settings().capture_time + cooldown;
+            g.respawn = g.seen + rules::settings().capture_time + g.unit.max_respawn_timer();
         }
         if (g.status == CampGroup::cooling && int(round) >= g.respawn) {
             g.status = CampGroup::alive;
@@ -984,7 +992,8 @@ void Bot::observe_after_move(int group) {
 }
 
 void Bot::list_threat(std::uint32_t slot) {
-    if (const auto &c = camps.slot(slot); c.strength > 0 && !c.stunned) {
+    // A stun whose timer has run out ends before the camp acts.
+    if (const auto &c = camps.slot(slot); c.strength > 0 && !(c.stunned && c.stun_time > 0)) {
         camp_threats[threat_count] = int(slot);
         threat_x[threat_count] = std::int16_t(c.position.x);
         threat_y[threat_count] = std::int16_t(c.position.y);
@@ -1050,12 +1059,29 @@ int Bot::nearest_unit(vec2 tile) const {
     return wasm_i32x4_extract_lane(nearest, 0);
 }
 
+int Bot::nearest_unit(vec2 tile, int &ties) const {
+    const int nearest = nearest_unit(tile);
+    // The units that near, four a step (padding is never that near).
+    const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y), at = wasm_i32x4_splat(nearest);
+    v128_t count = wasm_i32x4_splat(0);
+    for (std::size_t k = 0; k < unit_x.size(); k += 4)
+        count = wasm_i32x4_sub(
+            count,
+            wasm_i32x4_eq(at, wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&unit_x[k]))),
+                                             wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&unit_y[k]))))));
+    ties = wasm_i32x4_extract_lane(count, 0) + wasm_i32x4_extract_lane(count, 1) +
+           wasm_i32x4_extract_lane(count, 2) + wasm_i32x4_extract_lane(count, 3);
+    return nearest;
+}
+
 void Bot::publish(unsigned claim) { shared.set(slot, claim); }
 
 float Bot::dps(const CampGroup &g) const {
     // Direct and area spell DPS share the one-cast limit; cooldowns are long
     // enough that the two slots can alternate without sustained contention.
-    float value = spell_dps(spells, strength, focus);
+    // Camp choice's own rate: hits with Heart of Ruin's passive, the spells
+    // cast on camps, a damaging dash on up to two camps.
+    float value = camp_dps(spells, basic_damage(), focus, float(std::min<std::size_t>(2, g.camps.size())));
     for (const auto &s : spells)
         if (s.kind == bc::ability_kind::aoe_damage)
             value += focus * s.modifier * (g.splash - 1) / s.cooldown;
@@ -1142,18 +1168,23 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
     const auto threat = [&](std::size_t k) {
         const auto &c = camps.slot(std::uint32_t(camp_threats[k]));
         const auto &g = groups[c.group];
-        if (c.group != engaged_group && g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
+        // Sleeping camps, of the engaged group too, do not strike.
+        if (g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
             (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
             return;
         // Camps attack the nearest champion, including our enemy. Avoid taking
         // aggro from the current tank (a unit nearer the camp than the tile);
-        // ties remain conservatively dangerous.
+        // a tie shares the hit among the units tied with us.
         if (threat_stamp[k] != threat_revision) {
-            threat_nearest[k] = nearest_unit(c.position);
+            threat_nearest[k] = nearest_unit(c.position, threat_ties[k]);
             threat_stamp[k] = threat_revision;
         }
         if (threat_nearest[k] < distance(tile, c.position))
             return;
+        if (threat_nearest[k] == distance(tile, c.position)) {
+            damage += c.strength * camp_mitigation / float(1 + threat_ties[k]);
+            return;
+        }
         damage += c.strength * camp_mitigation;
     };
     // Which camps reach the tile, eight at a time; those in order as listed.
@@ -1188,10 +1219,13 @@ float Bot::friendly_power(vec2 at) const {
                         (spell_dps(spells, strength, focus) + burst * 0.2f) / mitigation);
     for (const auto &a : allies) {
         int arrival = std::max(0, distance(at, a.position) - std::max(a.range, a.spell_reach));
-        if (arrival > 6 || a.channel || a.stunned)
+        // A stunned ally still counts (a stun costs it one action), without
+        // its burst while the stun has time left.
+        if (arrival > 6 || a.channel)
             continue;
+        const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
         p += std::sqrt(std::max(1.0f, a.health + a.shield + a.ready_shield) *
-                       (a.damage_rate + a.burst * 0.2f + a.healing_rate) / a.mitigation) *
+                       (a.damage_rate + ally_burst * 0.2f + a.healing_rate) / a.mitigation) *
              0.9f / (1 + arrival * 0.4f);
     }
     return p;
@@ -1222,12 +1256,13 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 }
 
 float Bot::enemy_power(vec2 at) const {
-    // Only enemies that can fight now: not channelling, stunned or on their
-    // spawn (as friendly_power leaves out channelling and stunned allies).
+    // Only enemies that can fight: not channelling or on their spawn, as
+    // friendly_power leaves out channelling allies. A stunned one counts
+    // without its burst (a stun costs it one action).
     static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     float p = 0;
     for (const auto &e : enemies) {
-        if (e.channel || (e.stunned && e.stun_time > 0) || enemy_spawn.is_set(e.position))
+        if (e.channel || enemy_spawn.is_set(e.position))
             continue;
         int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
         if (arrival > 6)
@@ -1241,7 +1276,10 @@ float Bot::enemy_power(vec2 at) const {
                     distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
                     reflected += e.retaliation();
         p += std::sqrt(std::max(1.0f, e.health + e.shield + e.ready_shield) *
-                       (e.damage_rate + reflected + e.burst * 0.2f + e.healing_rate) / e.mitigation) /
+                       (e.damage_rate + reflected +
+                        (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * 0.2f +
+                        e.healing_rate) /
+                       e.mitigation) /
              (1 + arrival * 0.3f);
     }
     return p;

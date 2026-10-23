@@ -5,8 +5,9 @@
 
 namespace {
 constexpr std::uint16_t far = bc::distance_field::unreachable;
-// Turns a hop costs: the channel, then the turn it lands on.
-int hop_turns() { return rules::settings().tp_crystal_time + 1; }
+// Turns a hop costs: the channel alone. Measured: a hop begun on turn r lands
+// at the start of turn r + 3, and the champion moves that turn.
+int hop_turns() { return rules::settings().tp_crystal_time; }
 
 // Rows are read and written eight distances at a time, the last group of a
 // row running past its end: each array has this much room past its last row,

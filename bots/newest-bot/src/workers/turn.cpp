@@ -181,6 +181,12 @@ void Bot::worker_priority() {
         std::array<bool, 2> ready{};
         for (unsigned i = 0; i < ready.size(); ++i)
             ready[i] = abilities[i].cooldown() <= 1;
+        // A ready damaging dash (Heart of Ruin) counts as a damage spell, at
+        // the engine's damage with the passive.
+        std::array<float, 2> dash_damage{};
+        for (unsigned i = 0; i < spells.size(); ++i)
+            if (ready[i] && spells[i].kind == bc::ability_kind::dash && spells[i].modifier > 0)
+                dash_damage[i] = abilities[i].damage_amount();
         int best = 0;
         for (const auto &e : enemies) {
             const float hp = live_health(e);
@@ -199,6 +205,8 @@ void Bot::worker_priority() {
                      s.kind == bc::ability_kind::aoe_damage) &&
                     d <= s.range + s.radius)
                     spell = std::max(spell, focus * s.modifier);
+                if (dash_damage[i] > 0 && d <= s.range + s.radius)
+                    spell = std::max(spell, dash_damage[i]);
             }
             const float burst = (basic + spell) * e.mitigation;
             if (burst <= 0)

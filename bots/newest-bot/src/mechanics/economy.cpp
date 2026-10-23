@@ -75,6 +75,11 @@ unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
 void Bot::refresh_equipment() {
     mitigation = camp_mitigation = 1;
     camp_multiplier = stats.camp_damage_multiplier;
+    // Capture gold, by Vesper's passive (measured 1.327) and a finished
+    // Treasure emblem (1.200); the bonuses add.
+    gold_bonus = 1 + (passive == bc::passive_type::bonus_gold
+                          ? bc::constants::passive_abilities::vesper_vale_bonus_gold_percent / 100.0f
+                          : 0.0f);
     const auto inventory = bc::self().item_count();
     for (unsigned i = 0; i < static_cast<unsigned>(Item::count); ++i) {
         const Item item(i);
@@ -87,6 +92,8 @@ void Bot::refresh_equipment() {
             camp_mitigation = 1 - item.passive_magnitude();
         if (passive == bc::item_passive::monster)
             camp_multiplier = stats.camp_damage_multiplier * (1 + item.passive_magnitude());
+        if (passive == bc::item_passive::treasure)
+            gold_bonus += item.passive_magnitude();
     }
 }
 

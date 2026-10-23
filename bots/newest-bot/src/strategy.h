@@ -139,14 +139,16 @@ inline constexpr float cohesion_weight = 0.25f;
 // deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
 // gained less, and counting every nearby ally, free or not, lost.
 inline constexpr int partner_radius = 6;
-// Camp choice's clear rate with helpers: our own rate times 1 + helper_speed
-// per helper, for both the clear time and the health it costs. Fitted to our
-// measured clear times by group size (1.3; 0.65 fitted worst): each helper
-// adds about a champion's damage and more, as one tank takes the camp's hits.
-// The old 0.65 made big camps look slow and risky to a group, so it took
-// small ones; 1.3 won 10 more of 490 games and raised gems by round 300 from
-// 85 to 97, with more elk and fewer wolf clears early.
-inline constexpr float helper_speed = 1.3f;
+// Camp choice clears a camp at the team's summed camp rate (ours, its
+// claimants', the free partners' and group mates') times team_clear_share.
+// With a helper the camps strike the tank: a ranged champion takes
+// ranged_helped_loss of the camps' damage and a melee one, the tank,
+// melee_helped_loss. A champion with a dash walks dash_travel_scale of the
+// steps.
+inline constexpr float team_clear_share = 0.85f;
+inline constexpr float ranged_helped_loss = 0.15f;
+inline constexpr float melee_helped_loss = 1.5f;
+inline constexpr float dash_travel_scale = 0.8f;
 } // namespace policy
 
 // Carries take capture rewards first (and so the gold), bank bigger bags and
@@ -338,6 +340,7 @@ inline float gem_risk_weight(const DraftPlan &plan) {
     return fortress_gems(plan) ? policy::siege_risk_weight : 1.0f;
 }
 
+// A damaging dash (Heart of Ruin) counts as a damage spell.
 inline float spell_dps(const std::array<Spell, 2> &spells, float strength, float focus, float splash = 1) {
     float result = strength * splash;
     for (const auto &s : spells) {
@@ -347,6 +350,27 @@ inline float spell_dps(const std::array<Spell, 2> &spells, float strength, float
             result += focus * s.modifier / s.cooldown;
         if (s.kind == bc::ability_kind::aoe_damage)
             result += focus * s.modifier * splash / s.cooldown;
+        if (s.kind == bc::ability_kind::dash && s.modifier > 0)
+            result += focus * s.modifier / s.cooldown;
+    }
+    return result;
+}
+
+// Damage per round on camps, for camp choice: hits, resets, area spells, the
+// targeted spells that can target a camp (Ryth's stun never does) and a
+// damaging dash landing on dash_hits camps. Area splash is the caller's.
+inline float camp_dps(const std::array<Spell, 2> &spells, float strength, float focus, float dash_hits) {
+    float result = strength;
+    for (const auto &s : spells) {
+        if (s.kind == bc::ability_kind::attack_reset)
+            result += strength / s.cooldown;
+        if ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
+            s.targets.contains(bc::ability_target_mask::camps))
+            result += focus * s.modifier / s.cooldown;
+        if (s.kind == bc::ability_kind::aoe_damage)
+            result += focus * s.modifier / s.cooldown;
+        if (s.kind == bc::ability_kind::dash && s.modifier > 0)
+            result += focus * s.modifier * dash_hits / s.cooldown;
     }
     return result;
 }

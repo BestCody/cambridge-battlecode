@@ -382,11 +382,12 @@ class Bot {
     std::vector<ObservedUnit> enemies, allies;
     CampList camps;
     std::vector<ObservedUnit> fight_scratch; // observe_fight()'s next enemies
-    // The camps that can strike (positive strength, not stunned), as their
-    // records' slots in camps' order, listed as each observation lists the
-    // records, for incoming(); with their tiles and reach as 16-bit lanes
-    // padded to eights. Sized once for every camp: threat_count are listed,
-    // threat_lanes with the padding.
+    // The camps that can strike (positive strength, no stun with time left),
+    // as their records' slots in camps'
+    // order, listed as each observation lists the records, for incoming();
+    // with their tiles and reach as 16-bit lanes padded to eights. Sized
+    // once for every camp: threat_count are listed, threat_lanes with the
+    // padding.
     std::unique_ptr<int[]> camp_threats;
     std::unique_ptr<std::int16_t[]> threat_x, threat_y, threat_reach;
     std::size_t threat_count = 0, threat_lanes = 0;
@@ -394,6 +395,8 @@ class Bot {
     // view, worked out on first use and kept while threat_revision stands
     // (the units and the threat list are the same).
     mutable std::unique_ptr<int[]> threat_nearest;
+    // And how many other units stand at that distance.
+    mutable std::unique_ptr<int[]> threat_ties;
     mutable std::vector<std::uint32_t> threat_stamp;
     std::uint32_t threat_revision = 1;
     // Every ally's and enemy's tile, padded to fours far away, for the
@@ -418,6 +421,17 @@ class Bot {
     TeamMemory shared;
     DraftPlan opening;
     std::vector<float> roster_power;
+    // Each roster slot's kit, camp damage multiplier and base damage per
+    // round on camps.
+    struct RosterKit {
+        std::array<Spell, 2> spells;
+        float camp_multiplier = 1, camp_rate = 0;
+    };
+    std::vector<RosterKit> roster_kits;
+    // Camp choice's workspace, per group its claimants' summed camp rates.
+    std::vector<float> claim_rates;
+    // The capture gold multiplier (Vesper's passive, Treasure).
+    float gold_bonus = 1;
     std::vector<bc::champion> enemy_roster;
     std::vector<int> enemy_respawn;
     float enemy_average_power = 0;
@@ -533,6 +547,8 @@ class Bot {
     void drop_threats(int group);
     void close_threats();
     int nearest_unit(vec2 tile) const;
+    // Also the number of units at that distance.
+    int nearest_unit(vec2 tile, int &ties) const;
     void observe_fight();
     void publish(unsigned claim);
     float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
