@@ -57,6 +57,10 @@ bool Bot::worker_tribute() {
     if (selected.x < 0)
         return false;
     if (distance(position, selected) <= rules::settings().submit_gems_range) {
+        // A stunned champion cannot act: starting a tribute would throw and
+        // lose the rest of the turn's work. Wait beside the altar instead.
+        if (me.buffs().has_stun())
+            return true;
         if (visible.is_set(selected) && bc::vision::has_altar_lock(selected) &&
             bc::vision::altar_lock_at(selected).is_enemy()) {
             if (me.can_attack())

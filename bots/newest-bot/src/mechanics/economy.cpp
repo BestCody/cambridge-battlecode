@@ -123,7 +123,7 @@ void Bot::buy_equipment() {
 void Bot::ward_ahead(vec2 goal) {
     profiling::Scope scope(profiling::Stage::ward);
     auto &me = bc::self();
-    if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems())
+    if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems() || me.buffs().has_stun())
         return;
     if (me.ward_cooldown() > 0 || me.restrictions().contains(bc::buff_restrictions::ward))
         return;
