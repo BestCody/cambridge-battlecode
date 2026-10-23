@@ -135,11 +135,11 @@ int Bot::worker_choose_group(int excluded) {
         // gather before any read.
         std::unique_ptr<std::int32_t[]> ints;
         std::unique_ptr<float[]> floats;
-        // Fixed: masks for contested ground and a gem reward; the gem reward,
-        // the gold, the altar term, the camp loss factor, the camp count and
+        // Fixed: a mask for a gem reward; the gem reward, the gold, the altar
+        // term, the camp loss factor, the camp count, the walk from home and
         // the centre.
-        std::int32_t *contested, *gem, *x, *y;
-        float *gem_reward, *gold, *altar, *loss_factor, *camp_count;
+        std::int32_t *gem, *x, *y;
+        float *gem_reward, *gold, *altar, *loss_factor, *camp_count, *home;
         // This choice's state, with the claimants' summed camp rates.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
         float *remaining, *splash, *pressure, *claims, *claim_rate, *scores;
@@ -147,11 +147,11 @@ int Bot::worker_choose_group(int excluded) {
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
-        lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[11 * padded]);
+        lanes.ints.reset(new std::int32_t[9 * padded]);
+        lanes.floats.reset(new float[12 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
-             {&lanes.contested, &lanes.gem, &lanes.x, &lanes.y, &lanes.status, &lanes.respawn, &lanes.path,
+             {&lanes.gem, &lanes.x, &lanes.y, &lanes.status, &lanes.respawn, &lanes.path,
               &lanes.siege_open, &lanes.marks, &lanes.sighted}) {
             *lane = next_int;
             next_int += padded;
@@ -159,17 +159,17 @@ int Bot::worker_choose_group(int excluded) {
         float *next_float = lanes.floats.get();
         for (auto **lane : {&lanes.gem_reward, &lanes.gold, &lanes.altar, &lanes.remaining, &lanes.splash,
                             &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.loss_factor,
-                            &lanes.claim_rate, &lanes.camp_count}) {
+                            &lanes.claim_rate, &lanes.camp_count, &lanes.home}) {
             *lane = next_float;
             next_float += padded;
         }
         for (std::size_t i = count; i < padded; ++i) {
-            for (auto *lane : {lanes.contested, lanes.gem, lanes.x, lanes.y, lanes.status, lanes.respawn,
+            for (auto *lane : {lanes.gem, lanes.x, lanes.y, lanes.status, lanes.respawn,
                                lanes.siege_open, lanes.marks})
                 lane[i] = 0;
             for (auto *lane : {lanes.gem_reward, lanes.gold, lanes.altar, lanes.remaining, lanes.splash,
                                lanes.pressure, lanes.claims, lanes.loss_factor, lanes.claim_rate,
-                               lanes.camp_count})
+                               lanes.camp_count, lanes.home})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -178,7 +178,6 @@ int Bot::worker_choose_group(int excluded) {
         for (std::size_t i = 0; i < count; ++i) {
             const auto &g = groups[i];
             const auto gem_value = g.unit.gem_value();
-            lanes.contested[i] = g.enemy_distance <= g.home_distance + 8 ? -1 : 0;
             lanes.gem[i] = gem_value > 0 ? -1 : 0;
             lanes.x[i] = g.centre.x;
             lanes.y[i] = g.centre.y;
@@ -187,6 +186,7 @@ int Bot::worker_choose_group(int excluded) {
             lanes.altar[i] = std::min(20, g.altar_distance) * 0.25f;
             lanes.loss_factor[i] = camp_loss_factor(g);
             lanes.camp_count[i] = float(g.camps.size());
+            lanes.home[i] = float(g.home_distance);
         }
     }
     const auto gather = [&] {
@@ -232,7 +232,13 @@ int Bot::worker_choose_group(int excluded) {
                 dash_rate += focus * s.modifier / s.cooldown;
         }
     const float gold_weight = gold_value * gold_bonus;
-    const float contest_factor = depleted ? policy::depleted_penalty : (1 + policy::contest_bonus);
+    // Multi-visit clears: the health a visit can spend before going home,
+    // the rounds left, and a trip home's recall.
+    const float usable = std::max(
+        100.0f, max_health * (1 - (type == bc::champion_type::heart_of_ruin ? policy::heart_retreat_health
+                                                                             : policy::retreat_health)));
+    const float rounds_left = float(int(rules::settings().max_rounds) - int(round));
+    const float recall_trip = float(rules::settings().recall_time + 1);
     const auto pick = [](v128_t yes, v128_t no, v128_t when) { return wasm_v128_bitselect(yes, no, when); };
     const auto mark_set = [&](v128_t m, std::int32_t bit) {
         return wasm_i32x4_ne(wasm_v128_and(m, splat_int(bit)), no_bits);
@@ -292,6 +298,9 @@ int Bot::worker_choose_group(int excluded) {
             v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear),
                                          splat(camp_mitigation * mitigation));
             loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
+            // The clear's camp damage before splitting it between tank and
+            // helpers (for multi-visit clears).
+            const v128_t team_loss = loss;
             // With a helper the camps strike the tank: a ranged champion takes
             // few of the hits, a melee one more.
             loss = pick(wasm_f32x4_mul(loss, splat(range > 1 ? policy::ranged_helped_loss
@@ -363,6 +372,27 @@ int Bot::worker_choose_group(int excluded) {
                 value, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(4.0f)),
                                                                          risk_weight)),
                                       wasm_f32x4_mul(claimants, splat(policy::partner_penalty))));
+            // Camp damage persists, so a clear longer than our health lasts
+            // can be paid in trips home (a recall and the walk back) instead
+            // of in the risk of dying, and a clear by several champions shares
+            // its damage: camps hit the nearest, and the tank leaves when hurt
+            // for the next to take it. Keep the better of the two plans; none
+            // finishes after the last round.
+            const v128_t share = wasm_f32x4_div(team_loss, wasm_f32x4_add(one, helpers));
+            const v128_t excess = wasm_f32x4_pmax(zero, wasm_f32x4_sub(share, splat(spare)));
+            const v128_t trips = pick(zero, wasm_f32x4_ceil(wasm_f32x4_div(excess, splat(usable))),
+                                      wasm_v128_or(sieging, is_held));
+            const v128_t trip_time = wasm_f32x4_add(
+                splat(recall_trip), wasm_f32x4_mul(wasm_v128_load(&lanes.home[i]), splat(travel_scale)));
+            const v128_t visits_duration = wasm_f32x4_add(duration, wasm_f32x4_mul(trips, trip_time));
+            const v128_t visit_risk = wasm_f32x4_pmin(risk, splat(policy::visit_risk));
+            v128_t visits = wasm_f32x4_div(reward, wasm_f32x4_pmax(one, visits_duration));
+            visits = wasm_f32x4_div(
+                visits, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(visit_risk, splat(4.0f)),
+                                                                         risk_weight)),
+                                       wasm_f32x4_mul(claimants, splat(policy::partner_penalty))));
+            visits = pick(zero, visits, wasm_f32x4_gt(visits_duration, splat(rounds_left)));
+            value = wasm_f32x4_pmax(value, visits);
             value = pick(wasm_f32x4_mul(value, splat(1.4f)), value, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).
@@ -371,8 +401,6 @@ int Bot::worker_choose_group(int excluded) {
             // While the squad is depleted, converge on the allies still on
             // the map instead of spreading out and feeding into a grouped
             // enemy one at a time.
-            value = pick(wasm_f32x4_mul(value, splat(contest_factor)), value,
-                         wasm_v128_load(&lanes.contested[i]));
             if (depleted)
                 value = pick(wasm_f32x4_mul(value, splat(policy::depleted_rally_bonus)), value,
                              wasm_f32x4_gt(claimants, zero));

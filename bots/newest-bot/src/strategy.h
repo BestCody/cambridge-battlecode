@@ -24,9 +24,6 @@ namespace policy {
 inline constexpr float early_gold_value = 0.65f;
 inline constexpr float late_gold_value = 0.10f;
 inline constexpr float aggression = 1.60f;
-// Camp choice's factor on contested camps (enemy no more than 8 tiles further
-// than us) is 1 + contest_bonus: steering away from them cut deaths by a fifth.
-inline constexpr float contest_bonus = -0.30f;
 inline constexpr float retreat_health = 0.28f;
 inline constexpr float casualty_margin = 0.12f;
 inline constexpr int shopping_shards = 5;
@@ -40,10 +37,7 @@ inline constexpr float formation_advantage = 1.10f;
 // gets the whole reward whoever captures it, so no penalty: champions join each
 // other on big groups, as the top team does.
 inline constexpr float partner_penalty = 0.0f;
-// Squad assembly. Avoiding contested camps when depleted concedes the map;
-// converging on surviving allies is the real regroup.
-// depleted_penalty 1.0 disables the avoid-contest variant.
-inline constexpr float depleted_penalty = 1.0f;
+// Squad assembly: converging on surviving allies is the real regroup.
 inline constexpr float depleted_rally_bonus = 3.0f;
 // Fraction of the team that must still be alive for the squad to count as
 // assembled. Below it the rally bias turns on. 0.0 disables regrouping entirely.
@@ -109,6 +103,12 @@ inline constexpr int carry_shopping_shards = 10;
 // Heart of Ruin hits up to 50% harder at low health and shields itself, so it
 // stays in fights longer than the others.
 inline constexpr float heart_retreat_health = 0.15f;
+// Camp choice prices a clear longer than our health lasts as trips home, not
+// as the risk of dying (camps never regenerate, and a team's clear shares the
+// camps' hits); visit_risk caps the risk of each such visit. With no contest
+// factor on camps nearer the enemy, it won 48 of 80 head to head and 78 of 80
+// against db11 (75): monolith captures late in the game rose fivefold.
+inline constexpr float visit_risk = 0.25f;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
 inline constexpr float worker_commit_bonus = 1.08f;
