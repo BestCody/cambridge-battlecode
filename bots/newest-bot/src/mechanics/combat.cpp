@@ -83,7 +83,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             auto &u = targets[i];
             if (!eligible(u) || !attack_tiles.is_set(u.position) || !present(u))
                 continue;
-            float value = weight(u, strength, false);
+            float value = weight(u, basic_damage(), false);
             if (value > best) {
                 best = value;
                 index = i;
@@ -134,7 +134,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             float score = 0;
             for (const auto &u : targets)
                 if (eligible(u) && distance(position, u.position) <= range && present(u))
-                    score = std::max(score, weight(u, strength, s.enhanced));
+                    score = std::max(score, weight(u, basic_damage(), s.enhanced));
             if (score > best_score) {
                 best_score = score;
                 best_slot = slot_index;
@@ -292,6 +292,16 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         }
     }
     return acted || dashed;
+}
+
+float Bot::basic_damage() const {
+    // Our basic hit before the target's mitigation. Heart of Ruin's passive
+    // adds up to half again with missing health, which the strength reading
+    // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
+    if (passive != bc::passive_type::missing_health_damage)
+        return strength;
+    return strength * (1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
+                               (1 - health / std::max(1.0f, max_health)));
 }
 
 float Bot::kill_value(const ObservedUnit &enemy) const {

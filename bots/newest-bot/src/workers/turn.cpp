@@ -187,14 +187,14 @@ void Bot::worker_priority() {
             if (hp <= 0)
                 continue;
             const int d = distance(position, e.position);
-            const float basic = d <= range ? strength : 0;
+            const float basic = d <= range ? basic_damage() : 0;
             float spell = 0;
             for (unsigned i = 0; i < spells.size(); ++i) {
                 if (!ready[i])
                     continue;
                 const auto &s = spells[i];
                 if (s.kind == bc::ability_kind::attack_reset && d <= range)
-                    spell = std::max(spell, strength);
+                    spell = std::max(spell, basic_damage());
                 if ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
                      s.kind == bc::ability_kind::aoe_damage) &&
                     d <= s.range + s.radius)

@@ -55,13 +55,13 @@ bool Bot::worker_skirmish() {
         if (is_ready[i]) {
             if (spells[i].kind == bc::ability_kind::attack_reset &&
                 distance(position, victim.position) <= range)
-                spell_burst = std::max(spell_burst, strength);
+                spell_burst = std::max(spell_burst, basic_damage());
             else if ((spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
                       spells[i].kind == bc::ability_kind::aoe_damage) &&
                      distance(position, victim.position) <= spells[i].range + spells[i].radius)
                 spell_burst = std::max(spell_burst, focus * spells[i].modifier);
         }
-    float burst = spell_burst + (distance(position, victim.position) <= range ? strength : 0);
+    float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
     // A sliver of enemy health is a kill we can secure next turn. Finishing
     // removes their damage and any carried gems, so do not recall out of a

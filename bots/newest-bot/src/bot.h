@@ -576,6 +576,7 @@ class Bot {
     int worker_choose_group(int excluded = -1);
     void worker_farm();
     bool capture_outranked(const CampGroup &g) const;
+    float basic_damage() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
     int claimed_by(const ObservedUnit &ally) const;

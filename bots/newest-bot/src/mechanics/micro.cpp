@@ -243,7 +243,7 @@ bool Bot::attack_combo(bool escaping) {
         Strike a;
         a.target = i;
         a.origins = legal;
-        a.damage = strength;
+        a.damage = basic_damage();
         a.hits = std::uint64_t{1} << i;
         a.hits &= eligible;
         basics.push_back(actions.size());
@@ -995,14 +995,15 @@ bool Bot::follow_through() {
             e.shield = live_shield(e);
     }
     refresh_blocked();
+    const float hit = basic_damage();
     auto value = [&](vec2 tile) {
         float best = 0;
         for (const auto &e : enemies) {
             if (e.health <= 0 || enemy_spawn_tile[tile_index(e.position)])
                 continue;
             const int arrival = std::max(0, distance(tile, e.position) - range);
-            float damage = std::min(strength * e.mitigation, e.health + e.shield);
-            if (e.health + e.shield <= strength * e.mitigation)
+            float damage = std::min(hit * e.mitigation, e.health + e.shield);
+            if (e.health + e.shield <= hit * e.mitigation)
                 damage += 200 + e.gems * 7;
             best = std::max(best, damage / (1 + arrival));
         }
@@ -1090,15 +1091,15 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
     // Heart of Ruin's dash lands up to two tiles away and hits everything
     // within one tile of the landing. Choose the landing by what it hits.
     auto &me = bc::self();
-    if (walked || !me.can_cast())
+    if (!me.can_cast())
         return false;
     auto abilities = me.abilities();
     for (unsigned slot_index = 0; slot_index < spells.size(); ++slot_index) {
         const auto &spell = spells[slot_index];
         auto &ability = abilities[slot_index];
         if (spell.kind != bc::ability_kind::dash || spell.modifier <= 0 || spell.radius <= 0 ||
-            !ready(ability, me.can_cast()))
-            continue;
+            !ready(ability, me.can_cast()) || (walked && spell.exclusive))
+            continue; // Heart of Ruin's dash is not exclusive with movement: it can follow a step.
         const float damage = ability.damage_amount();
         const std::span<const ObservedUnit> targets =
             fighting_champions ? std::span<const ObservedUnit>(enemies) : camps.group(farm_group);
