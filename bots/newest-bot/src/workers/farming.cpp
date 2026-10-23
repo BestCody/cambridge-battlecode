@@ -83,7 +83,12 @@ int Bot::worker_choose_group(int excluded) {
     // Allies close enough to share the next clear and committed to no other
     // camp (no claim, or a claim on a finished one): every camp counts them
     // as helpers, as it counts its claimants.
-    int free_partners = 0;
+    // With policy::group_leader, a champion leaving a capture to its holder
+    // also counts the teammates still claiming that camp: it chooses first,
+    // and they follow its claim (three times in four), so its next camp is
+    // the group's.
+    const bool leading = policy::group_leader && excluded >= 0 && groups[excluded].status == CampGroup::capture;
+    int free_partners = 0, group_mates = 0;
     if constexpr (policy::partner_radius > 0)
         for (const auto &ally : allies) {
             if (ally.health <= 0 || distance(position, ally.position) > policy::partner_radius)
@@ -93,6 +98,7 @@ int Bot::worker_choose_group(int excluded) {
                     const unsigned code = shared.get(s);
                     const int claimed = TeamMemory::objective(code, groups.size());
                     free_partners += code == 0 || (claimed >= 0 && groups[claimed].status == CampGroup::cooling);
+                    group_mates += leading && claimed == excluded;
                     break;
                 }
         }
@@ -264,7 +270,7 @@ int Bot::worker_choose_group(int excluded) {
             }
             if (passive == bc::passive_type::retaliation)
                 rate = wasm_f32x4_add(rate, splat(retaliation));
-            const v128_t helpers = wasm_f32x4_add(claimants, splat(float(free_partners)));
+            const v128_t helpers = wasm_f32x4_add(claimants, splat(float(free_partners + group_mates)));
             const v128_t speed =
                 wasm_f32x4_mul(wasm_f32x4_pmax(one, wasm_f32x4_mul(rate, splat(camp_multiplier))),
                                wasm_f32x4_add(one, wasm_f32x4_mul(helpers, splat(policy::helper_speed))));

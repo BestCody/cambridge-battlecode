@@ -229,6 +229,12 @@ inline constexpr float cohesion_weight = 0.25f;
 // deaths and gems by round 100 up from 17 to 22; 4 and stopping at round 300
 // gained less, and counting every nearby ally, free or not, lost.
 inline constexpr int partner_radius = 6;
+// Whether a champion leaving a capture to its holder counts the teammates
+// still on it as helpers. It chooses the group's next camp, and they follow
+// its claim three times in four; counted alone, it led the group to small
+// camps. Gems and gold by round 300 both rose (head to head 112 vs 97 gems,
+// 1221 vs 1173 gold), where a lower gold value only traded one for the other.
+inline constexpr bool group_leader = true;
 // Camp choice's clear rate with helpers: our own rate times 1 + helper_speed
 // per helper, for both the clear time and the health it costs. Fitted to our
 // measured clear times by group size (1.3; 0.65 fitted worst): each helper
