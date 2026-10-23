@@ -188,6 +188,12 @@ inline constexpr float worker_commit_bonus = 1.08f;
 // standing traded down to death in two thirds of the fights we were losing,
 // where the top team breaks contact. false always flees.
 inline constexpr bool stand_when_caught = false;
+// Break contact with a stronger group: a champion an enemy can soon reach,
+// where the enemy outweighs us by more than aggression, steps away instead
+// of farming on, and avoids the camps near those enemies for
+// worker_sighting_memory rounds. Without it lone champions walk into a
+// waiting group one at a time: half our ladder fights started outnumbered.
+inline constexpr bool avoid_stronger = true;
 // Teleport crystals: buy one at spawn, and use it, only when one hop over a
 // wall or hole strip saves at least this many turns over walking to the next
 // camp or altar, after paying for the channel. Shards are bought first.

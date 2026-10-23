@@ -183,7 +183,7 @@ int Bot::worker_choose_group(int excluded) {
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
         }
-        if constexpr (policy::worker_pure_resource)
+        if constexpr (policy::worker_pure_resource || policy::avoid_stronger)
             for (std::size_t i = 0; i < count; ++i)
                 lanes.sighted[i] = i < enemy_seen_near.size() &&
                                            int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory
@@ -354,6 +354,9 @@ int Bot::worker_choose_group(int excluded) {
                 value = pick(wasm_f32x4_mul(value, splat(0.05f)), value, wasm_f32x4_gt(risk, zero));
             } else {
                 value = pick(wasm_f32x4_mul(value, splat(1.4f)), value, enemy_here);
+                if constexpr (policy::avoid_stronger)
+                    value = pick(wasm_f32x4_mul(value, splat(policy::worker_sighting_penalty)), value,
+                                 wasm_v128_load(&lanes.sighted[i]));
                 // While the squad is depleted, converge on the allies still on
                 // the map instead of spreading out and feeding into a grouped
                 // enemy one at a time.

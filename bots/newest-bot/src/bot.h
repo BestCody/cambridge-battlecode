@@ -717,6 +717,8 @@ class Bot {
     int enemy_index(const ObservedUnit &enemy) const;
     bool enemy_closing(const ObservedUnit &enemy) const;
     void worker_track_sightings();
+    std::pair<int, int> worker_danger(vec2 tile) const;
+    bool worker_step_away();
     bool worker_disengage();
 
     void take_turn();

@@ -53,22 +53,45 @@ void Bot::worker_track_sightings() {
     }
 }
 
+// Danger at a tile: how many enemies could hit it, and by how many tiles the
+// closest of them is still short (negative once inside its reach).
+std::pair<int, int> Bot::worker_danger(vec2 tile) const {
+    int threats = 0, clearance = std::numeric_limits<int>::max();
+    for (const auto &enemy : enemies)
+        if (enemy_threatens(enemy, tile)) {
+            ++threats;
+            const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
+            clearance = std::min(clearance, distance(tile, enemy.position) - reach);
+        }
+    return {threats, clearance};
+}
+
+bool Bot::worker_step_away() {
+    // Step to the reachable tile with the fewest threats, then the most room,
+    // then the shortest way home (or to an altar when carrying a bag).
+    const auto [threats, clearance] = worker_danger(position);
+    const auto &guide =
+        gems && altar_walk().get(position) < home_field.get(position) ? altar_walk() : home_field;
+    vec2 best = position;
+    auto best_score = std::tuple{threats, -clearance, int(guide.get(position))};
+    if (bc::self().can_move())
+        for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
+            if (tile == position)
+                continue;
+            const auto [count, room] = worker_danger(tile);
+            const auto score = std::tuple{count, -room, int(guide.get(tile))};
+            if (score < best_score) {
+                best_score = score;
+                best = tile;
+            }
+        }
+    return best != position && move_step(best);
+}
+
 bool Bot::worker_disengage() {
     if (enemies.empty())
         return false;
-    // Danger at a tile: how many enemies could hit it, and by how many tiles
-    // the closest of them is still short (negative once inside its reach).
-    auto danger = [&](vec2 tile) {
-        int threats = 0, clearance = std::numeric_limits<int>::max();
-        for (const auto &enemy : enemies)
-            if (enemy_threatens(enemy, tile)) {
-                ++threats;
-                const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
-                clearance = std::min(clearance, distance(tile, enemy.position) - reach);
-            }
-        return std::pair{threats, clearance};
-    };
-    const auto [threats, clearance] = danger(position);
+    const auto [threats, clearance] = worker_danger(position);
     if (!threats)
         return false;
     // A nearby enemy alone is not a reason to stop farming. Leave when one
@@ -112,24 +135,7 @@ bool Bot::worker_disengage() {
             return true;
     }
 
-    // Step to the reachable tile with the fewest threats, then the most room,
-    // then the shortest way home (or to an altar when carrying a bag).
-    const auto &guide =
-        gems && altar_walk().get(position) < home_field.get(position) ? altar_walk() : home_field;
-    vec2 best = position;
-    auto best_score = std::tuple{threats, -clearance, int(guide.get(position))};
-    if (me.can_move())
-        for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
-            if (tile == position)
-                continue;
-            const auto [count, room] = danger(tile);
-            const auto score = std::tuple{count, -room, int(guide.get(tile))};
-            if (score < best_score) {
-                best_score = score;
-                best = tile;
-            }
-        }
-    if (best != position && move_step(best))
+    if (worker_step_away())
         return true;
     // Cornered: no step improves our position, so fight back.
     combat(true);

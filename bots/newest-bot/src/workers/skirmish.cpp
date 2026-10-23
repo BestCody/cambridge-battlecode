@@ -73,6 +73,12 @@ bool Bot::worker_skirmish() {
     bool finish = nearly_dead && victim.channel && health > danger * 1.5f;
     bool favourable = ours * policy::aggression >= theirs;
     if ((health < danger * 2.2f || !favourable) && !kill && !finish) {
+        if (policy::avoid_stronger && !favourable && worker_danger(position).first) {
+            worker_track_sightings(); // The camps by these enemies wait out the sighting.
+            target = -1;
+            if (worker_step_away())
+                return true;
+        }
         if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
             retreating = health < max_health * 0.45f;
             if (retreating)
