@@ -40,7 +40,8 @@ Build build_for(bc::champion_type type) {
             return {{{{Item::bruiser_shard_of_health, 1}, {Item::durability_shard_of_health, 1}}},
                     2,
                     Item::power_shard_of_strength};
-        case bc::champion_type::marcella: // As the ladder teams that draft it buy.
+        case bc::champion_type::marcella: // The ladder teams' common build.
+        case bc::champion_type::willow:
             return {{{{Item::jungle_shard_of_health, 5},
                       {Item::treasure_shard_of_strength, 5},
                       {Item::durability_shard_of_health, 5},

@@ -22,17 +22,19 @@ struct Entry {
 };
 // One roster per pick count. Vesper, Vendetta and Heart of Ruin carry (from
 // the top ladder team's lineup since engine 1.0.3: 65 of 80 head to head
-// against the earlier Stellar, Heart of Ruin, Ren). Ryth joins at 4 picks and
-// Marcella, which most ladder teams draft, at 5. The Twins they replace died
-// together, both bodies to one kill: 43% of our ladder deaths. Without them
-// the team died 14-16 times a game instead of 24-26 and won 135 of 240 head
-// to head (level with the old bots and the version before the lineup).
+// against the earlier Stellar, Heart of Ruin, Ren). Ryth joins at 4 picks;
+// Marcella, which most ladder teams draft, and Willow at 5. They replace the
+// Twins, who died together, both bodies to one kill (43% of our ladder
+// deaths): without them the team died 14-16 times a game instead of 24-26 and
+// won 135 of 240 head to head. Willow, in Ryth's place at 5, heals about
+// 16,000 a game: 150 of 240 head to head, and 65 of 80 instead of 58 against
+// 3ed3e7b (the first version with this core, and the Twins).
 inline constexpr Mask core_picks = roster(Pick::vesper_vale, Pick::vendetta, Pick::heart_of_ruin);
 inline constexpr std::array rosters{
     Entry{"Vesper/Vendetta/HeartOfRuin", core_picks},
     Entry{"Vesper/Vendetta/HeartOfRuin/Ryth", Mask(core_picks | bit(Pick::ryth))},
-    Entry{"Vesper/Vendetta/HeartOfRuin/Ryth/Marcella",
-          Mask(core_picks | roster(Pick::ryth, Pick::marcella))}};
+    Entry{"Vesper/Vendetta/HeartOfRuin/Marcella/Willow",
+          Mask(core_picks | roster(Pick::marcella, Pick::willow))}};
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 
 // The roster for this pick count, or the largest one for an unsupported count.
