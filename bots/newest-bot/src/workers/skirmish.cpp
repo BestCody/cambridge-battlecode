@@ -115,6 +115,13 @@ bool Bot::worker_skirmish() {
     bool acted = combat(true);
     if (acted && me.is_alive() && range <= 1 && me.can_move())
         moved = follow_through() || moved;
+    // A kill can refresh cooldowns (Vendetta), and the follow-through can bring
+    // the next enemy into reach: act again with what is left of the turn.
+    // Vendetta's damage to champions rose by a sixth.
+    if (acted && me.is_alive() && range <= 1 && (me.can_attack() || me.can_cast())) {
+        observe_fight();
+        combat(true);
+    }
     // Melee retains movement after attacking. Chase after a kill and reposition
     // out of splash clumps; ranged champions cannot walk after ordinary attacks.
     if (!acted && !moved && me.can_move())
