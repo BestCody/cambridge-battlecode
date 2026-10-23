@@ -355,6 +355,10 @@ struct ChampionGone {};
 
 class Bot {
     bool initialised = false, walked = false, retreating = false, banking = false;
+    // Hit since our last turn, by anything, seen or not (a camp out of view,
+    // an enemy in a bush), and where our last recall started.
+    bool hit = false;
+    vec2 recall_tile{-1, -1};
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.

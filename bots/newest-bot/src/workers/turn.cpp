@@ -36,6 +36,7 @@ void Bot::worker_report() {
 // from stronger groups.
 void Bot::play_worker_turn() {
     auto &me = bc::self();
+    const float before = health; // As our last turn left it.
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
     track_enemy_respawns(); // Needs no vision: also while dead, recalling or banking.
     if (!me.is_alive()) {
@@ -54,6 +55,7 @@ void Bot::play_worker_turn() {
         return;
     }
     observe();
+    hit = health < before;
     if (me.is_submitting_gems()) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);

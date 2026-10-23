@@ -277,14 +277,21 @@ void Bot::retreat_to_spawn() {
         if (distance(position, enemy.position) <= stats.vision_radius + reach)
             threatened.draw_chebyshev(enemy.position, reach);
     }
-    const bool safe = !threatened.is_set(position) && incoming(position) == 0;
+    // A hit on the tile of our last recall cancelled it: whatever struck,
+    // seen or not (a camp out of view, an enemy in a bush), would cancel the
+    // next one too. Recalling again on the same tile kept champions standing
+    // under those hits, often until they died, so walk home instead.
+    const bool cancelled = hit && position == recall_tile;
+    const bool safe = !threatened.is_set(position) && incoming(position) == 0 && !cancelled;
     const int walk = home_field.get(position);
     if (safe && walk > rules::settings().recall_time * stats.base_move_speed) {
         me.recall();
+        recall_tile = position;
         return;
     }
     const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
-    const auto goals = walk <= rules::settings().recall_time * stats.base_move_speed || safe_tiles.is_empty()
+    const auto goals = walk <= rules::settings().recall_time * stats.base_move_speed || safe_tiles.is_empty() ||
+                               cancelled
                            ? spawn
                            : safe_tiles;
     const bool moved = move_to(goals, true, true);
@@ -292,6 +299,7 @@ void Bot::retreat_to_spawn() {
         // Occupancy can block a short walk home. Do not wait on that route when
         // this tile already permits the recall that fulfils the same recovery.
         me.recall();
+        recall_tile = position;
         return;
     }
     if (!moved && me.can_move()) {
