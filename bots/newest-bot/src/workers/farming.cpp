@@ -530,6 +530,22 @@ void Bot::worker_farm() {
         target = -1;
         return;
     }
+    // In range is not in sight: a camp behind a wall cannot be hit, and what
+    // we remember of it can be stale. Ranged champions stood in range of
+    // camps they could not see for 20-140 rounds at a time (a sixth of
+    // Vesper's turns on corridor maps). With none of the group's living camps
+    // in view, close in beside the nearest one until one is.
+    bool sighted = false;
+    for (const auto &c : g.camps)
+        sighted = sighted || (c.health > 0 && visible.is_set(c.position));
+    if (!sighted) {
+        auto beside = around(nearest->position, 1);
+        subtract(beside, blocked);
+        if (!beside.is_empty()) {
+            goals = std::move(beside);
+            siege = false;
+        }
+    }
     if (siege && !goals.is_set(position)) {
         move_to(goals, true, false, target);
         // Walking precludes ranged damage spells this turn.
