@@ -56,8 +56,10 @@ int Bot::worker_choose_group(int excluded) {
         const int g = group_at(p);
         return g >= 0 && distance(p, groups[g].centre) <= int(groups[g].camps.size()) ? g : -1;
     };
+    // An ally on a camp holds it only if it claims it; one crossing the tiles
+    // or retreating over them leaves the next turn.
     for (const auto &a : allies)
-        if (const int g = standing_on(a.position); g >= 0)
+        if (const int g = standing_on(a.position); g >= 0 && claimed_by(a) == g)
             marks[g] |= ally_on | (carry(a.type) ? carry_on : 0);
     // A held camp is left to its holder; a carry only leaves one a carry holds.
     const std::int32_t holder_on = carry(type) ? carry_on : ally_on;
@@ -218,6 +220,10 @@ int Bot::worker_choose_group(int excluded) {
                          remaining = wasm_v128_load(&lanes.remaining[i]);
             const v128_t pressure = wasm_v128_load(&lanes.pressure[i]),
                          claimants = wasm_v128_load(&lanes.claims[i]);
+            // A capture a teammate claims is its holder's, unless we hold it:
+            // walking there only finds the tile taken.
+            skip = wasm_v128_or(skip, wasm_v128_andnot(wasm_v128_and(is_held, wasm_f32x4_gt(claimants, zero)),
+                                                       is_here));
             // dps(g).
             v128_t rate = splat(flat_dps);
             for (const auto &spell : spells)
@@ -517,14 +523,26 @@ bc::bitboard Bot::siege_tiles(const CampGroup &g, float reach, bool assume_alive
     return tiles;
 }
 
+int Bot::claimed_by(const ObservedUnit &ally) const {
+    // The camp an ally's published claim names, or -1.
+    for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+        if (s != slot && ally.champion() == roster[s])
+            return TeamMemory::objective(shared.get(s), groups.size());
+    return -1;
+}
+
 bool Bot::capture_outranked(const CampGroup &g) const {
-    // A visible ally on the capture holds it instead of us: a carry before
-    // anyone else; between equals, any holder when we are off the tiles, then
-    // the bigger bag, then the lower id. Every holder ranks the same way, so
-    // exactly one stays, and a carry arriving takes over from a non-carry.
+    // A visible ally on the capture that claims it holds it instead of us: a
+    // carry before anyone else; between equals, any holder when we are off
+    // the tiles, then the bigger bag, then the lower id. Every holder ranks
+    // the same way, so exactly one stays.
     const bool on = g.tiles().is_set(position);
     for (const auto &ally : allies) {
         if (ally.health <= 0 || !g.tiles().is_set(ally.position))
+            continue;
+        // Only an ally that claims the camp means to hold it; one crossing
+        // the tiles or retreating over them leaves the next turn.
+        if (claimed_by(ally) != int(&g - groups.data()))
             continue;
         if (carry(ally.type) != carry(type) ? carry(ally.type)
             : !on                           ? true

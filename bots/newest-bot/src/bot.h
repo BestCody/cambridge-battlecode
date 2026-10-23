@@ -576,6 +576,7 @@ class Bot {
     int worker_choose_group(int excluded = -1);
     void worker_farm();
     bool capture_outranked(const CampGroup &g) const;
+    int claimed_by(const ObservedUnit &ally) const;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;

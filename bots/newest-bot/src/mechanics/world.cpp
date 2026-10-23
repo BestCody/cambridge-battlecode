@@ -736,12 +736,14 @@ void Bot::observe() {
     mark_camps_in_view();
     mark_group_holders();
     threat_count = 0;
-    // A group out of view and unheld, with no records listed, no hold timed
-    // and no respawn due, would be left as it is: only the others are observed.
+    // A group out of view and unheld, with no records listed, no hold timed,
+    // no respawn due and no capture past its timer, would be left as it is:
+    // only the others are observed.
     for (std::size_t i = 0; i < groups.size(); ++i) {
         const auto &g = groups[i];
         if (group_in_view[i] || group_held[i] || camps.count(int(i)) || g.holding_since != -1 ||
-            (g.status == CampGroup::cooling && int(round) >= g.respawn))
+            (g.status == CampGroup::cooling && int(round) >= g.respawn) ||
+            (g.status == CampGroup::capture && int(round) > g.seen + rules::settings().capture_time + 1))
             observe_group(i);
     }
     close_threats();
@@ -822,6 +824,20 @@ void Bot::observe_group(std::size_t i) {
         g.holding_since = -1;
     if (!group_in_view[i]) {
         camps.restart(int(i));
+        if (g.status == CampGroup::capture && int(round) > g.seen + rules::settings().capture_time + 1) {
+            // Unseen past its capture timer: taken by then, so it respawns
+            // after its slowest camp's cooldown (the rules' table).
+            int cooldown = 0;
+            for (const auto &c : g.camps) {
+                const auto kind = c.unit.kind();
+                cooldown = std::max(cooldown, kind == bc::camp_type::wolf       ? 40
+                                              : kind == bc::camp_type::monolith ? 150
+                                              : kind == bc::camp_type::elk || kind == bc::camp_type::golem ? 60
+                                                                                                           : 50);
+            }
+            g.status = CampGroup::cooling;
+            g.respawn = g.seen + rules::settings().capture_time + cooldown;
+        }
         if (g.status == CampGroup::cooling && int(round) >= g.respawn) {
             g.status = CampGroup::alive;
             g.health = g.max_health;
