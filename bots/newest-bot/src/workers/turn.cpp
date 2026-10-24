@@ -61,8 +61,11 @@ void Bot::play_worker_turn() {
     }
     observe();
     hit = health < before;
-    // Teammates help only champions an enemy can hit next round.
-    shared.set_attacked(slot, worker_danger(position).first > 0);
+    // Teammates help only champions an enemy in view can hit next round.
+    bool attacked = false;
+    for (const auto &e : enemies)
+        attacked = attacked || enemy_threatens(e, position);
+    shared.set_attacked(slot, attacked);
     if (me.is_submitting_gems()) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);

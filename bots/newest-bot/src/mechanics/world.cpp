@@ -760,6 +760,9 @@ void Bot::observe() {
     }
     close_threats();
     shared.read();
+    ghosts.clear();
+    if (!enemies.empty())
+        track_ghosts();
 }
 
 void Bot::mark_camps_in_view(int group) {
@@ -1281,30 +1284,31 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 float Bot::enemy_power(vec2 at) const {
     // Only enemies that can fight: not channelling or on their spawn, as
     // friendly_power leaves out channelling allies. A stunned one counts
-    // without its burst (a stun costs it one action).
+    // without its burst (a stun costs it one action). Enemies out of sight
+    // count from their possible tile nearest us.
     static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     float p = 0;
-    for (const auto &e : enemies) {
-        if (e.channel || enemy_spawn.is_set(e.position))
-            continue;
-        int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
-        if (arrival > 6)
-            continue;
-        // Focus fire also multiplies a retaliator's damage: each attacker pays
-        // for its own hit, including the hit that kills the target.
-        float reflected = e.retaliation();
-        if (reflected > 0)
-            for (const auto &a : allies)
-                if (!a.stunned && !a.channel &&
-                    distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
-                    reflected += e.retaliation();
-        p += std::sqrt(std::max(1.0f, e.health + e.shield + e.ready_shield) *
-                       (e.damage_rate + reflected +
-                        (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * 0.2f +
-                        e.healing_rate) /
-                       e.mitigation) /
-             (1 + arrival * 0.3f);
-    }
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &e : *list) {
+            if (e.channel || enemy_spawn.is_set(e.position))
+                continue;
+            int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
+            if (arrival > 6)
+                continue;
+            // Focus fire also multiplies a retaliator's damage: each attacker
+            // pays for its own hit, including the hit that kills the target.
+            float reflected = e.retaliation();
+            if (reflected > 0)
+                for (const auto &a : allies)
+                    if (!a.stunned && !a.channel &&
+                        distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
+                        reflected += e.retaliation();
+            p += std::sqrt(std::max(1.0f, e.health + e.shield + e.ready_shield) *
+                           (e.damage_rate + reflected +
+                            (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * 0.2f + e.healing_rate) /
+                           e.mitigation) /
+                 (1 + arrival * 0.3f);
+        }
     return p;
 }
 

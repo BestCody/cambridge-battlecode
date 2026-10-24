@@ -87,8 +87,14 @@ bool Bot::worker_skirmish() {
         // than walk into it alone: half our ladder fights started outnumbered.
         if (!favourable && worker_danger(position).first) {
             worker_track_sightings(); // The camps by these enemies wait out the sighting.
-            // A failed step keeps the camp, so the turn is not spent idle.
-            if (worker_step_away()) {
+            // A step is worth only the damage it saves: when the attack it
+            // costs is worth more, hit back. A failed step keeps the camp, so
+            // the turn is not spent idle.
+            const vec2 step = step_away_tile();
+            if (!stepping_pays(step)) {
+                if (combat(true))
+                    return true;
+            } else if (step != position && move_step(step)) {
                 target = -1;
                 return true;
             }
@@ -100,6 +106,10 @@ bool Bot::worker_skirmish() {
             // Use a free ranged stun/poke on the way to the economic objective.
             combat(true, -1, true);
         }
+        // The farming and travel that follow keep out of the stronger group's
+        // reach.
+        if (!favourable)
+            avoid_reach();
         return false;
     }
     int d = distance(position, victim.position);

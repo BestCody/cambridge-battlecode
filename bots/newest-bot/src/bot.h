@@ -391,6 +391,23 @@ class Bot {
     // squad it takes (-1: no enemy in view).
     int reported_round = -1, reported_group = -1;
     unsigned reported_force = 0;
+    // Enemies out of sight (safety.cpp), per enemy roster entry: the round
+    // its record was last brought up to date (-1: none), its last sighting,
+    // whether its tiles have been made from that sighting yet, and the tiles
+    // within our sight radius where it could be now. This turn's records of
+    // those that could be near, each placed on its possible tile nearest us.
+    std::vector<int> ghost_round;
+    std::vector<std::optional<ObservedUnit>> ghost_seen;
+    std::vector<std::uint8_t> ghost_built;
+    std::vector<bc::bitboard> ghost_where;
+    std::vector<ObservedUnit> ghosts;
+    int ghost_update = -1; // The round the records were last brought up to date.
+    bc::bitboard ghost_keep, ghost_spread;
+    std::vector<vec2> ghost_tiles;
+    // The round avoid_reach() kept this turn's moves out of a stronger
+    // group's reach, and those tiles.
+    int avoid_round = -1;
+    bc::bitboard avoid_zone;
     CampList camps;
     std::vector<ObservedUnit> fight_scratch; // observe_fight()'s next enemies
     // The camps that can strike (positive strength, no stun with time left),
@@ -528,7 +545,11 @@ class Bot {
     }
     // Terrain plus every visible occupant, without our own tile.
     void occupied_into(bc::bitboard &out, const bc::bitboard &terrain);
-    void refresh_blocked() { occupied_into(blocked, static_blocked); }
+    void refresh_blocked() {
+        occupied_into(blocked, static_blocked);
+        if (avoid_round == int(round))
+            blocked |= avoid_zone;
+    }
     // out = a & ~b, in place.
     void subtract_into(bc::bitboard &out, const bc::bitboard &a, const bc::bitboard &b);
     // a &= ~b, in place.
@@ -625,9 +646,14 @@ class Bot {
     // safety.cpp: danger from enemy champions, remembered sightings, and
     // stepping away.
     bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const;
+    void track_ghosts();
     void worker_track_sightings();
     std::pair<int, int> worker_danger(vec2 tile) const;
-    bool worker_step_away();
+    // The tile a step away from danger takes (our own: none).
+    vec2 step_away_tile();
+    // Whether that step saves more damage than the attack it costs.
+    bool stepping_pays(vec2 step);
+    void avoid_reach();
 
     void take_turn();
 

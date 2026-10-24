@@ -146,6 +146,8 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         // Camp bodies can seal an entire corridor. Route through destructible
         // obstacles, then clear the next blocking group instead of idling.
         auto temporary = static_blocked | bc::vision::champion_tiles() | bc::vision::teleport_tiles();
+        if (avoid_round == int(round))
+            temporary |= avoid_zone;
         temporary.set(position, false);
         field.compute_to(temporary, goals & ~temporary, around(position, 0), visited);
         breaking_through = field.get(position) != bc::distance_field::unreachable;
@@ -263,6 +265,7 @@ void Bot::retreat_to_spawn() {
     if (spawn.is_set(position) || me.is_recalling() || me.is_teleporting() || me.is_submitting_gems() ||
         me.buffs().has_stun())
         return;
+    track_ghosts();
     // One hit cancels recall. Include reach over the channel, including enemies
     // whose current stun can expire, rather than just their current attack tile.
     bc::bitboard threatened;
@@ -270,13 +273,16 @@ void Bot::retreat_to_spawn() {
         if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range &&
             !camp_dormant(camp))
             threatened.draw_chebyshev(camp.position, camp.range);
-    for (const auto &enemy : enemies) {
-        const auto design = enemy.champion().base_stats();
-        const int reach =
-            std::max(enemy.range, enemy.spell_reach) + rules::settings().recall_time * design.base_move_speed;
-        if (distance(position, enemy.position) <= stats.vision_radius + reach)
-            threatened.draw_chebyshev(enemy.position, reach);
-    }
+    // Enemies out of sight count from their possible tile nearest us: one
+    // that just stepped into a bush is still there.
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &enemy : *list) {
+            const auto design = enemy.champion().base_stats();
+            const int reach = std::max(enemy.range, enemy.spell_reach) +
+                              rules::settings().recall_time * design.base_move_speed;
+            if (distance(position, enemy.position) <= stats.vision_radius + reach)
+                threatened.draw_chebyshev(enemy.position, reach);
+        }
     // A hit on the tile of our last recall cancelled it: whatever struck,
     // seen or not (a camp out of view, an enemy in a bush), would cancel the
     // next one too. Recalling again on the same tile kept champions standing
@@ -287,6 +293,12 @@ void Bot::retreat_to_spawn() {
     if (safe && walk > rules::settings().recall_time * stats.base_move_speed) {
         me.recall();
         recall_tile = position;
+        return;
+    }
+    // Chased by enemies we cannot outrun to spawn: when a step saves less
+    // than the attack it costs, hit back instead of taking the hits for free.
+    if (!safe && !stepping_pays(step_away_tile())) {
+        combat(true);
         return;
     }
     const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
