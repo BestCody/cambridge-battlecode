@@ -509,14 +509,34 @@ void Bot::avoid_reach() {
     // hovering at its edge until it was caught.
     static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     avoid_zone.clear();
+    const auto counted = [&](const ObservedUnit &e) {
+        return e.health > 0 && !e.channel && !enemy_spawn.is_set(e.position);
+    };
     for (const auto &e : enemies) {
-        if (e.health <= 0 || e.channel || enemy_spawn.is_set(e.position))
+        if (!counted(e))
             continue;
         const int move = e.stunned && e.stun_time > 0 ? 0 : e.move_speed;
         avoid_zone.draw_chebyshev(
             e.position, float(std::max(e.range, e.spell_reach) + move + policy::worker_danger_margin));
     }
     avoid_zone.set(position, false);
+    // A step further from every enemy in view stays open: in a corner or a
+    // corridor the zone boxed champions in where a step away was free.
+    const auto exposure = [&](vec2 at) {
+        int nearest = std::numeric_limits<int>::max();
+        for (const auto &e : enemies)
+            if (counted(e))
+                nearest = std::min(nearest, distance(at, e.position));
+        return nearest;
+    };
+    const int here = exposure(position);
+    for (int dx = -1; dx <= 1; ++dx)
+        for (int dy = -1; dy <= 1; ++dy) {
+            const vec2 step{position.x + dx, position.y + dy};
+            if ((dx || dy) && step.x >= 0 && step.y >= 0 && step.x < map_width && step.y < map_height &&
+                exposure(step) > here)
+                avoid_zone.set(step, false);
+        }
     avoid_round = int(round);
     blocked |= avoid_zone;
 }
