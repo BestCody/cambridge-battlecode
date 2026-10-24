@@ -82,6 +82,13 @@ inline constexpr float siege_gem_weight = 2.0f;
 inline constexpr float siege_risk_weight = 0.06f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
+// Rounds an enemy out of sight is still counted after its last sighting
+// (safety.cpp's ghosts): after two a walking enemy can be two tiles from
+// where it was seen, the margin of every reach check, and the tiles it could
+// be on say little. Measured: a ghost two rounds old is near its enemy two
+// times in three, one four rounds old one time in three, and kept while
+// updated (the old rule) four fifths of them were phantoms.
+inline constexpr int ghost_lifetime = 2;
 // Breaking contact with a stronger group: a champion an enemy can soon reach,
 // where the enemy outweighs us by more than aggression, steps away instead of
 // farming on, and the camps near those enemies are worth worker_sighting_penalty

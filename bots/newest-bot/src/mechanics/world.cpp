@@ -769,7 +769,13 @@ void Bot::observe() {
     close_threats();
     shared.read();
     ghosts.clear();
+    ghost_last.clear();
+    // Ghosts are kept for ghost_lifetime rounds after a sighting, so they
+    // are tracked on those rounds too: an enemy that just stepped into a bush
+    // beside us is still there.
     if (!enemies.empty())
+        enemy_sighted = int(round);
+    if (int(round) - enemy_sighted <= policy::ghost_lifetime)
         track_ghosts();
 }
 

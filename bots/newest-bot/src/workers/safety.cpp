@@ -2,16 +2,16 @@
 #include "../bot.h"
 #include <tuple>
 
-bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 tile) const {
+bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
     static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     // Channelling enemies cannot hit us this turn, and enemies on their spawn
     // are shopping or healing, not hunting.
-    if (enemy.health <= 0 || enemy.channel || enemy_spawn.is_set(enemy.position))
+    if (enemy.health <= 0 || enemy.channel || enemy_spawn.is_set(at))
         return false;
     // A stunned enemy loses its next move, so only its standing reach counts.
     const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
     const int reach = std::max(enemy.range, enemy.spell_reach) + move + policy::worker_danger_margin;
-    return distance(tile, enemy.position) <= reach;
+    return distance(tile, at) <= reach;
 }
 
 void Bot::worker_track_sightings() {
@@ -34,15 +34,19 @@ void Bot::track_ghosts() {
     // have walked to since, unless that tile is in view: start from its last
     // tile, spread a tile a round, drop the tiles in view and the walls. Only
     // tiles within our sight radius are kept: beyond it the enemy is as
-    // unknown as one never seen, and the record goes once none is left.
-    // Brought up to date only on turns that use it (enemies in view, or a
-    // retreat): rounds skipped are spread at once, by doubling steps.
+    // unknown as one never seen, and the record goes once none is left, or
+    // ghost_lifetime rounds after the sighting (counted from the sighting:
+    // counted from each update, records kept in every fight and retreat put
+    // enemies long gone on the nearest bush). Brought up to date on turns
+    // that use it (enemies in view, a retreat, or the rounds just after a
+    // sighting): rounds skipped are spread at once, by doubling steps.
     if (ghost_update == int(round))
         return;
     ghost_update = int(round);
     const std::size_t n = enemy_roster.size();
     if (ghost_round.size() != n) {
         ghost_round.assign(n, -1);
+        ghost_sighted.assign(n, -1);
         ghost_seen.assign(n, std::nullopt);
         ghost_built.assign(n, 0);
         ghost_where.resize(n);
@@ -50,17 +54,18 @@ void Bot::track_ghosts() {
         ghost_tiles.resize(side * side);
     }
     ghosts.clear();
+    ghost_last.clear();
     bool keep_made = false;
     for (std::size_t i = 0; i < n; ++i) {
         const ObservedUnit *seen = nullptr;
-        for (const auto &e : enemies)
-            if (e.champion() == enemy_roster[i]) {
-                seen = &e;
+        for (std::size_t k = 0; k < enemies.size(); ++k)
+            if (enemy_slot[k] == i) {
+                seen = &enemies[k];
                 break;
             }
         if (seen) {
             ghost_seen[i] = *seen;
-            ghost_round[i] = int(round);
+            ghost_round[i] = ghost_sighted[i] = int(round);
             ghost_built[i] = 0; // Its tiles are made when it leaves our sight.
             continue;
         }
@@ -68,7 +73,8 @@ void Bot::track_ghosts() {
             continue;
         const int elapsed = int(round) - ghost_round[i];
         // A dead enemy has a respawn round (track_enemy_respawns()).
-        if (elapsed > int(stats.vision_radius) || (i < enemy_respawn.size() && enemy_respawn[i] >= 0)) {
+        if (int(round) - ghost_sighted[i] > policy::ghost_lifetime ||
+            (i < enemy_respawn.size() && enemy_respawn[i] >= 0)) {
             ghost_round[i] = -1;
             continue;
         }
@@ -113,21 +119,28 @@ void Bot::track_ghosts() {
         ghost.position = nearest;
         ghost.stunned = ghost.channel = false;
         ghost.stun_time = -1;
+        ghost_last.push_back(ghost_seen[i]->position);
     }
 }
 
 // Danger at a tile: how many enemies could hit it, and by how many tiles the
 // closest of them is still short (negative once inside its reach). Enemies
-// out of sight count from their possible tile nearest us.
+// out of sight count from the tile they were last seen on: placed on their
+// possible tile nearest us, ghosts made two danger calls in three wrongly
+// even when fresh, the tile they were seen on fewer.
 std::pair<int, int> Bot::worker_danger(vec2 tile) const {
     int threats = 0, clearance = std::numeric_limits<int>::max();
-    for (const auto *list : {&enemies, &ghosts})
-        for (const auto &enemy : *list)
-            if (enemy_threatens(enemy, tile)) {
-                ++threats;
-                const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
-                clearance = std::min(clearance, distance(tile, enemy.position) - reach);
-            }
+    const auto count = [&](const ObservedUnit &enemy, vec2 at) {
+        if (!enemy_threatens(enemy, at, tile))
+            return;
+        ++threats;
+        const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
+        clearance = std::min(clearance, distance(tile, at) - reach);
+    };
+    for (const auto &enemy : enemies)
+        count(enemy, enemy.position);
+    for (std::size_t k = 0; k < ghosts.size(); ++k)
+        count(ghosts[k], ghost_last[k]);
     return {threats, clearance};
 }
 

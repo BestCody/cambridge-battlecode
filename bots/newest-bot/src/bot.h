@@ -398,16 +398,20 @@ class Bot {
     int reported_round = -1, reported_group = -1;
     unsigned reported_force = 0;
     // Enemies out of sight (safety.cpp), per enemy roster entry: the round
-    // its record was last brought up to date (-1: none), its last sighting,
-    // whether its tiles have been made from that sighting yet, and the tiles
-    // within our sight radius where it could be now. This turn's records of
-    // those that could be near, each placed on its possible tile nearest us.
-    std::vector<int> ghost_round;
+    // its record was last brought up to date (-1: none), its last sighting
+    // and that sighting's round, whether its tiles have been made from that
+    // sighting yet, and the tiles within our sight radius where it could be
+    // now. This turn's records of those that could be near, each placed on
+    // its possible tile nearest us, and in the same order the tiles they
+    // were last seen on.
+    std::vector<int> ghost_round, ghost_sighted;
     std::vector<std::optional<ObservedUnit>> ghost_seen;
     std::vector<std::uint8_t> ghost_built;
     std::vector<bc::bitboard> ghost_where;
     std::vector<ObservedUnit> ghosts;
+    std::vector<vec2> ghost_last;
     int ghost_update = -1; // The round the records were last brought up to date.
+    int enemy_sighted = -1000; // The last round an enemy was in view.
     bc::bitboard ghost_keep, ghost_spread;
     std::vector<vec2> ghost_tiles;
     // The round avoid_reach() kept this turn's moves out of a stronger
@@ -667,7 +671,9 @@ class Bot {
     void note_activity(Activity activity);
     // safety.cpp: danger from enemy champions, remembered sightings, and
     // stepping away.
-    bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const;
+    bool enemy_threatens(const ObservedUnit &enemy, vec2 tile) const { return enemy_threatens(enemy, enemy.position, tile); }
+    // As if the enemy stood on `at`.
+    bool enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const;
     void track_ghosts();
     void worker_track_sightings();
     std::pair<int, int> worker_danger(vec2 tile) const;
