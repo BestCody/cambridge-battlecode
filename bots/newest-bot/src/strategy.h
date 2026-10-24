@@ -23,6 +23,8 @@ namespace policy {
 // cut 2.8 deaths a game against the old bots.
 inline constexpr float early_gold_value = 0.65f;
 inline constexpr float late_gold_value = 0.10f;
+// A fight is taken when our power times aggression reaches theirs; the squad a
+// reported fight takes is sized by the same ratio.
 inline constexpr float aggression = 1.60f;
 inline constexpr float retreat_health = 0.28f;
 inline constexpr float casualty_margin = 0.12f;
@@ -31,7 +33,6 @@ inline constexpr int replan_period = 4;
 inline constexpr float assist_finish_credit = 0.55f;
 inline constexpr float stun_followup_credit = 0.5f;
 inline constexpr float unused_cast_cost = 0.01f;
-inline constexpr float formation_advantage = 1.10f;
 // Camp choice divides a group's score by 1 + partner_penalty per teammate
 // already claiming it (whose help it also counts as faster clearing). The team
 // gets the whole reward whoever captures it, so no penalty: champions join each
@@ -243,18 +244,22 @@ inline Spell describe(const bc::ability &a) {
     return s;
 }
 
-// Fixed wire format. Slots are allied champion handles in ascending order,
-// including both bodies of the twin pick. Six 10-bit claims fit in eight bytes.
+// Fixed wire format. Slots are allied champion handles in ascending order: five
+// 10-bit claims (our rosters have at most five bodies: no twin pick), then one
+// bit per slot, set while an enemy can hit that champion next round.
 // Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
 struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
-    static constexpr unsigned slots = 64 / bits;
+    static constexpr unsigned slots = 5;
+    static constexpr unsigned attacked_shift = slots * bits;
+    static_assert(attacked_shift + slots <= 64);
     // Normal objective claims retain their original codes. Extra codes carry
-    // an observed fight's nearest objective and desired total squad size, or
-    // identify a champion travelling to that fight. Each owner refreshes only
-    // its own slot; responders never turn an old request into a new request.
+    // an observed fight's nearest objective and the squad it takes to beat the
+    // enemies the reporter sees, or identify a champion travelling to that
+    // fight. Each owner refreshes only its own slot; responders never turn an
+    // old request into a new request.
     static bool formations(unsigned groups) { return groups && groups * (slots + 2) < bank; }
     static unsigned request(unsigned group, unsigned force, unsigned groups) {
         return groups + 1 + group * slots + std::clamp(force, 1u, slots) - 1;
@@ -289,6 +294,15 @@ struct TeamMemory {
         read(); // Preserve claims written by earlier teammates this round.
         raw =
             (raw & ~(std::uint64_t(mask) << (slot * bits))) | (std::uint64_t(value & mask) << (slot * bits));
+        bc::shared_memory.write(0, std::span{&raw, 1});
+    }
+    bool attacked(unsigned slot) const { return slot < slots && (raw >> (attacked_shift + slot) & 1); }
+    void set_attacked(unsigned slot, bool value) {
+        if (slot >= slots || attacked(slot) == value)
+            return;
+        read();
+        const std::uint64_t bit = std::uint64_t{1} << (attacked_shift + slot);
+        raw = value ? raw | bit : raw & ~bit;
         bc::shared_memory.write(0, std::span{&raw, 1});
     }
 };

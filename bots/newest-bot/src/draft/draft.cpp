@@ -6,6 +6,17 @@
 #include <iostream>
 
 namespace {
+// Shared memory has a slot per body: every roster fits, and none has the twin
+// pick's second body.
+constexpr bool rosters_fit() {
+    for (const auto &entry : compositions::rosters)
+        if (entry.size() > TeamMemory::slots ||
+            (entry.picks & compositions::bit(compositions::Pick::cassi_and_issac)))
+            return false;
+    return true;
+}
+static_assert(rosters_fit());
+
 struct DraftState {
     bool ready = false;
     DraftPlan plan;
@@ -74,9 +85,9 @@ struct DraftState {
     }
 
     void write_roster(const compositions::Entry &entry) {
-        // next_pick follows this same roster order, including both Twin bodies.
+        // next_pick follows this same roster order.
         const auto bodies = compositions::expand(entry.picks);
-        plan.roster_types = bodies.types;
+        std::copy_n(bodies.types.begin(), plan.roster_types.size(), plan.roster_types.begin());
         plan.body_count = bodies.count;
     }
 };

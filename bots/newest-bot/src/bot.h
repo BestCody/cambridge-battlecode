@@ -384,6 +384,13 @@ class Bot {
     std::vector<std::int32_t> group_cx, group_cy;
     std::vector<bc::champion> roster;
     std::vector<ObservedUnit> enemies, allies;
+    // Each ally in view's roster slot, in allies' order, and those slots' bits.
+    std::array<std::uint8_t, TeamMemory::slots> ally_slot{};
+    unsigned seen_slots = 0;
+    // This round's fight report: the group nearest the enemy we see and the
+    // squad it takes (-1: no enemy in view).
+    int reported_round = -1, reported_group = -1;
+    unsigned reported_force = 0;
     CampList camps;
     std::vector<ObservedUnit> fight_scratch; // observe_fight()'s next enemies
     // The camps that can strike (positive strength, no stun with time left),
@@ -603,7 +610,15 @@ class Bot {
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
-    void worker_update_formation();
+    // Reports the fight we see (true) or clears an old report.
+    bool worker_update_formation();
+    float team_average_power() const;
+    // A fight report's group describes the fight at this tile.
+    bool same_fight(int group, vec2 at) const;
+    // The squad the fight at this tile takes, and the enemy power teammates'
+    // reports of it stand for.
+    unsigned fight_demand(vec2 at) const;
+    float reported_power(vec2 at) const;
     bool worker_reinforce();
     bool worker_tribute();
     void note_activity(Activity activity);

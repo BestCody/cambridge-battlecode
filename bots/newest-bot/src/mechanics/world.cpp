@@ -732,11 +732,15 @@ void Bot::observe() {
     for (const auto &c : enemy_roster)
         if (const auto info = sighting(c))
             enemies.emplace_back(c, *info);
-    for (const auto &c : roster)
-        if (c == bc::self())
+    seen_slots = 0;
+    for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+        if (s == slot)
             continue;
-        else if (const auto info = sighting(c))
-            allies.emplace_back(c, *info);
+        else if (const auto info = sighting(roster[s])) {
+            ally_slot[allies.size()] = std::uint8_t(s);
+            seen_slots |= 1u << s;
+            allies.emplace_back(roster[s], *info);
+        }
     ++threat_revision; // New units: what incoming() listed from them is stale.
     for (const auto &a : allies)
         if (distance(position, a.position) <= 6)
@@ -1217,16 +1221,35 @@ float Bot::friendly_power(vec2 at) const {
         }
     float p = std::sqrt(std::max(1.0f, health + ready_shield) *
                         (spell_dps(spells, strength, focus) + burst * 0.2f) / mitigation);
-    for (const auto &a : allies) {
+    // Allies count if they can join before we fall (our health over the
+    // damage we take), and not while their reports put them in another fight.
+    const float taking = incoming(position);
+    const float lasting = taking > 0 ? health / taking : std::numeric_limits<float>::max();
+    for (std::size_t i = 0; i < allies.size(); ++i) {
+        const auto &a = allies[i];
         int arrival = std::max(0, distance(at, a.position) - std::max(a.range, a.spell_reach));
         // A stunned ally still counts (a stun costs it one action), without
         // its burst while the stun has time left.
-        if (arrival > 6 || a.channel)
+        if (float(arrival) > lasting || a.channel)
+            continue;
+        const int fight = TeamMemory::fight_group(shared.get(ally_slot[i]), groups.size());
+        if (fight >= 0 && !same_fight(fight, at))
             continue;
         const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
         p += std::sqrt(std::max(1.0f, a.health + a.shield + a.ready_shield) *
                        (a.damage_rate + ally_burst * 0.2f + a.healing_rate) / a.mitigation) *
              0.9f / (1 + arrival * 0.4f);
+    }
+    // Teammates out of our sight under attack in this fight are in it, at
+    // their starting kit.
+    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
+    for (unsigned s = 0; s < count; ++s) {
+        if (s == slot || (seen_slots >> s & 1) || !shared.attacked(s))
+            continue;
+        const unsigned code = shared.get(s);
+        if (TeamMemory::requested_force(code, groups.size()) &&
+            same_fight(TeamMemory::fight_group(code, groups.size()), at) && roster[s].is_alive())
+            p += roster_power[s] * 0.9f;
     }
     return p;
 }

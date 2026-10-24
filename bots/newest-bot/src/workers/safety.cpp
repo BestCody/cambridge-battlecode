@@ -44,18 +44,32 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
 
 bool Bot::worker_step_away() {
     // Step to the reachable tile with the fewest threats, then the most room,
-    // then the shortest way home (or to an altar when carrying a bag).
+    // then the shortest way to a teammate in view that is in this fight or
+    // coming to it (help that answered), else home (or to an altar when
+    // carrying a bag).
     const auto [threats, clearance] = worker_danger(position);
     const auto &guide =
         gems && altar_walk().get(position) < home_field.get(position) ? altar_walk() : home_field;
+    vec2 helper{-1, -1};
+    int nearest = std::numeric_limits<int>::max();
+    for (std::size_t i = 0; i < allies.size(); ++i) {
+        const int fight = TeamMemory::fight_group(shared.get(ally_slot[i]), groups.size());
+        if (allies[i].channel || !same_fight(fight, position))
+            continue;
+        if (const int d = distance(position, allies[i].position); d < nearest) {
+            nearest = d;
+            helper = allies[i].position;
+        }
+    }
+    const auto way = [&](vec2 tile) { return helper.x >= 0 ? distance(tile, helper) : int(guide.get(tile)); };
     vec2 best = position;
-    auto best_score = std::tuple{threats, -clearance, int(guide.get(position))};
+    auto best_score = std::tuple{threats, -clearance, way(position)};
     if (bc::self().can_move())
         for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
             if (tile == position)
                 continue;
             const auto [count, room] = worker_danger(tile);
-            const auto score = std::tuple{count, -room, int(guide.get(tile))};
+            const auto score = std::tuple{count, -room, way(tile)};
             if (score < best_score) {
                 best_score = score;
                 best = tile;

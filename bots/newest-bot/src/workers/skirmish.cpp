@@ -47,7 +47,10 @@ bool Bot::worker_skirmish() {
     if (selected < 0)
         return false;
     const auto victim = enemies[selected];
-    float ours = friendly_power(victim.position), theirs = enemy_power(victim.position);
+    // Each champion sees only its part of a fight: the enemy is as large as
+    // the teammate who sees the most of it reports.
+    float ours = friendly_power(victim.position),
+          theirs = std::max(enemy_power(victim.position), reported_power(victim.position));
     float danger = incoming(position);
     // Price in imminent enemy respawns: a fight beside their base can be joined
     // by a full-health body, so the effective enemy power must reflect it.

@@ -8,57 +8,100 @@ float observed_power(const ObservedUnit &unit) {
 }
 } // namespace
 
-void Bot::worker_update_formation() {
-    profiling::Scope scope(profiling::Stage::formation);
-    if (!TeamMemory::formations(groups.size()))
-        return;
-    if (TeamMemory::fight_group(shared.get(slot), groups.size()) >= 0)
-        publish(0);
-    const auto &enemy_spawn = bc::map::spawn_region(bc::team::enemy);
-    const ObservedUnit *contact = nullptr;
-    int closest = bc::distance_field::unreachable;
-    for (const auto &enemy : enemies) {
-        if (enemy_spawn.is_set(enemy.position))
-            continue;
-        const int d = distance(position, enemy.position);
-        if (d < closest) {
-            contact = &enemy;
-            closest = d;
-        }
-    }
-    if (!contact)
-        return;
-    int contact_group = -1;
-    closest = bc::distance_field::unreachable;
-    const vec2 at = contact->position;
-    for (std::size_t i = 0; i < groups.size(); ++i) {
-        const int d = std::max(std::abs(at.x - group_cx[i]), std::abs(at.y - group_cy[i]));
-        if (d < closest) {
-            closest = d;
-            contact_group = int(i);
-        }
-    }
-    float team_power = 0;
-    const float own_power =
-        std::sqrt(std::max(1.0f, health) * spell_dps(spells, strength, focus) / mitigation);
+float Bot::team_average_power() const {
     // Unseen allies contribute their public starting kit. Visible allies use
     // their current health and upgrades; no hidden live state is queried.
-    for (std::size_t s = 0; s < roster.size(); ++s) {
-        float power = s == slot ? own_power : roster_power[s];
-        for (const auto &ally : allies)
-            if (ally.champion() == roster[s]) {
-                power = observed_power(ally);
-                break;
-            }
-        team_power += power;
+    float team_power = std::sqrt(std::max(1.0f, health) * spell_dps(spells, strength, focus) / mitigation);
+    for (std::size_t s = 0; s < roster.size(); ++s)
+        if (s != slot && !(seen_slots >> s & 1))
+            team_power += roster_power[s];
+    for (const auto &ally : allies)
+        team_power += observed_power(ally);
+    return team_power / float(std::max<std::size_t>(1, roster.size()));
+}
+
+bool Bot::same_fight(int group, vec2 at) const {
+    // Reports name the group nearest to what each reporter sees: within one
+    // champion's sight of each other they describe the same enemies.
+    return group >= 0 && distance(groups[group].centre, at) <= int(stats.vision_radius);
+}
+
+unsigned Bot::fight_demand(vec2 at) const {
+    // Each champion sees only its part of a fight: the squad it takes is the
+    // largest any reporter asks for.
+    unsigned demand = same_fight(reported_group, at) ? reported_force : 0;
+    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
+    for (unsigned s = 0; s < count; ++s) {
+        if (s == slot)
+            continue;
+        const unsigned code = shared.get(s);
+        const unsigned force = TeamMemory::requested_force(code, groups.size());
+        if (force > demand && same_fight(TeamMemory::fight_group(code, groups.size()), at))
+            demand = force;
     }
-    const unsigned bodies = std::max(1u, unsigned(roster.size()));
-    const float average = team_power / bodies;
-    const unsigned contact_force =
-        std::clamp(unsigned(std::ceil(enemy_power(contact->position) * policy::formation_advantage /
-                                      std::max(1.0f, average))),
-                   1u, bodies);
-    publish(TeamMemory::request(contact_group, contact_force, groups.size()));
+    return demand;
+}
+
+float Bot::reported_power(vec2 at) const {
+    // Teammates' reports of this fight, as the enemy power that sized them.
+    unsigned force = 0;
+    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
+    for (unsigned s = 0; s < count; ++s) {
+        if (s == slot)
+            continue;
+        const unsigned code = shared.get(s);
+        const unsigned asked = TeamMemory::requested_force(code, groups.size());
+        if (asked > force && same_fight(TeamMemory::fight_group(code, groups.size()), at))
+            force = asked;
+    }
+    return force ? float(force) * policy::aggression * team_average_power() : 0.0f;
+}
+
+bool Bot::worker_update_formation() {
+    profiling::Scope scope(profiling::Stage::formation);
+    // Worked out once a round: a stunned or retreating champion reports the
+    // same fight again.
+    if (reported_round != int(round)) {
+        reported_round = int(round);
+        reported_group = -1;
+        reported_force = 0;
+        const auto &enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+        const ObservedUnit *contact = nullptr;
+        int closest = bc::distance_field::unreachable;
+        if (TeamMemory::formations(groups.size()))
+            for (const auto &enemy : enemies) {
+                if (enemy_spawn.is_set(enemy.position))
+                    continue;
+                const int d = distance(position, enemy.position);
+                if (d < closest) {
+                    contact = &enemy;
+                    closest = d;
+                }
+            }
+        if (contact) {
+            closest = bc::distance_field::unreachable;
+            const vec2 at = contact->position;
+            for (std::size_t i = 0; i < groups.size(); ++i) {
+                const int d = std::max(std::abs(at.x - group_cx[i]), std::abs(at.y - group_cy[i]));
+                if (d < closest) {
+                    closest = d;
+                    reported_group = int(i);
+                }
+            }
+            // The squad that beats what we see by the fight rule: its power
+            // times aggression reaches theirs.
+            const unsigned bodies = std::max(1u, unsigned(roster.size()));
+            const float squad = enemy_power(at) / (policy::aggression * std::max(1.0f, team_average_power()));
+            reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
+        }
+    }
+    if (reported_group < 0) {
+        if (TeamMemory::fight_group(shared.get(slot), groups.size()) >= 0)
+            publish(0);
+        return false;
+    }
+    publish(TeamMemory::request(reported_group, reported_force, groups.size()));
+    return true;
 }
 
 bool Bot::worker_reinforce() {
@@ -69,9 +112,11 @@ bool Bot::worker_reinforce() {
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position))
         return false;
     const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
+    // Help goes to fights where a teammate is under attack, not to sightings.
     bool requested = false;
     for (unsigned s = 0; s < count; ++s)
-        requested |= s != slot && TeamMemory::requested_force(shared.get(s), groups.size()) > 0;
+        requested |=
+            s != slot && shared.attacked(s) && TeamMemory::requested_force(shared.get(s), groups.size()) > 0;
     if (!requested)
         return false;
     std::array<bool, TeamMemory::slots> alive{};
@@ -83,41 +128,49 @@ bool Bot::worker_reinforce() {
     vec2 destination{};
     unsigned selected_force = 0;
     for (unsigned leader = 0; leader < count; ++leader) {
-        const unsigned demand = TeamMemory::requested_force(shared.get(leader), groups.size());
-        if (!alive[leader] || !demand || leader == slot)
+        if (!alive[leader] || leader == slot || !shared.attacked(leader) ||
+            !TeamMemory::requested_force(shared.get(leader), groups.size()))
             continue;
         const int group = TeamMemory::fight_group(shared.get(leader), groups.size());
-        vec2 rally = groups[group].centre;
-        for (const auto &ally : allies)
-            if (ally.champion() == roster[leader]) {
-                rally = ally.position;
+        const vec2 place = groups[group].centre;
+        const unsigned demand = fight_demand(place);
+        vec2 rally = place;
+        for (std::size_t i = 0; i < allies.size(); ++i)
+            if (ally_slot[i] == leader) {
+                rally = allies[i].position;
                 break;
             }
         const int travel = std::max(0, distance(position, rally) - range);
         if (travel > horizon)
             continue;
-        unsigned committed = 0, ahead = 0;
+        // Teammates in this fight (under attack in it, or travelling to it),
+        // the free ones who could also come in time, and those nearer than us.
+        // One that only sees it may be stepping away: it counts as neither.
+        unsigned committed = 0, free = 1, ahead = 0;
         for (unsigned s = 0; s < count; ++s) {
             if (s == slot || !alive[s])
                 continue;
             const unsigned claim = shared.get(s);
-            if (TeamMemory::fight_group(claim, groups.size()) == group) {
-                ++committed;
+            if (same_fight(TeamMemory::fight_group(claim, groups.size()), place)) {
+                committed += !TeamMemory::requested_force(claim, groups.size()) || shared.attacked(s);
                 continue;
             }
             if (!claim || claim > groups.size())
                 continue;
             vec2 where = groups[claim - 1].centre;
-            for (const auto &ally : allies)
-                if (ally.champion() == roster[s]) {
-                    where = ally.position;
-                    break;
-                }
+            if (seen_slots >> s & 1)
+                for (std::size_t i = 0; i < allies.size(); ++i)
+                    if (ally_slot[i] == s) {
+                        where = allies[i].position;
+                        break;
+                    }
             const int other_travel = std::max(0, distance(where, rally) - range);
+            free += other_travel <= horizon;
             if (other_travel < travel || (other_travel == travel && s < slot))
                 ++ahead;
         }
-        if (committed >= demand || ahead >= demand - committed)
+        // Nobody goes to a fight the team cannot make up the squad for.
+        if (committed + free < demand || committed >= demand || ahead >= demand - committed)
             continue;
         const float value = float(demand - committed) / (travel + 1);
         if (value > best) {

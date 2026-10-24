@@ -10,7 +10,10 @@ bool Bot::worker_escape() {
     // Flee even when an enemy can reach us next turn: fleeing loses some free
     // hits but survives far more often. Standing traded down to death in two
     // thirds of the fights we were losing, where the top team breaks contact.
-    publish(TeamMemory::recall);
+    // A champion caught while it goes keeps reporting the fight, so help can
+    // still come.
+    if (!worker_update_formation())
+        publish(TeamMemory::recall);
     if (bc::map::spawn_region(bc::team::ally).is_set(position) && health >= max_health) {
         retreating = false;
         return false;
@@ -42,6 +45,7 @@ void Bot::play_worker_turn() {
     if (!me.is_alive()) {
         note_activity(Activity::dead);
         publish(TeamMemory::unavailable);
+        shared.set_attacked(slot, false);
         buy_equipment();
         retreating = banking = false;
         target = -1;
@@ -52,10 +56,13 @@ void Bot::play_worker_turn() {
     if (me.is_recalling() || me.is_teleporting()) {
         note_activity(Activity::recall);
         publish(TeamMemory::recall);
+        shared.set_attacked(slot, false);
         return;
     }
     observe();
     hit = health < before;
+    // Teammates help only champions an enemy can hit next round.
+    shared.set_attacked(slot, worker_danger(position).first > 0);
     if (me.is_submitting_gems()) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);
@@ -88,7 +95,10 @@ void Bot::play_worker_turn() {
         return;
     }
     if (!me.can_move() && !me.can_attack() && !me.can_cast()) {
-        publish(TeamMemory::unavailable);
+        // A stunned champion still reports the fight it is caught in: help
+        // matters most while it cannot act.
+        if (!worker_update_formation())
+            publish(TeamMemory::unavailable);
         return;
     }
     // A champion without a camp chooses one before anything else this turn.
