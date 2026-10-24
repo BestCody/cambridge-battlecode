@@ -46,6 +46,7 @@ void Bot::play_worker_turn() {
         note_activity(Activity::dead);
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
+        chase.mode = Chase::none;
         buy_equipment();
         retreating = banking = false;
         target = -1;
@@ -57,10 +58,15 @@ void Bot::play_worker_turn() {
         note_activity(Activity::recall);
         publish(TeamMemory::recall);
         shared.set_attacked(slot, false);
+        chase.mode = Chase::none;
         return;
     }
     observe();
     hit = health < before;
+    // A chase ends once no enemy can reach us, and a stun means deciding it
+    // again; a turn spent on anything else keeps it.
+    if (chase.mode != Chase::none && (!worker_danger(position).first || me.buffs().has_stun()))
+        chase.mode = Chase::none;
     // Teammates help only champions an enemy in view can hit next round.
     bool attacked = false;
     for (const auto &e : enemies)

@@ -87,14 +87,23 @@ bool Bot::worker_skirmish() {
         // than walk into it alone: half our ladder fights started outnumbered.
         if (!favourable && worker_danger(position).first) {
             worker_track_sightings(); // The camps by these enemies wait out the sighting.
-            // A step is worth only the damage it saves: when the attack it
-            // costs is worth more, hit back. A failed step keeps the camp, so
-            // the turn is not spent idle.
-            const vec2 step = step_away_tile();
-            if (!stepping_pays(step)) {
-                if (combat(true))
+            // Fight from where we stand: no dash into the group, and a ranged
+            // champion shoots rather than walks.
+            if (chase_mode(false) == Chase::fight && combat(true, -1, range <= 1))
+                return true;
+            if (range <= 1) {
+                // A melee champion walks and strikes in one turn: strike, then
+                // step. A failed step keeps the camp, so the turn is not spent
+                // idle.
+                const bool struck = combat(true, -1, true);
+                const vec2 step = step_away_tile();
+                if (step != position && move_step(step)) {
+                    target = -1;
                     return true;
-            } else if (step != position && move_step(step)) {
+                }
+                if (struck)
+                    return true;
+            } else if (run_to_safety()) {
                 target = -1;
                 return true;
             }

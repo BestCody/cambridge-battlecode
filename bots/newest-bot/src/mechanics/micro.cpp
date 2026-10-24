@@ -1064,10 +1064,12 @@ void Bot::observe_fight() {
     // Built in storage kept between fights, then swapped in.
     auto &current = fight_scratch;
     current.clear();
-    for (const auto &c : enemy_roster) {
+    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i) {
+        const auto &c = enemy_roster[i];
         const auto info = sighting(c);
         if (!info)
             continue; // A champion in view is alive.
+        enemy_slot[current.size()] = std::uint8_t(i);
         const auto found =
             std::find_if(enemies.begin(), enemies.end(), [&](const auto &e) { return e.champion() == c; });
         if (found == enemies.end())

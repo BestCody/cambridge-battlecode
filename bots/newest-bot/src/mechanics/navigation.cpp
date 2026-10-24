@@ -295,12 +295,11 @@ void Bot::retreat_to_spawn() {
         recall_tile = position;
         return;
     }
-    // Chased by enemies we cannot outrun to spawn: when a step saves less
-    // than the attack it costs, hit back instead of taking the hits for free.
-    if (!safe && !stepping_pays(step_away_tile())) {
-        combat(true);
+    // Caught by enemies we cannot outrun home: stand and fight from here (no
+    // dash into the group) rather than take their hits for free; nothing to
+    // strike, walk on.
+    if (!safe && chase_mode(true) == Chase::fight && combat(true, -1, range <= 1))
         return;
-    }
     const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
     const auto goals = walk <= rules::settings().recall_time * stats.base_move_speed || safe_tiles.is_empty() ||
                                cancelled

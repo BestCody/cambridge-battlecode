@@ -109,6 +109,10 @@ struct ObservedUnit {
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
     bool stunned = false, channel = false, immune = false, completed = false;
+    // Its dash: tiles, rounds until usable (-1: no dash), cooldown, and
+    // whether a walk can follow it in the same turn.
+    std::int8_t dash_range = 0, dash_wait = -1, dash_cooldown = 1;
+    bool dash_walks = false;
     bc::champion_type type{};
     explicit ObservedUnit(const bc::champion &c);
     // From live fields already read with one engine call (see sighting()).
@@ -387,6 +391,8 @@ class Bot {
     // Each ally in view's roster slot, in allies' order, and those slots' bits.
     std::array<std::uint8_t, TeamMemory::slots> ally_slot{};
     unsigned seen_slots = 0;
+    // Each enemy in view's entry in enemy_roster, in enemies' order.
+    std::array<std::uint8_t, 8> enemy_slot{};
     // This round's fight report: the group nearest the enemy we see and the
     // squad it takes (-1: no enemy in view).
     int reported_round = -1, reported_group = -1;
@@ -408,6 +414,22 @@ class Bot {
     // group's reach, and those tiles.
     int avoid_round = -1;
     bc::bitboard avoid_zone;
+    // Breaking contact with a stronger group (safety.cpp): whether we run or
+    // fight, decided once and kept until something the decision did not
+    // foresee happens. The round it was decided and last kept, the enemies
+    // in view then (bits of their roster entries), whether the run
+    // uses our dash and whether it was ready, the teammate it runs to (its
+    // roster slot, -1: spawn), our health and shield then, and the damage the
+    // race or duel foresaw by the end of each round since.
+    struct Chase {
+        enum Mode { none, run, fight };
+        Mode mode = none;
+        int decided = -1, kept = -1, mate = -1;
+        std::uint32_t chasers = 0;
+        bool dash = false, dash_ready = false;
+        float pool = 0;
+        std::vector<float> foreseen;
+    } chase;
     CampList camps;
     std::vector<ObservedUnit> fight_scratch; // observe_fight()'s next enemies
     // The camps that can strike (positive strength, no stun with time left),
@@ -651,8 +673,12 @@ class Bot {
     std::pair<int, int> worker_danger(vec2 tile) const;
     // The tile a step away from danger takes (our own: none).
     vec2 step_away_tile();
-    // Whether that step saves more damage than the attack it costs.
-    bool stepping_pays(vec2 step);
+    // Run or fight while breaking contact with a stronger group.
+    Chase::Mode chase_mode(bool retreat);
+    std::uint32_t threat_bits() const;
+    bool duel_won(std::uint32_t threats, float pool);
+    bool race(vec2 goal, int arrive, bool use_dash, float pool);
+    bool run_to_safety();
     void avoid_reach();
 
     void take_turn();

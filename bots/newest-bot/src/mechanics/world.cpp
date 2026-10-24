@@ -252,6 +252,12 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
             ready_shield = focus * s.modifier;
         else if (s.kind == bc::ability_kind::heal)
             healing_rate = focus * s.modifier / s.cooldown;
+        if (s.kind == bc::ability_kind::dash) {
+            dash_range = std::int8_t(s.range);
+            dash_wait = std::int8_t(std::clamp(cooldown, 0, 100));
+            dash_cooldown = std::int8_t(std::clamp(s.cooldown, 1, 100));
+            dash_walks = !s.exclusive;
+        }
     }
     if (type == bc::champion_type::heart_of_ruin) {
         // Its passive adds up to half again to all its damage with missing
@@ -729,9 +735,11 @@ void Bot::observe() {
     // The rosters hold every champion; checking them is far cheaper than the
     // engine's per-team vision list (about 3,700 fuel each).
     // A champion in view is alive: the dead leave the map.
-    for (const auto &c : enemy_roster)
-        if (const auto info = sighting(c))
-            enemies.emplace_back(c, *info);
+    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i)
+        if (const auto info = sighting(enemy_roster[i])) {
+            enemy_slot[enemies.size()] = std::uint8_t(i);
+            enemies.emplace_back(enemy_roster[i], *info);
+        }
     seen_slots = 0;
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
         if (s == slot)
