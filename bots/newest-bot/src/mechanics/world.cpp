@@ -220,9 +220,25 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
     immune = kit.immune;
     const auto state = bc::champion_state::from_bits_retain(info.state);
     completed = state.contains(bc::champion_state::completed_turn);
-    channel = state.contains(bc::champion_state::submitting_gems) ||
-              state.contains(bc::champion_state::recalling) ||
-              state.contains(bc::champion_state::teleporting);
+    // A channel holds its champion through its next turn only while time is
+    // left: at zero it completes as that turn starts, and a tribute or a
+    // teleport then acts as usual (a recall leaves). A recall with time left
+    // can still be cancelled, as some teams do on every turn: an enemy's
+    // showing the time of a recall that just started is left to observe() to
+    // tell from a fake, and a teammate's is told by its report there.
+    static const std::int32_t own_team = read_champion(bc::self()).team;
+    recalling = state.contains(bc::champion_state::recalling);
+    if (recalling ? info.team != own_team
+                  : state.contains(bc::champion_state::submitting_gems) ||
+                        state.contains(bc::champion_state::teleporting)) {
+        std::int32_t left = 0;
+        bc::detail::check(bc::detail::sdk_champion_channel_time(handle, &left));
+        if (recalling) {
+            recall_left = std::int8_t(left);
+            channel = !fresh_recall(left);
+        } else
+            channel = left > 0;
+    }
     read_buffs(*this);
     damage_rate = strength;
     for (unsigned ability_slot = 0; ability_slot < kit.spells.size(); ++ability_slot) {
@@ -738,7 +754,20 @@ void Bot::observe() {
     for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i)
         if (const auto info = sighting(enemy_roster[i])) {
             enemy_slot[enemies.size()] = std::uint8_t(i);
-            enemies.emplace_back(enemy_roster[i], *info);
+            auto &e = enemies.emplace_back(enemy_roster[i], *info);
+            if (e.recalling) {
+                // A recall restarted on every turn shows the same time at
+                // every sighting; a real one has counted down by the enemy
+                // turn ends since the last. With none between (the turn order
+                // swaps each round), the last verdict stands.
+                const int tick = int(round) + e.completed;
+                if (tick != recall_tick[i]) {
+                    recall_real[i] = tick > recall_tick[i] && recall_seen[i] - (tick - recall_tick[i]) == e.recall_left;
+                    recall_tick[i] = tick;
+                    recall_seen[i] = e.recall_left;
+                }
+                e.channel = e.channel || recall_real[i];
+            }
         }
     seen_slots = 0;
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
@@ -768,6 +797,11 @@ void Bot::observe() {
     }
     close_threats();
     shared.read();
+    // A teammate's recall is real when it reports one: every champion ends
+    // its turns in a recall it cancels at the next (fake_recall()).
+    for (std::size_t i = 0; i < allies.size(); ++i)
+        if (allies[i].recalling)
+            allies[i].channel = shared.get(ally_slot[i]) == TeamMemory::recall;
     ghosts.clear();
     ghost_last.clear();
     // Ghosts are kept for ghost_lifetime rounds after a sighting, so they

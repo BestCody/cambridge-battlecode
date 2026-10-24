@@ -214,6 +214,12 @@ inline int channel_duration(unsigned gems) {
                     static_cast<int>(std::ceil(gems * rules::settings().submit_gem_duration_multiplier - 1e-9)) +
                         rules::settings().submit_gem_base_duration);
 }
+// The turn ends a recall shows left once its first turn end has ticked:
+// both lengths, as Home makes it three turn ends instead of five.
+inline bool fresh_recall(int left) {
+    const int full = rules::settings().recall_time;
+    return left == full - 1 || left == (full + 1) / 2 - 1;
+}
 inline unsigned id(const bc::champion &c) {
     return static_cast<unsigned>(static_cast<bc::handle_champion_t>(c));
 }

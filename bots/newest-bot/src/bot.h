@@ -108,11 +108,12 @@ struct ObservedUnit {
     int move_speed = 1;
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
-    bool stunned = false, channel = false, immune = false, completed = false;
+    bool stunned = false, channel = false, immune = false, completed = false, recalling = false;
     // Its dash: tiles, rounds until usable (-1: no dash), cooldown, and
     // whether a walk can follow it in the same turn.
     std::int8_t dash_range = 0, dash_wait = -1, dash_cooldown = 1;
     bool dash_walks = false;
+    std::int8_t recall_left = -1; // An enemy's recall's turn ends left (-1: none read).
     bc::champion_type type{};
     explicit ObservedUnit(const bc::champion &c);
     // From live fields already read with one engine call (see sighting()).
@@ -412,6 +413,15 @@ class Bot {
     std::vector<vec2> ghost_last;
     int ghost_update = -1; // The round the records were last brought up to date.
     int enemy_sighted = -1000; // The last round an enemy was in view.
+    // Enemy recalls (observe()), per enemy roster entry: its turn ends up to
+    // the last sighting of it recalling, the turn ends that recall had left
+    // then, and whether it was counting down (a real one) or just started.
+    std::array<int, 8> recall_tick{};
+    std::array<std::int8_t, 8> recall_seen{};
+    std::array<bool, 8> recall_real{};
+    // This turn ends in a recall to be cancelled as the next one starts
+    // (fake_recall()).
+    bool faking = false;
     bc::bitboard ghost_keep, ghost_spread;
     std::vector<vec2> ghost_tiles;
     // The round avoid_reach() kept this turn's moves out of a stronger
@@ -643,6 +653,7 @@ class Bot {
     // Worker controller (workers/): every champion's independent policy.
     void play_worker_turn();
     void worker_priority();
+    void fake_recall();
     void worker_report();
     bool worker_escape();
     // excluded: a group never chosen (-1: none).

@@ -364,9 +364,9 @@ bool Bot::race(vec2 goal, int arrive, bool use_dash, float pool) {
 }
 
 Bot::Chase::Mode Bot::chase_mode(bool retreat) {
-    // Breaking contact with a stronger group: run when the race to safety
-    // ends alive, else stand and fight (walking would only give the chasers
-    // free hits), and fight when we win the duel with the chasers. Decided
+    // Breaking contact with a stronger group: run, unless the first round of
+    // the race to safety kills us (walking would only give the chasers free
+    // hits), and fight when we win the duel with the chasers. Decided
     // once and kept: flipping between the two gets neither the distance nor
     // the damage. Only what the decision did not foresee changes it: a new
     // enemy joins, a chaser dies or is stunned, we are hit harder than the
@@ -428,8 +428,8 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
         chase.dash = false;
         chase.dash_ready = has_dash && own_dash(spells).wait == 0;
         // A fight is checked against the duel and a run against the race; a
-        // melee champion's walk, and a stand when no run ends alive, have
-        // nothing foreseen to check.
+        // melee champion's walk, and a stand when the run's first round
+        // kills us, have nothing foreseen to check.
         if (duel_won(threats, pool))
             chase.mode = Chase::fight;
         else if (range <= 1) {
@@ -472,11 +472,19 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
                     }
                 }
             }
+            // When no run ends alive against chasers that follow perfectly, we
+            // still run, checked against the race (a chaser often breaks off:
+            // standing and shooting traded one Willow down to death where
+            // walking away lived), and stand only when the run's first round
+            // kills us anyway.
             if (race(goal, arrive, false, pool))
                 chase.mode = Chase::run;
             else if (has_dash && race(goal, arrive, true, pool)) {
                 chase.mode = Chase::run;
                 chase.dash = true;
+            } else if (chase.foreseen.size() > 1) {
+                chase.mode = Chase::run;
+                chase.dash = has_dash;
             } else {
                 chase.mode = Chase::fight;
                 chase.foreseen.clear();

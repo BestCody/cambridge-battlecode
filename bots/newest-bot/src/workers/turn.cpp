@@ -41,6 +41,12 @@ void Bot::play_worker_turn() {
     auto &me = bc::self();
     const float before = health; // As our last turn left it.
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
+    // The recall our last turn ended in goes first: a channel blocks every
+    // other action, shopping included. A hit or a stun may have ended it.
+    if (faking) {
+        faking = false;
+        (void)bc::detail::sdk_cancel_channel();
+    }
     track_enemy_respawns(); // Needs no vision: also while dead, recalling or banking.
     if (!me.is_alive()) {
         note_activity(Activity::dead);
@@ -165,6 +171,21 @@ void Bot::play_worker_turn() {
     if (target >= 0)
         note_activity(distance(position, groups[target].centre) <= range + 3 ? Activity::farm
                                                                              : Activity::travel);
+}
+
+void Bot::fake_recall() {
+    // Every turn ends in a recall that the next cancels as it starts: an
+    // enemy that reads a recall as a champion leaving (ours did) sees one on
+    // each of ours. Teammates tell a real recall by its report. A channel
+    // blocks every later action, so it is the turn's last; one already
+    // going needs none, and a stun refuses it.
+    static const auto spawn = bc::map::spawn_region(bc::team::ally);
+    const auto state = bc::self().state();
+    if (!state.contains(bc::champion_state::alive) || state.contains(bc::champion_state::recalling) ||
+        state.contains(bc::champion_state::submitting_gems) || state.contains(bc::champion_state::teleporting) ||
+        spawn.is_set(position))
+        return;
+    faking = bc::detail::sdk_recall() == 0;
 }
 
 void Bot::note_activity(Activity activity) {
