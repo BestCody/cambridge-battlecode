@@ -182,9 +182,11 @@ inline constexpr int bank_nearby = 3;
 // bag 198).
 inline constexpr unsigned prism_bag = 200;
 // A champion that has lost this much health to enemy champions before its
-// first Treasure shard buys the Health one (willow best girl's Heart of Ruin
-// 13 of 14 times at 500 or more, 1 of 23 below 200; Marcella 9 of 9 and 0 of
-// 26; Willow 3 of 4). Its Vesper keeps Strength.
+// first shard opens with its first emblem's Health version: on engine 2.0.0
+// willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
+// 500 or more and Hunter-Focus in 38 of 47 under 250, its Marcella
+// Prospector-Health in 31 of 47 at 500 or more. Its Vendetta and Willow do
+// not switch.
 inline constexpr float health_treasure_damage = 500;
 // A champion that lost this much health to enemy champions over the last
 // 100-150 rounds starts its build's next Health emblem when it starts a new

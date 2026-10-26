@@ -2,7 +2,7 @@
 
 ## Current team plan
 
-newest-bot (commit 3ed3e7b) replicates the play of Intercontinental Fish, the #1 ladder team, as seen in their match summaries and replays. The earlier squad bot is archived as `bots/squad-bot` (tag `squad-bot-final`).
+test-bot (formerly newest-bot; commit 3ed3e7b) replicates the play of Intercontinental Fish, the #1 ladder team, as seen in their match summaries and replays. The earlier squad bot is archived as `bots/squad-bot` (tag `squad-bot-final`).
 
 | 3 picks | 4 picks | 5 picks |
 | --- | --- | --- |
@@ -117,7 +117,7 @@ Single games are deterministic but chaotic, and 210 games still vary by ±8-10 w
 
 ## Squad controller rules
 
-The rest of this document specifies the Stellar/Tavi/Cassi squad controller in `bots/newest-bot/src/squad/`. It is switched off in the replica (`policy::squad_enabled`) and plays in full in `bots/squad-bot`. Each rule below names the code that implements it.
+The rest of this document specifies the Stellar/Tavi/Cassi squad controller in `bots/test-bot/src/squad/`. It is switched off in the replica (`policy::squad_enabled`) and plays in full in `bots/squad-bot`. Each rule below names the code that implements it.
 
 - **Done** means the rule is implemented.
 - **Partial** means a simpler version of the rule is implemented, and the gap is described.
@@ -139,15 +139,15 @@ Terms used throughout:
 2. Other gem camps.
 3. Gold-only camps.
 
-The current job keeps `commit_bonus` only against jobs in the same category. *Done*: `select_squad_job`, [selection.cpp](../bots/newest-bot/src/squad/selection.cpp).
+The current job keeps `commit_bonus` only against jobs in the same category. *Done*: `select_squad_job`, [selection.cpp](../bots/test-bot/src/squad/selection.cpp).
 
 **1.2 Leave home camps to workers.** A camp that a living worker (Issac, Ryth or Varg) currently claims is skipped during ranking. The exceptions are a contested camp and the squad's own current camp. Gold camps reach the squad only as a preparation detour (1.4) or when no gem job exists. *Done*: ranking loop in `select_squad_job`.
 
-**1.3 Price interference from enemies we cannot see.** A hidden enemy that (re)spawned at round `s` can be no closer to a camp than `enemy_distance - (round - s)`. While that bound is positive, the overlap with our reward time is added to the job's interference work, scaled by `policy::hidden_interference_weight` (0.5). Once the bound reaches zero the enemy could be anywhere, so it stops contributing; counting it would only tax every job equally. Visible enemies are still timed from their real positions. *Done*: `hidden_interference` in [coordination.cpp](../bots/newest-bot/src/squad/coordination.cpp), and stages 2–3 of `estimate_job` in [objectives.cpp](../bots/newest-bot/src/squad/objectives.cpp).
+**1.3 Price interference from enemies we cannot see.** A hidden enemy that (re)spawned at round `s` can be no closer to a camp than `enemy_distance - (round - s)`. While that bound is positive, the overlap with our reward time is added to the job's interference work, scaled by `policy::hidden_interference_weight` (0.5). Once the bound reaches zero the enemy could be anywhere, so it stops contributing; counting it would only tax every job equally. Visible enemies are still timed from their real positions. *Done*: `hidden_interference` in [coordination.cpp](../bots/test-bot/src/squad/coordination.cpp), and stages 2–3 of `estimate_job` in [objectives.cpp](../bots/test-bot/src/squad/objectives.cpp).
 
 **1.4 Detour home only if it pays for itself.** A gold or upgrade detour replaces a contested siege job only when the clear time it saves exceeds the detour (reward + recall + walk back) × `commit_bonus`. *Done*: existing preparation block in `select_squad_job`.
 
-**1.5 Clear immediately when uncontested.** If the plan's interference is later than its reward time, and no new relevant enemy has appeared since the plan was made, the squad clears without waiting for every member to reach its firing tile. Otherwise, while a relevant enemy is visible, members hold their cooldowns for denial until the squad is in position. *Done*: clear gate in `squad_resource_turn`, [stellar_tavi_cassi.cpp](../bots/newest-bot/src/squad/stellar_tavi_cassi.cpp).
+**1.5 Clear immediately when uncontested.** If the plan's interference is later than its reward time, and no new relevant enemy has appeared since the plan was made, the squad clears without waiting for every member to reach its firing tile. Otherwise, while a relevant enemy is visible, members hold their cooldowns for denial until the squad is in position. *Done*: clear gate in `squad_resource_turn`, [stellar_tavi_cassi.cpp](../bots/test-bot/src/squad/stellar_tavi_cassi.cpp).
 
 **1.6 Fall back to other forward camps first.** If the selected contest is rejected, the comparison falls through to the next category before any preparation work. *Done*: follows from 1.1.
 
@@ -155,7 +155,7 @@ The current job keeps `commit_bonus` only against jobs in the same category. *Do
 
 **2.1 Resume searches without losing work.** Ranking is cheap and covers all camps. Detailed estimates run only for `objective_finalists` (6) plus the current job. Each search keeps its cursor and best result across turns, and running out of fuel never clears a valid job. *Done*: unchanged.
 
-**2.2 Invalidate plans on material change, not age.** A plan records the terrain revision, camp status and relevant-threat count it was made under. It is re-estimated when any of these change, or when membership changes. Age alone expires a plan only after `policy::plan_lifetime_windows` (3) work windows; it used to be 1. Calibration after each clear window still forces a refresh. *Done*: `prepare_objective` in objectives.cpp, and the new `JobEstimate` fields in [squad.h](../bots/newest-bot/src/squad/squad.h).
+**2.2 Invalidate plans on material change, not age.** A plan records the terrain revision, camp status and relevant-threat count it was made under. It is re-estimated when any of these change, or when membership changes. Age alone expires a plan only after `policy::plan_lifetime_windows` (3) work windows; it used to be 1. Calibration after each clear window still forces a refresh. *Done*: `prepare_objective` in objectives.cpp, and the new `JobEstimate` fields in [squad.h](../bots/test-bot/src/squad/squad.h).
 
 **2.3 Selection comes before optional work.** With no job, the coordinator runs selection before optional combat searches or ward placement, keeping `planning_reserve` back for a legal action and publication. Route caches only use leftover fuel. *Done*: unchanged ordering in `play_squad_turn`.
 
@@ -165,7 +165,7 @@ The current job keeps `commit_bonus` only against jobs in the same category. *Do
 
 ## 3. Combat follow-through
 
-**3.1 Cassi controls a secondary threat.** The shared focus target is marked. A stun on the focus target earns no control credit if the allies who can still act this round will finish it anyway. The exception is a channelling target, where the stun is an interruption. A stun on a *different* enemy that threatens a member gets × `policy::secondary_control_bonus` (1.25). When control adds nothing, the combo search's best option is Cassi's damage spell. *Done*: `attack_combo` in [micro.cpp](../bots/newest-bot/src/mechanics/micro.cpp).
+**3.1 Cassi controls a secondary threat.** The shared focus target is marked. A stun on the focus target earns no control credit if the allies who can still act this round will finish it anyway. The exception is a channelling target, where the stun is an interruption. A stun on a *different* enemy that threatens a member gets × `policy::secondary_control_bonus` (1.25). When control adds nothing, the combo search's best option is Cassi's damage spell. *Done*: `attack_combo` in [micro.cpp](../bots/test-bot/src/mechanics/micro.cpp).
 
 **3.2 Walk-stun needs a concrete payoff.** A stun cast after stepping (Cassi's walk-compatible slot) earns control credit only if one of these is true:
 
@@ -175,9 +175,9 @@ The current job keeps `commit_bonus` only against jobs in the same category. *Do
 
 Allies who have already finished the round are excluded from that last check, because an enemy turn may come before they act again. *Done*: `walked_for_it` in `attack_combo`.
 
-**3.3 No control without a useful window.** `control_value` is zero unless the enemy can reach a member within its own movement. Reach now uses the enemy's `move_speed`, not ours. Stun expiry, immunity and health are re-read every turn, so there is no fixed stun rotation. *Done*: [coordination.cpp](../bots/newest-bot/src/squad/coordination.cpp).
+**3.3 No control without a useful window.** `control_value` is zero unless the enemy can reach a member within its own movement. Reach now uses the enemy's `move_speed`, not ours. Stun expiry, immunity and health are re-read every turn, so there is no fixed stun rotation. *Done*: [coordination.cpp](../bots/test-bot/src/squad/coordination.cpp).
 
-**3.4 Order turns by tier.** Next-round priority uses disjoint tiers from `priority_tier` in [strategy.h](../bots/newest-bot/src/strategy.h):
+**3.4 Order turns by tier.** Next-round priority uses disjoint tiers from `priority_tier` in [strategy.h](../bots/test-bot/src/strategy.h):
 
 | Tier | Base | Condition |
 | --- | --- | --- |
@@ -205,7 +205,7 @@ Value within a tier is capped at 999. Workers use the same tiers, so a worker's 
 - a held capture;
 - a bank/crossing stage advancing.
 
-Stepping away and back no longer counts, because only a new best distance does. Camp health lost while an enemy is in range of the camp is not counted, because their damage gives us no control. Reselecting the same camp never resets the deadline. *Done*: `squad_move` in [movement.cpp](../bots/newest-bot/src/squad/movement.cpp) and `observe` in [world.cpp](../bots/newest-bot/src/mechanics/world.cpp).
+Stepping away and back no longer counts, because only a new best distance does. Camp health lost while an enemy is in range of the camp is not counted, because their damage gives us no control. Reselecting the same camp never resets the deadline. *Done*: `squad_move` in [movement.cpp](../bots/test-bot/src/squad/movement.cpp) and `observe` in [world.cpp](../bots/test-bot/src/mechanics/world.cpp).
 
 **4.4 Treat damage dealt as sunk cost.** Estimates use remaining health only. The clear gate no longer treats a partly damaged camp as a reason to keep clearing under threat (see 1.5). *Done*.
 
@@ -215,7 +215,7 @@ Stepping away and back no longer counts, because only a new best distance does. 
 
 ## New policy constants
 
-All live in `policy::` in [strategy.h](../bots/newest-bot/src/strategy.h) so `scripts/benchmark.ps1` can grid-search them.
+All live in `policy::` in [strategy.h](../bots/test-bot/src/strategy.h) so `scripts/benchmark.ps1` can grid-search them.
 
 | Constant | Default | Disables at |
 | --- | --- | --- |
@@ -226,7 +226,7 @@ All live in `policy::` in [strategy.h](../bots/newest-bot/src/strategy.h) so `sc
 
 ## Archived complete rosters
 
-These eight alternatives are kept for reference; they are not an instruction to re-enable roster selection. The live rosters are in [team_compositions.h](../bots/newest-bot/src/draft/team_compositions.h). Twins is one draft pick that produces Cassi and Issac.
+These eight alternatives are kept for reference; they are not an instruction to re-enable roster selection. The live rosters are in [team_compositions.h](../bots/test-bot/src/draft/team_compositions.h). Twins is one draft pick that produces Cassi and Issac.
 
 | Picks | Complete roster | Intended use |
 | --- | --- | --- |

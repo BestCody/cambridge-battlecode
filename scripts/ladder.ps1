@@ -9,10 +9,10 @@
 #
 # Usage (from any directory):
 #   pwsh scripts/ladder.ps1 -Build
-#   pwsh scripts/ladder.ps1 -Bot newest-bot -Opponents starter-cpp,baseline
+#   pwsh scripts/ladder.ps1 -Bot test-bot -Opponents starter-cpp,baseline
 # Opponents are bot folder names under bots/.
 param(
-    [string]$Bot = 'newest-bot',
+    [string]$Bot = 'test-bot',
     [string[]]$Opponents = @('starter-cpp'),
     # Empty = every map in the current pool.
     [string[]]$Maps = @(),

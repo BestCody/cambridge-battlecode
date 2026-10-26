@@ -90,8 +90,14 @@ const timeline = view().getBigUint64(outBuf, true);
 check(x.Game_Visualiser_Timeline_Info(game, timeline, args, args + 8, args + 16), "Timeline_Info");
 const size = view().getUint32(args, true);
 check(x.Game_Visualiser_Timeline_Seek(game, timeline, 0, 0), "Seek");
-if (x.Game_Visualiser_TimelineSnapshotSize() !== 40152) throw new Error("unexpected snapshot size");
-const snap = x.Engine_Malloc(40152);
+// Engine 2.0.0's snapshot layout, as the visualiser reads it: 42840 bytes,
+// champion records of 420 bytes (84 item counts), the fields after the items
+// 168 bytes later than engine 1.x put them and the sections after the
+// champions 2688 bytes later.
+const snapSize = x.Game_Visualiser_TimelineSnapshotSize();
+if (snapSize !== 42840) throw new Error(`unexpected snapshot size ${snapSize} (engine 2.0.0 expected)`);
+const stretch = 168, shift = 2688;
+const snap = x.Engine_Malloc(snapSize);
 
 // Bitboards: 8x8 chunks of u64, as the visualiser's test().
 check(x.Game_GetBitboardMetadata(game, outBuf), "Metadata");
@@ -129,15 +135,15 @@ function readState() {
                          slot: slot === 0xffffffff ? -1 : slot, at: slot === 0xffffffff ? -1 : u(112) } };
   const champions = [];
   for (let k = 0, n = u(172); k < n; k++) {
-    const b = 196 + k * 252;
+    const b = 196 + k * (252 + stretch), late = b + stretch;
     champions.push({ id: u(b + 4), team: u(b + 8), type: u(b + 12), x: i(b + 16), y: i(b + 20),
                      hp: Math.round(f(b + 24)), maxHp: Math.round(f(b + 28)), alive: !!u(b + 32),
                      gold: u(b + 36), gems: u(b + 40), kills: u(b + 44),
-                     stun: u(b + 248) ? [u(b + 240), u(b + 244)] : null });
+                     stun: u(late + 248) ? [u(late + 240), u(late + 244)] : null });
   }
   const camps = [];
   for (let k = 0, n = u(176); k < n; k++) {
-    const b = 4228 + k * 28;
+    const b = 4228 + shift + k * 28;
     const hp = f(b + 24);
     if (hp > 0) camps.push([u(b + 4), u(b + 12), i(b + 16), i(b + 20), Math.round(hp)]);
   }

@@ -7,7 +7,7 @@ limit (budget changes shift when searches defer, producing genuinely different
 games) and reports wins and gems for both sides against each opponent.
 
 Run from any directory:
-    python scripts/evaluate.py                          # newest-bot vs baseline
+    python scripts/evaluate.py                          # test-bot vs baseline
     python scripts/evaluate.py --mirror                 # add baseline-vs-baseline noise floor
     python scripts/evaluate.py off:hidden_interference_weight=0.0f current
     python scripts/evaluate.py --bot my-bot --baseline baseline --maps eight,swirl
@@ -166,7 +166,7 @@ def report(games, configs, opponents):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("configs", nargs="*", default=["current"], help="NAME or NAME:const=value,...")
-    parser.add_argument("--bot", default="newest-bot", help="bot folder under bots/ to evaluate")
+    parser.add_argument("--bot", default="test-bot", help="bot folder under bots/ to evaluate")
     parser.add_argument("--baseline", default="baseline",
                         help="comma-separated bot folders under bots/ to play against")
     parser.add_argument("--maps", default="", help="comma-separated map names (default: whole pool)")

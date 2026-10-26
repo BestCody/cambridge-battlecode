@@ -7,7 +7,7 @@
     "cmake.generator": "Ninja",
     "cmake.buildDirectory": "${workspaceFolder}/.cambc/vscode-build",
     "cmake.configureSettings": {
-        "BOT_DIR": "${workspaceFolder}/bots/willow-copy",
+        "BOT_DIR": "${workspaceFolder}/bots/baseline",
         "BC_SDK": "${workspaceFolder}/sdk",
         "CAMBC_DEBUG": "OFF",
         "CMAKE_BUILD_TYPE": "Release",

@@ -1,12 +1,13 @@
 # Lucky Gold Clusters
 
-Our Cambridge Battlecode 2026 bot. The bot that is currently competing is [`bots/newest-bot`](bots/newest-bot).
+Our Cambridge Battlecode 2026 bots. [`bots/baseline`](bots/baseline) is the main bot: a copy of the top ladder team willow best girl's play, updated for engine 2.0.0. [`bots/test-bot`](bots/test-bot) is our earlier bot (formerly `newest-bot`).
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `bots/newest-bot/` | The competing C++ bot (see below) |
+| `bots/baseline/` | The main C++ bot: willow best girl's play, with its engine 2.0.0 draft and builds (formerly `willow-copy`) |
+| `bots/test-bot/` | Our earlier C++ bot, with its engine 1.x draft and builds (formerly `newest-bot`; see below) |
 | `bots/starter-cpp/` | The SDK starter bot, used as a sparring opponent |
 | `docs/GameRules.md`, `docs/BotAPICpp.md` | Exported game handbook and C++ API reference |
 | `docs/design-notes.md` | Squad design spec, with implementation status and archived rosters |
@@ -21,8 +22,8 @@ Our Cambridge Battlecode 2026 bot. The bot that is currently competing is [`bots
 ## Building and running
 
 ```sh
-cambc build newest-bot
-cambc run newest-bot starter-cpp --map contest
+cambc build baseline
+cambc run baseline starter-cpp --map contest
 pwsh scripts/ladder.ps1 -Build                      # every map vs starter-cpp
 pwsh scripts/ladder.ps1 -Opponents starter-cpp,old  # any folders under bots/
 pwsh scripts/benchmark.ps1 -GridSpec "commit_bonus=1.0f,1.08f,1.2f"
@@ -42,7 +43,7 @@ python scripts/evaluate.py --maps corners,swirl --fuels 100000
 
 The mirror run scores 50% by construction. Differences of about ±7 wins in 170 games are noise. Only commit bot changes that beat the baseline by more than that. Replays, including each bot's stdout logs (inside the `.repl26a` zip), are kept under `--out`.
 
-## How newest-bot is organised
+## How test-bot is organised
 
 `src/` is grouped by controller. The CMake build compiles every `.cpp` file under `src/` recursively.
 
@@ -59,8 +60,8 @@ The squad shares one job through the 8-byte team memory: each member writes its 
 
 ## Code conventions
 
-- **Formatting:** `bots/newest-bot/.clang-format` (LLVM base, 4-space indent, 110 columns). Format before committing:
-  `clang-format -i $(find bots/newest-bot/src -name '*.cpp' -o -name '*.h')`.
+- **Formatting:** `bots/test-bot/.clang-format` (LLVM base, 4-space indent, 110 columns). Format before committing:
+  `clang-format -i $(find bots/test-bot/src -name '*.cpp' -o -name '*.h')`.
   The `cambc` toolchain ships clang-format in `%LOCALAPPDATA%/cambc/wasi-sdk-33/bin`.
 - **Naming:** `snake_case` for functions and variables, `PascalCase` for types. `Bot` methods that belong to the worker controller start with `worker_`; squad methods start with `squad_` or live in `squad/`.
 - **Files:** each `.cpp` file opens with a one-line comment saying what it owns. A new controller or composition gets its own folder or file, not a branch inside an existing function.

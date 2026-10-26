@@ -5,9 +5,10 @@ and camp hit) and draw them as filmstrips, using the visualiser's own engine
 module. This is the default way to analyse games: watch the fights first,
 then decide what to change.
 
-Engine module: the visualiser's copy in the cambc assets, for the game's
-engine version, e.g.
-`~/AppData/Local/cambc/assets/<hash>/visualiser/assets/v1_0_3-*.wasm`.
+Engine module: the visualiser's engine 2.0.0 copy in the cambc assets,
+`~/AppData/Local/cambc/assets/<hash>/visualiser/assets/v2_0_0-*.wasm`. The
+scripts read engine 2.0.0's snapshot layout only; replays from engine 1.x
+need the scripts' earlier versions from git history.
 
 1. Download a match: `cambc matches download <id> -o m.zip` and
    `cambc matches summary <id> --json -o m.json` (match groups list their
