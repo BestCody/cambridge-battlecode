@@ -1,3 +1,18 @@
 {
-    "cmake.sourceDirectory": "${workspaceFolder}/cmake"
+    // The bot builds with the CMake, Ninja and WASI SDK that cambc downloads
+    // into %LOCALAPPDATA%\cambc; CMake Tools uses the same ones, configured as
+    // cambc configures a release build. BOT_DIR picks the bot to configure.
+    "cmake.sourceDirectory": "${workspaceFolder}/cmake",
+    "cmake.cmakePath": "${env:LOCALAPPDATA}/cambc/cmake-3.31.8-windows-x86_64/bin/cmake.exe",
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${workspaceFolder}/.cambc/vscode-build",
+    "cmake.configureSettings": {
+        "BOT_DIR": "${workspaceFolder}/bots/willow-copy",
+        "BC_SDK": "${workspaceFolder}/sdk",
+        "CAMBC_DEBUG": "OFF",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_MAKE_PROGRAM": "${env:LOCALAPPDATA}/cambc/ninja-1.12.1-windows-x86_64/ninja.exe",
+        "CMAKE_TOOLCHAIN_FILE": "${env:LOCALAPPDATA}/cambc/wasi-sdk-33/share/cmake/wasi-sdk-p1.cmake",
+        "CMAKE_SYSROOT": "${env:LOCALAPPDATA}/cambc/wasi-sdk-33/share/wasi-sysroot"
+    }
 }
