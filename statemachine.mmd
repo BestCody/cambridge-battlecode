@@ -1,0 +1,71 @@
+stateDiagram-v2
+    state "First turn" as FirstTurn
+    state "Tribute channel" as Tribute
+    state "Recall channel" as Recall
+    state "At spawn" as Spawn
+
+    [*] --> Draft
+    Draft --> FirstTurn: roster by team size (3, 4 or 5)
+    FirstTurn --> Field: turn 2
+
+    state Field {
+        state pick <<choice>>
+        [*] --> pick
+        pick --> Fight: enemy in view, or a hurt runner to follow
+        pick --> BankTrip: gems to bank
+        pick --> Reinforce: teammate under attack asks for help
+        pick --> Farm: otherwise
+
+        state Fight {
+            state "Farm on out of reach" as FarmOn
+            state odds <<choice>>
+            [*] --> odds
+            odds --> Engage: favourable, or a kill to finish
+            odds --> Stand: stronger and can reach us, duel won
+            odds --> Run: stronger and can reach us, duel lost
+            odds --> FarmOn: stronger, not in reach yet
+        }
+
+        state Farm {
+            state "Clear camps" as Clear
+            state "Hold capture" as Hold
+            state "Wait for respawn" as Wait
+            [*] --> Travel
+            Travel --> Clear: in reach
+            Clear --> Hold: cleared
+            Hold --> Wait: paid
+            Wait --> Clear: respawns
+            Wait --> Travel: another group
+        }
+    }
+
+    Field --> Tribute: bank trip reaches a safe altar, or capture combo
+    Tribute --> Field: banked
+    Tribute --> Retreat: rest of the channel would kill us
+
+    Field --> Retreat: health below 35%, or camp hits on the way out would kill
+    Field --> Recall: capture recall, no enemy within 8 and (health below 80%, trip under 25 rounds, or 150+ gold)
+    Retreat --> Recall: no chaser can reach within 3 turns
+    Recall --> Retreat: a hit cancels it
+    Retreat --> Spawn: walks in
+    Recall --> Spawn: lands after 5 turns, 3 with Home emblem
+    Spawn --> Field: full health (with gems, bank on the way out)
+
+    Field --> Dead: killed
+    Retreat --> Dead: killed
+    Recall --> Dead: killed
+    Tribute --> Dead: killed
+    Dead --> Spawn: respawn after 60 ticks
+
+    note right of Field
+        Re-chosen every turn: Fight, then Bank, then Reinforce, then Farm.
+        Every turn ends in a fake recall that the next turn cancels.
+    end note
+    note left of Spawn
+        Heals to full, buys all it can afford,
+        strikes enemies that reach it.
+    end note
+    note right of Retreat
+        Recalls when safe, walks if home is near,
+        fights back when caught and the duel is won.
+    end note
