@@ -191,7 +191,7 @@ The monsters are friendly until they are hit! When a champion strikes a monster,
 
 ### After defeating a camp, make sure to capture!
 
-After every monster in a group dies, occupy at least one of its spawn tiles uncontested. At a capture phase your team starts a five-round timer; later capture phases count it down. Leaving the region empty or admitting an enemy resets progress. More allies do not speed it up. Rewards are shared among allies present when it finishes; the lowest ID receives any integer remainder. The group respawns together after rewards are claimed, using the longest cooldown of its members. Any occupied spawn tile delays the entire group.
+After every monster in a group dies, occupy at least one of its spawn tiles uncontested. At a capture phase your team starts a five-round timer; later capture phases count it down. An allied Capture Emblem holder caps the remaining timer at three rounds, including when joining mid-capture. A shorter timer never increases, and the reduction persists if the holder leaves while another ally keeps capturing. Leaving the region empty or admitting an enemy resets progress. Additional allies without the emblem do not speed it up. Rewards are shared among allies present when it finishes; the lowest ID receives any integer remainder. The group respawns together after rewards are claimed, using the longest cooldown of its members. Any occupied spawn tile delays the entire group.
 
 After defeating an entire group (cardinally connected monsters), you can then capture the rewards by standing on one of the tiles a monster was underneath, and wait 5 turns (the capture timer). This will award the waiting champion the gold and gems from the camp. If there are multiple champions, the reward is split evenly among them.
 
@@ -284,25 +284,36 @@ Items in the game are purchased on the spawn tiles (or while dead) using gold. Y
 - Health, increasing your maximum health
 - Focus, increasing the power of your abilities
 
-Shards cost 30 gold and after purchasing 5, combine into an emblem providing a unique bonus based on which shard type you purchased.
+Shards cost 30 gold and after purchasing 5 (25 for Greed), combine into an emblem providing a unique bonus based on which shard type you purchased.
 
 Try building an emblem below:
 
 Shards cost 30 gold and add their champion's growth for the chosen stat. Five matching shards automatically combine into the corresponding emblem. Only the completed emblem grants its passive. Families have Strength, Health and Focus variants; use the family table for stat points and passives.
 
+**Sharing Prospector rewards**
+
+The camp group's gem/gold cluster rewards are split among allied capturers. Each capturer who owns a Prospector emblem gets 25% of their own share as an additional reward, rounded down separately for gold and gems. Capturers without Prospector receive only their normal share. For example, 20 cluster gold shared by two allies gives each 10 base gold. A Prospector holder gets 2 extra gold; if both own it, both get 2 extra.
+
 ### Emblem families
 
-Every family has Strength, Health and Focus versions. 5 shards automatically combine to an emblem (150 gold total). Shards give stats; only the finished emblem gives the passive.
+Every family has Strength, Health and Focus versions. 5 shards automatically combine to an emblem (150 gold total), except Greed: 25 shards (750 gold). Shards give stats; only the finished emblem gives the passive.
 
 | Family | Counts as | Passive |
 | --- | --- | --- |
-| Monster | 5 shards of the chosen stat | 10% more damage to camps. |
+| Monster | 5 shards of the chosen stat | 15% more damage to camps. |
 | Power | 6 shards of the chosen stat | None; one extra shard’s worth instead. |
 | Durability | 5 shards of the chosen stat | 10% less incoming damage. |
-| Treasure | 5 shards of the chosen stat | 20% more gold gained. |
+| Treasure | 5 shards of the chosen stat | 10% more gold gained. |
 | Jungle | 5 shards of the chosen stat | 30% less damage from camps. |
 | Home | 5 shards of the chosen stat | 50% shorter recall: five turn ends become three, rounded up. |
 | Bruiser | 5 of the chosen stat, 1 of each other | None; a spread of stats instead. |
+| Tribute | 5 shards of the chosen stat | 33% shorter tribute, rounded up to at least one turn. |
+| Capture | 5 shards of the chosen stat | Caps your team's remaining capture time at 3 turns, including when joining mid-capture. Never increases a shorter timer; the reduction remains if the holder leaves and an ally keeps capturing. |
+| Prospector | 5 shards of the chosen stat | 25% more gold and gems from your share of cluster rewards, rounded down. |
+| Hunter | 5 shards of the chosen stat | 50 extra gold per champion kill, before gold bonuses. Linked duo deaths grant one reward. |
+| Skirmish | 5 shards of the chosen stat | 5% more damage to champions. |
+| Greed | 35 shards of the chosen stat | No passive. Combines at 25 shards (750 gold) to give 35 shards worth of stats points. |
+| Collectors | 5 shards of the chosen stat | 1% bonus damage per unique completed emblem family owned, including Collectors itself. Shards and duplicate stat variants do not add families. |
 
 ### Consumables
 
@@ -319,7 +330,7 @@ The shop also has some consumable items, each costing 10 gold. You may carry onl
 
 - **Stats stack**: Every shard counts, including those inside duplicate emblems.
 - **Emblem passives don’t**: A second emblem of a family adds no extra passive.
-- **Gold bonuses add**: Treasure with Vesper Vale: 33% + 20% = 53%.
+- **Gold bonuses add**: Treasure with Vesper Vale: 33% + 10% = 43%.
 - **Spawn purchases heal**: Buying Health on your spawn heals the amount gained; Tavi’s field purchases do not.
 - **Only Tavi can sell**: On spawn, for the full purchase value. Refunds are not earned gold.
 
@@ -387,7 +398,7 @@ By default, a C++ or Rust bot gets 100k fuel per turn. OCaml gets 5 times the C+
 
 When a bot runs out of fuel, its execution is suspended and the next bot in the turn order gets to go. The next round, this bot's turn will resume from the point of suspension and continues.
 
-We provide bots with 10x fuel for the first turn of draft, to facilitate precomputation, and 2x fuel for the first turn of play, giving bots room to initialise and precompute. Unused fuel at the end of a turn is not added to the next turn's fuel budget.
+We provide bots with 100x fuel for the first turn of draft, to facilitate precomputation, and 2x fuel for the first turn of play, giving bots room to initialise and precompute. Unused fuel at the end of a turn is not added to the next turn's fuel budget.
 
 ## Shared memory
 
@@ -448,7 +459,7 @@ Target / range: Enemy or camp · 4. Walking: Compatible. Cooldown: 8 owner turn 
 | --- | --- | --- |
 | Health | 600 | 65 |
 | Strength | 30 | 3 |
-| Focus | 70 | 13 |
+| Focus | 100 | 13 |
 
 Attack type: Ranged. Basic attack range: 3 tiles.
 
@@ -471,7 +482,7 @@ Target / range: Ground · 2 tiles. Walking: Compatible. Cooldown: 8 owner turn e
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 900 | 80 |
-| Strength | 40 | 3 |
+| Strength | 45 | 3 |
 | Focus | 100 | 10 |
 
 Attack type: Melee. Basic attack range: 1 tiles.
@@ -503,7 +514,7 @@ Target / range: Self. Walking: Compatible. Cooldown: 8 owner turn ends.
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 1200 | 100 |
-| Strength | 45 | 5 |
+| Strength | 45 | 4.5 |
 | Focus | 100 | 10 |
 
 Attack type: Melee. Basic attack range: 1 tiles.
@@ -516,7 +527,7 @@ A ranged champion with strong basic attacks, bonus gold and a short dash.
 
 **Vesper Vale**
 
-**Passive:** Vesper Vale gains 33% more gold. A Treasure emblem adds another 20 percentage points, for a combined 53% bonus.
+**Passive:** Vesper Vale gains 33% more gold. A Treasure emblem adds another 10 percentage points, for a combined 43% bonus.
 
 #### Slot 0: Attack reset
 
@@ -535,7 +546,7 @@ Target / range: Ground · 2 tiles. Walking: Compatible. Cooldown: 8 owner turn e
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 1000 | 100 |
-| Strength | 55 | 5 |
+| Strength | 45 | 5 |
 | Focus | 100 | 10 |
 
 Attack type: Ranged. Basic attack range: 3 tiles.
@@ -566,7 +577,7 @@ Target / range: Ground · 4. Walking: Excludes walking. Cooldown: 8 owner turn e
 
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
-| Health | 700 | 60 |
+| Health | 700 | 65 |
 | Strength | 35 | 2.5 |
 | Focus | 80 | 8 |
 
@@ -598,7 +609,7 @@ Target / range: Ground · 4. Walking: Excludes walking. Cooldown: 8 owner turn e
 | --- | --- | --- |
 | Health | 650 | 65 |
 | Strength | 30 | 3.5 |
-| Focus | 70 | 7 |
+| Focus | 70 | 8.5 |
 
 Attack type: Ranged. Basic attack range: 3 tiles.
 
@@ -661,8 +672,8 @@ Target / range: Enemy or camp · 4. Walking: Excludes walking. Cooldown: 8 owner
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 1200 | 100 |
-| Strength | 45 | 5 |
-| Focus | 60 | 15 |
+| Strength | 45 | 4.5 |
+| Focus | 60 | 14 |
 
 Attack type: Melee. Basic attack range: 1 tiles.
 
@@ -684,7 +695,7 @@ Target / range: Self. Walking: Compatible. Cooldown: 8 owner turn ends.
 
 #### Slot 1: Damage and stun
 
-1.4 × Focus damage and a one-round stun.
+1.6 × Focus damage and a one-round stun.
 
 Target / range: Enemy or camp · 4. Walking: Excludes walking. Cooldown: 8 owner turn ends.
 
@@ -724,7 +735,7 @@ Target / range: Self. Walking: Compatible. Cooldown: 8 owner turn ends.
 | --- | --- | --- |
 | Health | 700 | 50 |
 | Strength | 55 | 3 |
-| Focus | 120 | 5 |
+| Focus | 140 | 5 |
 
 Attack type: Ranged. Basic attack range: 3 tiles.
 
@@ -740,7 +751,7 @@ A melee champion with retaliation damage, a targeted stun and a short dash.
 
 #### Slot 0: Damage and stun
 
-0.75 × Focus damage and a one-round stun.
+1.1 × Focus damage and a one-round stun.
 
 Target / range: Enemy or camp · 4. Walking: Excludes walking. Cooldown: 8 owner turn ends.
 
@@ -787,7 +798,7 @@ Target / range: Self. Walking: Compatible. Cooldown: 8 owner turn ends.
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 1000 | 100 |
-| Strength | 40 | 5 |
+| Strength | 45 | 5 |
 | Focus | 100 | 10 |
 
 Attack type: Melee. Basic attack range: 1 tiles.
@@ -819,7 +830,7 @@ Target / range: Ground · 2 tiles. Walking: Compatible. Cooldown: 8 owner turn e
 | Stat | Base | Growth per matching shard |
 | --- | --- | --- |
 | Health | 1000 | 100 |
-| Strength | 30 | 3.5 |
-| Focus | 100 | 12 |
+| Strength | 30 | 3 |
+| Focus | 100 | 10 |
 
 Attack type: Melee. Basic attack range: 1 tiles.
