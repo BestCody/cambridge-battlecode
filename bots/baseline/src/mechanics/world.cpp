@@ -797,20 +797,7 @@ void Bot::observe() {
     for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i)
         if (const auto info = sighting(enemy_roster[i])) {
             enemy_slot[enemies.size()] = std::uint8_t(i);
-            auto &e = enemies.emplace_back(enemy_roster[i], *info);
-            if (e.recalling) {
-                // A recall restarted on every turn shows the same time at
-                // every sighting; a real one has counted down by the enemy
-                // turn ends since the last. With none between (the turn order
-                // swaps each round), the last verdict stands.
-                const int tick = int(round) + e.completed;
-                if (tick != recall_tick[i]) {
-                    recall_real[i] = tick > recall_tick[i] && recall_seen[i] - (tick - recall_tick[i]) == e.recall_left;
-                    recall_tick[i] = tick;
-                    recall_seen[i] = e.recall_left;
-                }
-                e.channel = e.channel || recall_real[i];
-            }
+            judge_recall(enemies.emplace_back(enemy_roster[i], *info), i);
         }
     seen_slots = 0;
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
@@ -858,6 +845,23 @@ void Bot::observe() {
         enemy_sighted = int(round);
     if (int(round) - enemy_sighted <= policy::ghost_lifetime)
         track_ghosts();
+}
+
+void Bot::judge_recall(ObservedUnit &enemy, std::size_t entry) {
+    // A recall restarted on every turn shows the same time at every
+    // sighting; a real one has counted down by the enemy turn ends since the
+    // last. With none between (the turn order swaps each round), the last
+    // verdict stands.
+    if (!enemy.recalling)
+        return;
+    const int tick = int(round) + enemy.completed;
+    if (tick != recall_tick[entry]) {
+        recall_real[entry] =
+            tick > recall_tick[entry] && recall_seen[entry] - (tick - recall_tick[entry]) == enemy.recall_left;
+        recall_tick[entry] = tick;
+        recall_seen[entry] = enemy.recall_left;
+    }
+    enemy.channel = enemy.channel || recall_real[entry];
 }
 
 void Bot::mark_camps_in_view(int group) {
@@ -1152,10 +1156,12 @@ int Bot::nearest_unit(vec2 tile) const {
             unit_x[n] = a.position.x;
             unit_y[n++] = a.position.y;
         }
-        for (const auto &e : enemies) {
-            unit_x[n] = e.position.x;
-            unit_y[n++] = e.position.y;
-        }
+        // An enemy killed this turn (health written 0) no longer draws a camp.
+        for (const auto &e : enemies)
+            if (e.health > 0) {
+                unit_x[n] = e.position.x;
+                unit_y[n++] = e.position.y;
+            }
         for (; n < padded; ++n)
             unit_x[n] = unit_y[n] = far_tile;
     }

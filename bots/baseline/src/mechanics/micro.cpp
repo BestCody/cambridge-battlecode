@@ -1008,12 +1008,18 @@ bool Bot::attack_dash(vec2 victim) {
 bool Bot::follow_through() {
     // Melee attacks leave a move available. Use it to line up the next attack
     // or reach the next victim immediately after a kill.
+    bool gone = false;
     for (auto &e : enemies) {
         const auto info = sighting(e.champion());
         e.health = info ? info->health : 0;
         if (e.health > 0)
             e.shield = live_shield(e);
+        gone = gone || e.health <= 0;
     }
+    // An enemy killed (or out of view) leaves incoming()'s estimate: its
+    // packed enemies and nearest units are made again.
+    if (gone)
+        ++threat_revision;
     refresh_blocked();
     const float hit = basic_damage();
     // A kill this turn needs an attack or a reset left; else the step
@@ -1108,18 +1114,11 @@ void Bot::observe_fight() {
         if (!info)
             continue; // A champion in view is alive.
         enemy_slot[current.size()] = std::uint8_t(i);
-        const auto found =
-            std::find_if(enemies.begin(), enemies.end(), [&](const auto &e) { return e.champion() == c; });
-        if (found == enemies.end())
-            current.emplace_back(c, *info);
-        else {
-            current.push_back(*found);
-            auto &e = current.back();
-            e.position = {info->x, info->y};
-            e.health = info->health;
-            e.shield = 0;
-            read_buffs(e);
-        }
+        // Made as observe() makes it, recall test included: one first seen
+        // now is judged like any sighting, and one we struck has its channel
+        // read again (a hit ends a recall). A record costs about what copying
+        // the last one did.
+        judge_recall(current.emplace_back(c, *info), i);
     }
     enemies.swap(current);
     ++threat_revision; // Their nearest units moved.

@@ -113,9 +113,16 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             groups[u.group].attacked = round;
         // Refresh health before the reset selection so a dead or overkilled
         // unit cannot consume actions, and ours after any retaliation.
+        bool gone = false;
         for (auto &t : targets)
-            if (eligible(t) && t.position == struck)
+            if (eligible(t) && t.position == struck) {
                 t.health = live_health(t);
+                gone = gone || t.health <= 0;
+            }
+        // A champion killed leaves incoming()'s estimate: its packed enemies
+        // and nearest units are made again.
+        if (fighting_champions && gone)
+            ++threat_revision;
         refresh_self();
         own_shield = read_shield();
         return true;
@@ -291,14 +298,20 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             acted = true;
             if (farm_group >= 0)
                 groups[farm_group].attacked = round;
+            bool gone = false;
             for (std::size_t i = 0; i < targets.size(); ++i) {
                 auto &u = targets[i];
                 if (eligible(u) && ((s.kind == bc::ability_kind::aoe_damage &&
                                      distance(u.position, best_tile) <= s.radius) ||
                                     ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
-                                     int(i) == best_target)))
+                                     int(i) == best_target))) {
                     u.health = live_health(u);
+                    gone = gone || u.health <= 0;
+                }
             }
+            // As after an attack: a champion killed leaves incoming().
+            if (fighting_champions && gone)
+                ++threat_revision;
             refresh_self();
             own_shield = read_shield();
             do_attack();

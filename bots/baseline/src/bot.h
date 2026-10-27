@@ -616,6 +616,10 @@ class Bot {
     bool background_search();
     void prepare_routes();
     void observe();
+    // A sighted enemy's recall, real or faked (cancelled every turn), by its
+    // countdown since the last sighting (the enemy's roster entry): a real
+    // one is a channel.
+    void judge_recall(ObservedUnit &enemy, std::size_t entry);
     void observe_after_move(int group);
     void observe_group(std::size_t index);
     // With a group, only what observe_group() reads for that one group.
