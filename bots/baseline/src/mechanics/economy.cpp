@@ -7,7 +7,10 @@ using Item = bc::item_type;
 // each emblem in the order of its median first shard, kept when at least
 // about two in five of the games that last that long buy it (comments: median
 // rounds of the first and fifth shard, share of those games). Treasure is
-// gone (10% gold since 2.0.0); Hunter or Prospector opens instead. The first
+// gone (10% gold since 2.0.0); Hunter or Prospector opens instead. Where it
+// opens with Hunter we take Prospector of the same stat: our Vendetta and
+// Heart of Ruin kill about twice a game after it, about 100 gold, while
+// Prospector adds a quarter of every cluster capture's gold and gems. The first
 // emblem is its Health version for a champion enemy champions have hurt
 // (policy::health_treasure_damage). Whole emblems, since only a finished
 // emblem gives its passive. Every shard adds one growth of its stat; five
@@ -24,7 +27,7 @@ struct Build {
 Build build_for(bc::champion_type type, bool hurt) {
     switch (type) {
         case bc::champion_type::vendetta:
-            return {{{{Item::hunter_shard_of_health, 5},      // r79-190, 82%
+            return {{{{Item::prospector_shard_of_health, 5},  // r79-190, 82% (Hunter)
                       {Item::monster_shard_of_strength, 5},   // r251-334, 82%
                       {Item::jungle_shard_of_strength, 5},    // r289-328, 82%
                       {Item::power_shard_of_strength, 5},     // r422-458, 50%
@@ -45,9 +48,9 @@ Build build_for(bc::champion_type type, bool hurt) {
                     6,
                     Item::bruiser_shard_of_strength};
         case bc::champion_type::heart_of_ruin:
-            // Hunter: Focus in 38 of 47 games under 250 champion damage, Health
-            // in 47 of 65 after 500 or more.
-            return {{{{hurt ? Item::hunter_shard_of_health : Item::hunter_shard_of_focus, 5}, // r88-281, 79%
+            // Its Hunter: Focus in 38 of 47 games under 250 champion damage,
+            // Health in 47 of 65 after 500 or more.
+            return {{{{hurt ? Item::prospector_shard_of_health : Item::prospector_shard_of_focus, 5}, // r88-281, 79%
                       {Item::jungle_shard_of_focus, 5},       // r308-429, 49%
                       {Item::bruiser_shard_of_health, 5},     // r461-509, 65%
                       {Item::bruiser_shard_of_focus, 5},      // r470-561, 56%; 9.9 a game
