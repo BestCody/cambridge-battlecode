@@ -338,7 +338,6 @@ inline bool fresh_recall(int left, bool home) {
 inline unsigned id(const bc::champion &c) {
     return static_cast<unsigned>(static_cast<bc::handle_champion_t>(c));
 }
-inline unsigned id(const bc::camp &c) { return static_cast<unsigned>(static_cast<bc::handle_camp_t>(c)); }
 
 struct Spell {
     bc::ability_kind kind{};
@@ -469,9 +468,10 @@ static_assert(sizeof(DraftPlan) <= 1024);
 
 // Tiles within tribute range of an altar, for the altar field.
 inline bc::bitboard altar_goals_of(const std::vector<vec2> &altars, const bc::bitboard &static_blocked) {
+    // Drawn straight into one mask (drawing adds tiles): no mask per altar.
     bc::bitboard goals;
     for (auto p : altars)
-        goals |= around(p, rules::settings().submit_gems_range);
+        goals.draw_chebyshev(p, rules::settings().submit_gems_range);
     goals &= ~static_blocked;
     return goals;
 }

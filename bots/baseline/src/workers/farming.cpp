@@ -149,12 +149,18 @@ int Bot::worker_choose_group(int excluded) {
             lanes.camp_count[i] = float(g.camps.size());
             lanes.home[i] = float(g.home_distance);
             float reach = 0;
-            int extent = 0;
+            // The farthest two camps apart (Chebyshev): the larger of the
+            // spans along the two axes, from one pass rather than every pair.
+            int low_x = std::numeric_limits<int>::max(), high_x = std::numeric_limits<int>::min();
+            int low_y = low_x, high_y = high_x;
             for (const auto &c : g.camps) {
                 reach = std::max(reach, float(c.stats.base_attack_range));
-                for (const auto &other : g.camps)
-                    extent = std::max(extent, distance(c.position, other.position));
+                low_x = std::min(low_x, c.position.x);
+                high_x = std::max(high_x, c.position.x);
+                low_y = std::min(low_y, c.position.y);
+                high_y = std::max(high_y, c.position.y);
             }
+            const int extent = g.camps.empty() ? 0 : std::max(high_x - low_x, high_y - low_y);
             lanes.reach[i] = reach;
             // The altar term, and the walk across a group longer than two
             // attack ranges: a row of 30 gold clusters scored as one quick
@@ -216,6 +222,13 @@ int Bot::worker_choose_group(int excluded) {
     const float usable = std::max(100.0f, max_health * (1 - policy::retreat_health));
     const float rounds_left = float(int(rules::settings().max_rounds) - int(round));
     const float recall_trip = float(recall_turns + 1);
+    // The members the scoring reads, copied: its stores to the lanes could
+    // alias the members themselves, so each would be read again (and the
+    // terms made from it worked out again) for every four groups.
+    const int our_range = range, now = int(round), current = target;
+    const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,
+                healing = nearby_healing;
+    const std::array<Spell, 2> kit = spells;
     const auto pick = [](v128_t yes, v128_t no, v128_t when) { return wasm_v128_bitselect(yes, no, when); };
     const auto mark_set = [&](v128_t m, std::int32_t bit) {
         return wasm_i32x4_ne(wasm_v128_and(m, splat_int(bit)), no_bits);
@@ -239,7 +252,7 @@ int Bot::worker_choose_group(int excluded) {
                                        wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(walled)));
-            v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(range)), no_bits);
+            v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(our_range)), no_bits);
             travel_steps = pick(path, travel_steps, is_held); // Holding means standing on a tile.
             const v128_t splash = wasm_v128_load(&lanes.splash[i]),
                          remaining = wasm_v128_load(&lanes.remaining[i]);
@@ -262,9 +275,9 @@ int Bot::worker_choose_group(int excluded) {
                                                        wasm_v128_or(is_held, is_here)));
             // dps(g).
             v128_t rate = splat(flat_dps);
-            for (const auto &spell : spells)
+            for (const auto &spell : kit)
                 if (spell.kind == bc::ability_kind::aoe_damage)
-                    rate = wasm_f32x4_add(rate, wasm_f32x4_div(wasm_f32x4_mul(splat(focus * spell.modifier),
+                    rate = wasm_f32x4_add(rate, wasm_f32x4_div(wasm_f32x4_mul(splat(our_focus * spell.modifier),
                                                                               wasm_f32x4_sub(splash, one)),
                                                                splat(float(spell.cooldown))));
             // A damaging dash lands on up to two of the camps.
@@ -274,7 +287,7 @@ int Bot::worker_choose_group(int excluded) {
             const v128_t helpers = claimants;
             // The team's summed camp rates: ours and the claimants'.
             const v128_t team_rate =
-                wasm_f32x4_add(wasm_f32x4_mul(rate, splat(camp_multiplier)), wasm_v128_load(&lanes.claim_rate[i]));
+                wasm_f32x4_add(wasm_f32x4_mul(rate, splat(our_multiplier)), wasm_v128_load(&lanes.claim_rate[i]));
             const v128_t speed =
                 wasm_f32x4_pmax(one, wasm_f32x4_mul(team_rate, splat(policy::team_clear_share)));
             v128_t clear = wasm_f32x4_div(remaining, speed);
@@ -282,31 +295,31 @@ int Bot::worker_choose_group(int excluded) {
             clear = wasm_f32x4_pmax(clear, wasm_f32x4_div(camps_in_group, wasm_f32x4_add(one, helpers)));
             // clear_loss(g, clear).
             v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear),
-                                         splat(camp_mitigation * mitigation));
+                                         splat(camp_scale));
             loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
             // The clear's camp damage before splitting it between tank and
             // helpers (for multi-visit clears).
             const v128_t team_loss = loss;
             // With a helper the camps strike the tank: a ranged champion takes
             // few of the hits, a melee one more.
-            loss = pick(wasm_f32x4_mul(loss, splat(range > 1 ? policy::ranged_helped_loss
+            loss = pick(wasm_f32x4_mul(loss, splat(our_range > 1 ? policy::ranged_helped_loss
                                                              : policy::melee_helped_loss)),
                         loss, wasm_f32x4_ge(helpers, one));
-            for (const auto &spell : spells) {
+            for (const auto &spell : kit) {
                 const v128_t cooldown = splat(float(spell.cooldown));
                 if (spell.kind == bc::ability_kind::shield)
                     loss = wasm_f32x4_sub(
-                        loss, wasm_f32x4_mul(splat(focus * spell.modifier),
+                        loss, wasm_f32x4_mul(splat(our_focus * spell.modifier),
                                              wasm_f32x4_add(one, wasm_f32x4_div(clear, cooldown))));
                 if (spell.kind == bc::ability_kind::cc)
                     loss = wasm_f32x4_sub(loss, wasm_f32x4_div(wasm_f32x4_mul(pressure, clear), cooldown));
             }
-            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(splat(nearby_healing), clear));
+            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(splat(healing), clear));
             loss = wasm_f32x4_pmax(zero, loss);
             v128_t risk = wasm_f32x4_div(wasm_f32x4_pmax(zero, wasm_f32x4_sub(loss, splat(spare))),
                                          splat(health_scale));
             v128_t ranged_dps = zero;
-            for (const auto &spell : spells) {
+            for (const auto &spell : kit) {
                 const bool area = spell.kind == bc::ability_kind::aoe_damage;
                 // Area spells, and the targeted spells that can target a camp.
                 if (spell.range > 3 &&
@@ -314,13 +327,13 @@ int Bot::worker_choose_group(int excluded) {
                     (area || spell.targets.contains(bc::ability_target_mask::camps)))
                     ranged_dps = wasm_f32x4_add(
                         ranged_dps,
-                        wasm_f32x4_mul(splat(focus * spell.modifier / spell.cooldown), area ? splash : one));
+                        wasm_f32x4_mul(splat(our_focus * spell.modifier / spell.cooldown), area ? splash : one));
             }
             // siege_open is prepared in the background; unknown counts as closed.
             // A slower but lossless range-four clear is an offensive option,
             // where the terrain leaves a tile out of every camp's reach.
             const v128_t siege =
-                wasm_f32x4_div(remaining, wasm_f32x4_mul(ranged_dps, splat(camp_multiplier)));
+                wasm_f32x4_div(remaining, wasm_f32x4_mul(ranged_dps, splat(our_multiplier)));
             const v128_t sieging = wasm_v128_and(
                 wasm_v128_and(
                     wasm_v128_and(wasm_f32x4_gt(risk, splat(0.15f)), wasm_f32x4_gt(ranged_dps, zero)),
@@ -341,7 +354,7 @@ int Bot::worker_choose_group(int excluded) {
             // longer for a respawn.
             const v128_t travel = wasm_f32x4_mul(wasm_f32x4_convert_i32x4(travel_steps), splat(travel_scale));
             const v128_t respawn_in = wasm_f32x4_convert_i32x4(
-                wasm_i32x4_sub(wasm_v128_load(&lanes.respawn[i]), splat_int(int(round))));
+                wasm_i32x4_sub(wasm_v128_load(&lanes.respawn[i]), splat_int(now)));
             const v128_t waiting = wasm_f32x4_mul(
                 wasm_v128_and(is_cooling, wasm_f32x4_pmax(zero, wasm_f32x4_sub(respawn_in, travel))),
                 splat(policy::respawn_wait_weight));
@@ -370,9 +383,9 @@ int Bot::worker_choose_group(int excluded) {
             // that cannot afford it is no plan (alone beside a monolith pair,
             // whose reach of 5 outranges us all, ours died within 3 rounds).
             const v128_t exit_steps =
-                wasm_f32x4_pmax(zero, wasm_f32x4_sub(wasm_v128_load(&lanes.reach[i]), splat(float(range) - 1)));
+                wasm_f32x4_pmax(zero, wasm_f32x4_sub(wasm_v128_load(&lanes.reach[i]), splat(float(our_range) - 1)));
             const v128_t visit_health = wasm_f32x4_sub(
-                splat(usable), wasm_f32x4_mul(wasm_f32x4_mul(pressure, exit_steps), splat(camp_mitigation * mitigation)));
+                splat(usable), wasm_f32x4_mul(wasm_f32x4_mul(pressure, exit_steps), splat(camp_scale)));
             const v128_t share = wasm_f32x4_div(team_loss, wasm_f32x4_add(one, helpers));
             const v128_t excess = wasm_f32x4_pmax(zero, wasm_f32x4_sub(share, splat(spare)));
             const v128_t trips =
@@ -415,7 +428,7 @@ int Bot::worker_choose_group(int excluded) {
                 value = pick(wasm_f32x4_mul(value, splat(policy::depleted_rally_bonus)), value,
                              wasm_f32x4_gt(claimants, zero));
             value = pick(wasm_f32x4_mul(value, splat(policy::worker_commit_bonus)), value,
-                         wasm_i32x4_eq(index, splat_int(target)));
+                         wasm_i32x4_eq(index, splat_int(current)));
             value = pick(wasm_f32x4_mul(value, splat(policy::willow_follow)), value,
                          wasm_i32x4_eq(index, splat_int(prism_group)));
             value = pick(wasm_f32x4_mul(value, splat(5.0f)), value, wasm_v128_and(is_held, is_here));
@@ -483,9 +496,12 @@ void Bot::worker_farm() {
                 return;
             const auto &self = bc::self();
             const int t = bot.target;
-            const bool idle = self.is_alive() && bot.position == from && self.can_attack() && self.can_cast() &&
-                              t >= 0 && !bot.groups[t].tiles().is_set(bot.position) &&
-                              distance(bot.position, bot.groups[t].centre) > bot.range + 2;
+            // Reads only, so their order changes nothing: the tests without
+            // engine calls first.
+            const auto ready = bc::champion_state::can_attack | bc::champion_state::can_cast;
+            const bool idle = bot.position == from && t >= 0 &&
+                              distance(bot.position, bot.groups[t].centre) > bot.range + 2 && self.is_alive() &&
+                              self.state().contains(ready) && !bot.groups[t].tiles().is_set(bot.position);
             bot.farm_stalls = idle ? bot.farm_stalls + 1 : 0;
         }
     } farm_stalls_count{*this, position};
@@ -575,7 +591,9 @@ void Bot::worker_farm() {
         range > 1 && spell_range > 3 && clear_loss(g, clear) > health * (1 - policy::casualty_margin);
     if (siege && ally_draws_attacks(g))
         siege = false;
-    bc::bitboard goals;
+    // A mask kept between turns, cleared: a new one costs an allocation.
+    auto &goals = farm_goals;
+    goals.clear();
     const CampMemory *nearest = nullptr;
     int best_distance = bc::distance_field::unreachable;
     for (const auto &c : g.camps) {

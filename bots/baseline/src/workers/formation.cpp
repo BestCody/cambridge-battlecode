@@ -65,12 +65,11 @@ bool Bot::worker_update_formation() {
         reported_round = int(round);
         reported_group = -1;
         reported_force = 0;
-        const auto &enemy_spawn = bc::map::spawn_region(bc::team::enemy);
         const ObservedUnit *contact = nullptr;
         int closest = bc::distance_field::unreachable;
         if (TeamMemory::formations(groups.size()))
             for (const auto &enemy : enemies) {
-                if (enemy_spawn.is_set(enemy.position))
+                if (enemy_spawn_tile[tile_index(enemy.position)])
                     continue;
                 const int d = distance(position, enemy.position);
                 if (d < closest) {

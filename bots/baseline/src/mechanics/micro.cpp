@@ -25,16 +25,18 @@ bool Bot::attack_combo(bool escaping) {
         return false;
     auto &me = bc::self();
     const auto abilities = me.abilities();
-    // Nothing acts before the search ends, so readiness is read once.
+    // Nothing acts before the search ends, so readiness and the state are
+    // read once.
+    const auto state = me.state();
     std::array<bool, 2> is_ready{};
     {
-        const bool can_cast = me.can_cast();
+        const bool can_cast = state.contains(bc::champion_state::can_cast);
         for (unsigned i = 0; i < is_ready.size(); ++i)
             is_ready[i] = ready(abilities[i], can_cast);
     }
-    const bool attack_available = me.can_attack();
+    const bool attack_available = state.contains(bc::champion_state::can_attack);
     const bool can_attack = attack_available && (!escaping || range <= 1);
-    const bool can_step = !escaping && !walked && me.can_move() && range <= 1;
+    const bool can_step = !escaping && !walked && state.contains(bc::champion_state::can_move) && range <= 1;
     int reach = can_attack ? range : 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
@@ -967,9 +969,16 @@ bool Bot::attack_dash(vec2 victim) {
         subtract_into(search_goals, step_tiles, blocked);
         if (design.modifier > 0 && design.radius > 0)
             drop_waking_landings(search_goals, int(design.range + design.radius), design.radius, -1);
+        // Landings within the dash's range on both axes, listed into storage
+        // kept between turns.
+        const std::size_t span = 2 * std::size_t(static_cast<std::uint16_t>(unsigned(design.range))) + 1;
+        if (dash_landings.size() < span * span)
+            dash_landings.resize(span * span);
+        const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best = position;
         float best_score = std::numeric_limits<float>::infinity();
-        for (auto tile : search_goals.positions()) {
+        for (std::uint32_t k = 0; k < count; ++k) {
+            const vec2 tile = dash_landings[k];
             if (tile == position || distance(tile, victim) > range)
                 continue;
             if (!(float(distance(tile, victim)) < best_score))
@@ -1009,10 +1018,11 @@ bool Bot::follow_through() {
     const float hit = basic_damage();
     // A kill this turn needs an attack or a reset left; else the step
     // only sets up the next turn, after the enemy moves.
-    bool again = bc::self().can_attack();
+    const auto state = bc::self().state();
+    bool again = state.contains(bc::champion_state::can_attack);
     {
         const auto kit = bc::self().abilities();
-        const bool can_cast = bc::self().can_cast();
+        const bool can_cast = state.contains(bc::champion_state::can_cast);
         for (unsigned i = 0; i < spells.size(); ++i)
             again = again || (spells[i].kind == bc::ability_kind::attack_reset && ready(kit[i], can_cast));
     }
@@ -1033,7 +1043,7 @@ bool Bot::follow_through() {
     float best_score = value(position);
     const float here = incoming(position);
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-    for (auto tile : step_tiles.positions()) {
+    for (const vec2 tile : step_positions()) {
         const float danger = incoming(tile);
         if (danger >= health)
             continue; // Not onto a tile the attack search would refuse as lethal.
@@ -1072,7 +1082,7 @@ bool Bot::advance_attack(vec2 victim, int stand) {
     vec2 best = position;
     float best_score = std::numeric_limits<float>::infinity();
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-    for (auto tile : step_tiles.positions()) {
+    for (const vec2 tile : step_positions()) {
         if (field.get(tile) >= field.get(position))
             continue;
         const float score = float(field.get(tile)) * 10 + incoming(tile) * 0.14f;

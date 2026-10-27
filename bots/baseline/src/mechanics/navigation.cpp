@@ -129,7 +129,14 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
     return false;
 }
 
-bool Bot::move_to(bc::bitboard goals, vec2 toward, bool urgent, bool use_dash, int engaged_group,
+std::span<const vec2> Bot::step_positions() {
+    const std::size_t side = 2 * std::size_t(static_cast<std::uint16_t>(stats.base_move_speed)) + 1;
+    if (step_list.size() < side * side)
+        step_list.resize(side * side);
+    return {step_list.data(), step_tiles.positions_into(step_list)};
+}
+
+bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use_dash, int engaged_group,
                   bool allow_teleport) {
     profiling::Scope scope(profiling::Stage::move);
     auto &me = bc::self();
@@ -137,7 +144,10 @@ bool Bot::move_to(bc::bitboard goals, vec2 toward, bool urgent, bool use_dash, i
     if (state.contains(bc::champion_state::teleporting) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems))
         return false;
-    goals &= open_terrain;
+    // The goals on open terrain, in a mask kept between calls (the caller's
+    // is left as it is): one engine operation where a copy costs a new mask.
+    auto &goals = move_goals;
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(wanted.ptr(), open_terrain.ptr(), goals.ptr()));
     if (goals.is_empty() || goals.is_set(position))
         return false;
     auto &field = move_field;
@@ -225,7 +235,7 @@ bool Bot::move_to(bc::bitboard goals, vec2 toward, bool urgent, bool use_dash, i
         // flights there 12-16% against 1-5%, cornered.
         int best_line = std::numeric_limits<int>::max();
         const int remaining = field.get(position);
-        for (auto p : step_tiles.positions()) {
+        for (const vec2 p : step_positions()) {
             if (p == position)
                 continue;
             int d = field.get(p);
@@ -302,8 +312,10 @@ bool Bot::health_recovery_needed() const {
 
 void Bot::retreat_to_spawn() {
     auto &me = bc::self();
-    const auto spawn = bc::map::spawn_region(bc::team::ally);
-    if (spawn.is_set(position) || me.is_recalling() || me.is_teleporting() || me.is_submitting_gems() ||
+    const auto &spawn = bc::map::spawn_region(bc::team::ally);
+    if (spawn.is_set(position) ||
+        me.state().intersects(bc::champion_state::recalling | bc::champion_state::teleporting |
+                              bc::champion_state::submitting_gems) ||
         me.buffs().has_stun())
         return;
     track_ghosts();
@@ -354,11 +366,14 @@ void Bot::retreat_to_spawn() {
     // strike, walk on.
     if (!safe && chase_mode(true) == Chase::fight && combat(true, -1, range <= 1))
         return;
-    const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
-    const auto goals = walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
-                               cancelled
-                           ? spawn
-                           : safe_tiles;
+    // around(...) & ~blocked & ~threatened, in place (no complement masks).
+    auto safe_tiles = around(position, stats.vision_radius);
+    subtract(safe_tiles, blocked);
+    subtract(safe_tiles, threatened);
+    const auto &goals = walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
+                                cancelled
+                            ? spawn
+                            : safe_tiles;
     strike_before_step();
     const bool moved = move_to(goals, home_centre, true, true);
     if (!moved && safe) {
@@ -388,7 +403,8 @@ void Bot::retreat_to_spawn() {
         };
         vec2 best = position;
         auto best_score = score(position);
-        for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
+        blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
+        for (const vec2 tile : step_positions()) {
             const auto value = score(tile);
             if (value < best_score) {
                 best = tile;

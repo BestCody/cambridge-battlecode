@@ -1,8 +1,6 @@
 // Observation, cached routes and the shared threat/power estimates.
 #include "../bot.h"
-#include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <wasm_simd128.h>
 
 CampGroup::CampGroup(bc::map::camp_group g, std::span<CampMemory> members)
@@ -200,8 +198,6 @@ int group_state(const CampGroup &g, int &timer) {
     return int(state);
 }
 
-ObservedUnit::ObservedUnit(const bc::champion &c) : ObservedUnit(c, read_champion(c)) {}
-
 ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_info &info) : ref(&c) {
     // Raw engine reads: the SDK accessors wrap each in checks and copies.
     const auto handle = static_cast<std::uint32_t>(static_cast<bc::handle_champion_t>(c));
@@ -355,19 +351,25 @@ void Bot::initialise() {
         std::memcpy(&opening, bc::draft_memory.data(), sizeof opening);
     roster = bc::champions(bc::team::ally);
     std::sort(roster.begin(), roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
+    roster_power.reserve(roster.size());
+    roster_kits.reserve(roster.size());
     for (std::size_t s = 0; s < roster.size(); ++s) {
         // Draft order is public and persistent. A faster ally may already have
         // dashed into a bush before this champion's first turn, so even its
-        // type must come from the draft rather than a live vision query. The
-        // SDK already holds every design; building another reloads it.
-        const auto index = static_cast<std::size_t>(opening.roster_types[s]);
+        // type must come from the draft rather than a live vision query. A
+        // body past the plan's roster (more than it holds) takes its type
+        // from its identity, which needs no vision either. The SDK already
+        // holds every design; building another reloads it.
+        const auto drafted =
+            s < opening.roster_types.size() ? opening.roster_types[s] : roster[s].champion_name();
+        const auto index = static_cast<std::size_t>(drafted);
         std::optional<bc::champion> loaded;
-        const auto &immutable = index < bc::champion_designs.size() ? bc::champion_designs[index]
-                                                                    : loaded.emplace(opening.roster_types[s]);
+        const auto &immutable =
+            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(drafted);
         const auto design = immutable.base_stats();
         // The type's kit now, from its design, rather than on first sight:
         // its spells, described once.
-        const auto &described = kit_of(immutable, opening.roster_types[s]).spells;
+        const auto &described = kit_of(immutable, drafted).spells;
         float hp = design.base_health;
         for (const auto &spell : described)
             if (spell.kind == bc::ability_kind::shield)
@@ -502,10 +504,20 @@ void Bot::initialise() {
     // it is read only where camp_tile is set.
     tile_group.reset(new std::uint16_t[tiles]);
     {
+        // The camp lanes are written in full here (groups list the pool in
+        // order), so they are never filled first.
+        camp_lanes = (camp_pool.size() + 3) & ~std::size_t{3};
+        camp_x.reset(new std::int32_t[camp_lanes]);
+        camp_y.reset(new std::int32_t[camp_lanes]);
+        camp_group.reset(new std::uint16_t[camp_lanes]);
+        std::size_t lane = 0;
         const std::size_t bytes = bc::bitboard::linear_buffer_size();
         std::vector<std::uint8_t> camp_bits(bytes, 0), unwalked_bits(bytes, 0);
         for (std::size_t i = 0; i < groups.size(); ++i)
             for (auto &c : groups[i].camps) {
+                camp_x[lane] = c.position.x;
+                camp_y[lane] = c.position.y;
+                camp_group[lane++] = static_cast<std::uint16_t>(i);
                 c.tile = tile_index(c.position);
                 const auto bit = std::uint8_t(1u << (c.tile & 7));
                 camp_bits[std::size_t(c.tile) >> 3] |= bit;
@@ -513,6 +525,10 @@ void Bot::initialise() {
                 if (groups[i].home_distance != bc::distance_field::unreachable)
                     unwalked_bits[std::size_t(c.tile) >> 3] |= bit;
             }
+        for (; lane < camp_lanes; ++lane) {
+            camp_x[lane] = camp_y[lane] = far_tile;
+            camp_group[lane] = 0;
+        }
         camp_tiles.import_linear_buffer(camp_bits);
         unwalked_camps.import_linear_buffer(unwalked_bits);
     }
@@ -521,14 +537,22 @@ void Bot::initialise() {
     // reach of spawn (their searches cover only their island), then the
     // farthest, so a champion's search for the groups still without one stays
     // short (see measure_paths()).
+    // Farthest first, ties in group order (a stable sort by walk): one key per
+    // group, INT_MAX minus its walk above and its index below, plain integers
+    // that sort far cheaper than indices compared through the groups.
     walk_order.resize(groups.size());
     walk_of.assign(groups.size(), nullptr);
-    for (std::size_t i = 0; i < groups.size(); ++i)
-        walk_order[i] = int(i);
-    std::stable_sort(walk_order.begin(), walk_order.end(),
-                     [&](int a, int b) { return groups[a].home_distance > groups[b].home_distance; });
-    for (const auto &g : groups)
-        camp_count += g.camps.size();
+    {
+        std::vector<std::uint64_t> keys(groups.size());
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            const auto nearer = std::uint32_t(std::numeric_limits<int>::max() - groups[i].home_distance);
+            keys[i] = (std::uint64_t(nearer) << 32) | i;
+        }
+        std::sort(keys.begin(), keys.end());
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            walk_order[i] = int(keys[i] & 0xffffffffu);
+    }
+    camp_count = camp_pool.size(); // Every group's camps.
     camp_tile.load(camp_tiles);
     bush_tile.load(bc::map::bushes());
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
@@ -552,17 +576,14 @@ void Bot::occupied_into(bc::bitboard &out, const bc::bitboard &terrain) {
 }
 
 void Bot::subtract_into(bc::bitboard &out, const bc::bitboard &a, const bc::bitboard &b) {
-    // out must be a different mask from a and b.
-    out.clear();
-    out |= a;
-    out &= b;
+    // out must be a different mask from a and b. (a & b) ^ a, the engine's
+    // intersection written straight into out: two whole-mask operations.
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(a.ptr(), b.ptr(), out.ptr()));
     out ^= a;
 }
 
 void Bot::subtract(bc::bitboard &a, const bc::bitboard &b) {
-    occupancy.clear();
-    occupancy |= a;
-    occupancy &= b;
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(a.ptr(), b.ptr(), occupancy.ptr()));
     a ^= occupancy;
 }
 
@@ -740,10 +761,10 @@ bool Bot::background_search() {
         const int index = walk_order[walk_cursor++];
         auto &g = groups[index];
         subtract_into(search_goals, g.tiles(), static_blocked);
-        g.walk.emplace().compute(static_blocked, search_goals, search_visited);
+        walk_field.compute(static_blocked, search_goals, search_visited);
         const auto tiles = std::size_t(map_width) * std::size_t(map_height);
         g.walk_tiles.reset(new std::uint16_t[tiles]);
-        g.walk->export_linear_buffer(std::span(g.walk_tiles.get(), tiles));
+        walk_field.export_linear_buffer(std::span(g.walk_tiles.get(), tiles));
         walk_of[index] = g.walk_tiles.get();
         subtract(unwalked_camps, g.tiles());
         return true;
@@ -842,9 +863,7 @@ void Bot::observe() {
 void Bot::mark_camps_in_view(int group) {
     // Camp tiles in view, packed from one engine export, and their groups,
     // from one listing of those tiles: a group out of view costs no tests.
-    occupancy.clear();
-    occupancy |= visible;
-    occupancy &= camp_tiles;
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(visible.ptr(), camp_tiles.ptr(), occupancy.ptr()));
     camp_in_view.load(occupancy);
     if (group_in_view.size() != groups.size())
         group_in_view.assign(groups.size(), 0);
@@ -892,9 +911,12 @@ void Bot::mark_camps_in_view(int group) {
         camp_asleep.load(occupancy);
     }
     // The living camps in view: a camp tile in view without one holds a dead
-    // camp, whose read fails, so it is not read.
-    bc::vision::camp_tiles_into(occupancy);
-    camp_living.load(occupancy);
+    // camp, whose read fails, so it is not read. Read only for camps in view
+    // (observe_group()), so with none in view the old marks are never read.
+    if (count) {
+        bc::vision::camp_tiles_into(occupancy);
+        camp_living.load(occupancy);
+    }
 }
 
 void Bot::mark_group_holders(int group) {

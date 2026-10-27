@@ -1,12 +1,12 @@
 // Worker safety: detect danger, remember it, and step away.
 #include "../bot.h"
 #include <tuple>
+#include <wasm_simd128.h>
 
 bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     // Channelling enemies cannot hit us this turn, and enemies on their spawn
     // are shopping or healing, not hunting.
-    if (enemy.health <= 0 || enemy.channel || enemy_spawn.is_set(at))
+    if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(at)])
         return false;
     // A stunned enemy loses its next move, so only its standing reach counts.
     const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
@@ -17,15 +17,22 @@ bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
 void Bot::worker_track_sightings() {
     if (enemy_seen_near.size() != groups.size())
         enemy_seen_near.assign(groups.size(), -policy::worker_sighting_memory - 1);
+    // A group is seen near when enemy_threatens() holds for one of its camps:
+    // the enemy's test and reach do not depend on the camp, so each camp's
+    // test is its distance, four camps a step (padding is never in reach).
     for (const auto &enemy : enemies) {
-        if (enemy.health <= 0)
+        if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(enemy.position)])
             continue;
-        for (std::size_t i = 0; i < groups.size(); ++i)
-            for (const auto &camp : groups[i].camps)
-                if (enemy_threatens(enemy, camp.position)) {
-                    enemy_seen_near[i] = round;
-                    break;
-                }
+        const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
+        const v128_t reach =
+            wasm_i32x4_splat(std::max(enemy.range, enemy.spell_reach) + move + policy::worker_danger_margin);
+        const v128_t x = wasm_i32x4_splat(enemy.position.x), y = wasm_i32x4_splat(enemy.position.y);
+        for (std::size_t k = 0; k < camp_lanes; k += 4) {
+            const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
+                                                wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&camp_y[k]))));
+            for (unsigned lanes = wasm_i32x4_bitmask(wasm_i32x4_le(apart, reach)); lanes; lanes &= lanes - 1)
+                enemy_seen_near[camp_group[k + unsigned(__builtin_ctz(lanes))]] = round;
+        }
     }
 }
 
@@ -541,10 +548,9 @@ void Bot::avoid_reach() {
     // Moves for the rest of this turn keep out of the reach of the stronger
     // group in view: walking back in after stepping away kept a champion
     // hovering at its edge until it was caught.
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     avoid_zone.clear();
     const auto counted = [&](const ObservedUnit &e) {
-        return e.health > 0 && !e.channel && !enemy_spawn.is_set(e.position);
+        return e.health > 0 && !e.channel && !enemy_spawn_tile[tile_index(e.position)];
     };
     for (const auto &e : enemies) {
         if (!counted(e))
@@ -599,7 +605,7 @@ vec2 Bot::step_away_tile() {
     auto best_score = std::tuple{threats, -clearance, way(position)};
     if (bc::self().can_move()) {
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-        for (auto tile : step_tiles.positions()) {
+        for (const vec2 tile : step_positions()) {
             if (tile == position)
                 continue;
             const auto [count, room] = worker_danger(tile);

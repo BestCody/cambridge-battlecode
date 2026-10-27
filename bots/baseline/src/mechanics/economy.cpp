@@ -153,8 +153,10 @@ void Bot::buy_equipment() {
     // They sell only at spawn or while dead, so elsewhere the purchase loop
     // could only fail. An altar lock first when an altar wants one
     // (lock_wanted()), as willow best girl buys them (about 8 a game).
-    const bool can_shop = !me.is_alive() || bc::map::spawn_region(bc::team::ally).is_set(me.position());
-    if (can_shop && me.is_alive()) {
+    // Shopping neither kills nor revives: life is read once.
+    const bool alive = me.is_alive();
+    const bool can_shop = !alive || bc::map::spawn_region(bc::team::ally).is_set(me.position());
+    if (can_shop && alive) {
         carrying_lock = me.consumables()[bc::consumable_type::altar_lock].count() > 0;
         bool wanted = false;
         for (std::size_t i = 0; i < altars.size(); ++i)
@@ -189,16 +191,21 @@ void Bot::buy_equipment() {
         refresh_equipment();
         equipment_dirty = false;
     }
-    if (me.is_alive())
+    if (alive)
         refresh_self();
 }
 
 void Bot::ward_ahead(vec2 goal) {
     profiling::Scope scope(profiling::Stage::ward);
     auto &me = bc::self();
-    if (me.is_teleporting() || me.is_recalling() || me.is_submitting_gems() || me.buffs().has_stun())
+    // Reads only, so their order changes nothing: the recharge first, the
+    // usual refusal, then one state read for the channels.
+    if (me.ward_cooldown() > 0)
         return;
-    if (me.ward_cooldown() > 0 || me.restrictions().contains(bc::buff_restrictions::ward))
+    const auto state = me.state();
+    if (state.contains(bc::champion_state::teleporting) || state.contains(bc::champion_state::recalling) ||
+        state.contains(bc::champion_state::submitting_gems) || me.buffs().has_stun() ||
+        me.restrictions().contains(bc::buff_restrictions::ward))
         return;
     vec2 best = position;
     float value = -1e20f;

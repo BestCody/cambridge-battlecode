@@ -69,11 +69,9 @@ struct CampGroup {
     // first checked (terrain and camp ranges are fixed).
     int siege_open = -1;
     // Walking distances from the group's camps over terrain, built by
-    // background work. Walking is symmetric, so walk->get(p) is the distance
-    // from p to the nearest camp.
-    std::optional<bc::distance_field> walk;
-    // The same distances exported row-major once built: a read here costs a
-    // load, where walk->get() costs an engine call.
+    // background work and exported row-major (a read costs a load, where a
+    // field's get() costs an engine call). Walking is symmetric, so the entry
+    // at p is the distance from p to the nearest camp.
     std::unique_ptr<std::uint16_t[]> walk_tiles;
     enum Status { alive, capture, cooling } status = alive;
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
@@ -119,7 +117,6 @@ struct ObservedUnit {
     bool dash_walks = false;
     std::int8_t recall_left = -1; // An enemy's recall's turn ends left (-1: none read).
     bc::champion_type type{};
-    explicit ObservedUnit(const bc::champion &c);
     // From live fields already read with one engine call (see sighting()).
     ObservedUnit(const bc::champion &c, const bc::detail::champion_info &info);
     // A sleeping camp carries no buffs, so they are read only when awake.
@@ -355,6 +352,12 @@ class Bot {
     std::vector<CampMemory> camp_pool; // Every group's camps; never grows once made.
     // Each group's centre (fixed), apart: a scan of them reads two arrays.
     std::vector<std::int32_t> group_cx, group_cy;
+    // Every camp's tile apart and its group, in camp_pool's order, padded to
+    // camp_lanes entries (a multiple of four) with tiles far away: a scan of
+    // every camp reads three arrays.
+    std::unique_ptr<std::int32_t[]> camp_x, camp_y;
+    std::unique_ptr<std::uint16_t[]> camp_group;
+    std::size_t camp_lanes = 0;
     std::vector<bc::champion> roster;
     std::vector<ObservedUnit> enemies, allies;
     // Each ally in view's roster slot, in allies' order, and those slots' bits.
@@ -399,14 +402,17 @@ class Bot {
     int unseen_group = -1;
     // The last round we stood on our spawn (home_after_capture()).
     int left_spawn = 0;
-    bc::bitboard ghost_keep, ghost_spread;
+    // The Bot's masks are made without zeroing (a clear costs a whole-mask
+    // operation): each is written in full or cleared before it is read.
+    bc::bitboard ghost_keep{bc::uninitialized}, ghost_spread{bc::uninitialized};
     std::vector<vec2> ghost_tiles;
     // The round avoid_reach() kept this turn's moves out of a stronger
     // group's reach, and those tiles.
     int avoid_round = -1;
-    bc::bitboard avoid_zone;
-    bc::bitboard camp_zone;
-    bc::bitboard dash_wake; // tiles a dash landing would strike a camp from (drop_waking_landings())
+    bc::bitboard avoid_zone{bc::uninitialized};
+    bc::bitboard camp_zone{bc::uninitialized};
+    // Tiles a dash landing would strike a camp from (drop_waking_landings()).
+    bc::bitboard dash_wake{bc::uninitialized};
     int camp_zone_round = -1;
     // Breaking contact with a stronger group (safety.cpp): whether we run or
     // fight, decided once and kept until something the decision did not
@@ -464,7 +470,8 @@ class Bot {
     // and whether we carry a lock.
     std::vector<int> altar_enemy_bank, altar_locked;
     bool carrying_lock = false;
-    bc::bitboard static_blocked, blocked, visible, altar_goals;
+    bc::bitboard static_blocked{bc::uninitialized}, blocked{bc::uninitialized}, visible{bc::uninitialized},
+        altar_goals{bc::uninitialized};
     bc::distance_field home_field, altar_field, origin_field;
     vec2 home_centre{}; // The middle of our spawn region.
     std::vector<bc::distance_field> altar_routes;
@@ -529,7 +536,7 @@ class Bot {
     int path_search = 0;
     // Camps of spawn-reachable groups still without a walk field: the
     // destinations of the search from here. Its distances, exported.
-    bc::bitboard unwalked_camps;
+    bc::bitboard unwalked_camps{bc::uninitialized};
     std::unique_ptr<std::uint16_t[]> path_buffer;
     // Background work: the altar field is built on demand (see altar_walk()),
     // and groups' walk fields in walk_order, of which walk_cursor are done.
@@ -540,17 +547,23 @@ class Bot {
     // one array to scan instead of every group's record.
     std::vector<const std::uint16_t *> walk_of;
     // Reused masks and fields: a new mask costs about 600 fuel, as much as six
-    // in-place operations. Each is written in full before it is read.
-    bc::bitboard open_terrain;  // ~static_blocked
-    bc::bitboard occupancy;     // occupied_into()'s workspace
-    bc::bitboard search_origin; // one-tile search origins
-    bc::bitboard search_goals;  // goals minus the blocked tiles
+    // in-place operations. Each is written in full (or cleared) before it is
+    // read; the searches' visited mask starts cleared.
+    bc::bitboard open_terrain{bc::uninitialized};  // ~static_blocked
+    bc::bitboard occupancy{bc::uninitialized};     // occupied_into()'s workspace
+    bc::bitboard search_origin{bc::uninitialized}; // one-tile search origins
+    bc::bitboard search_goals{bc::uninitialized};  // goals minus the blocked tiles
     bc::bitboard search_visited;
-    bc::bitboard step_tiles; // reachable tiles of a step or dash
-    bc::bitboard dash_blocked;
-    bc::bitboard attack_area;
+    bc::bitboard step_tiles{bc::uninitialized}; // reachable tiles of a step or dash
+    std::vector<vec2> step_list;                // step_positions()'s storage
+    bc::bitboard move_goals{bc::uninitialized}; // move_to()'s goals on open terrain
+    bc::bitboard farm_goals{bc::uninitialized}; // worker_farm()'s standing tiles
+    bc::bitboard dash_blocked{bc::uninitialized};
+    bc::bitboard attack_area{bc::uninitialized};
     std::vector<bc::bitboard> sight_pool; // the fight search's vision per origin
-    bc::distance_field move_field, route_field;
+    // move_to()'s field, and the field each group's walk is built in before
+    // its export.
+    bc::distance_field move_field, walk_field;
     // A dash's landings and their walks: the landings in reading order, and
     // the walk field exported row-major (every entry written before reading).
     std::vector<vec2> dash_landings;
@@ -561,7 +574,7 @@ class Bot {
     std::size_t siege_cursor = 0;
     // Every camp's tile; walls, altars and the enemy spawn, which no dash may
     // cross or land on; and the enemy spawn's tiles.
-    bc::bitboard camp_tiles, dash_terrain;
+    bc::bitboard camp_tiles{bc::uninitialized}, dash_terrain{bc::uninitialized};
     std::vector<vec2> enemy_spawn_tiles;
     // Items changed since the last stat refresh: only shopping changes them.
     bool equipment_dirty = true;
@@ -629,8 +642,12 @@ class Bot {
     bool visit_affordable(const CampGroup &g) const;
     // navigation.cpp
     // Of equally short steps, the one nearest `toward` in a straight line.
-    bool move_to(bc::bitboard goals, vec2 toward, bool urgent = false, bool use_dash = true,
+    bool move_to(const bc::bitboard &goals, vec2 toward, bool urgent = false, bool use_dash = true,
                  int engaged_group = -1, bool allow_teleport = false);
+    // step_tiles' tiles in reading order, listed into storage kept between
+    // calls (positions() allocates a list on each): step_tiles must hold
+    // tiles within our move speed on both axes, as a step's reach does.
+    std::span<const vec2> step_positions();
     bool move_step(vec2 tile);
     bool cast_mobility(const bc::distance_field &field, bool urgent, int engaged_group);
     // Drops from `landings` those a damaging dash's landing (radius) would

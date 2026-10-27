@@ -1,9 +1,6 @@
 // Worker turn: the independent policy every champion plays.
 #include "../bot.h"
 #include <cstdio>
-#include <cstring>
-#include <iostream>
-#include <tuple>
 
 bool Bot::worker_escape() {
     profiling::Scope scope(profiling::Stage::retreat);
@@ -79,7 +76,10 @@ void Bot::play_worker_turn() {
         return;
     }
     buy_equipment();
-    if (me.is_recalling() || me.is_teleporting()) {
+    // Read once: nothing below acts before its last use (a turn that acts
+    // returns), and only actions change it.
+    const auto state = me.state();
+    if (state.contains(bc::champion_state::recalling) || state.contains(bc::champion_state::teleporting)) {
         note_activity(Activity::recall);
         // A capture's holder riding its recall home keeps its claim, so
         // teammates leave the capture to it, and says it is leaving.
@@ -106,7 +106,7 @@ void Bot::play_worker_turn() {
     if (hit && (attacked || threatened_last))
         champion_damage += before - health;
     threatened_last = attacked;
-    if (me.is_submitting_gems()) {
+    if (state.contains(bc::champion_state::submitting_gems)) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);
         // Protect a valuable bag only when the remaining channel is lethal; a
@@ -142,7 +142,8 @@ void Bot::play_worker_turn() {
         note_activity(at_spawn ? Activity::heal : Activity::retreat);
         return;
     }
-    if (!me.can_move() && !me.can_attack() && !me.can_cast()) {
+    if (!state.intersects(bc::champion_state::can_move | bc::champion_state::can_attack |
+                          bc::champion_state::can_cast)) {
         // A stunned champion still reports the fight it is caught in: help
         // matters most while it cannot act.
         if (!worker_update_formation())
@@ -235,8 +236,11 @@ void Bot::worker_priority() {
         return;
     auto &me = bc::self();
     int priority = priority_tier::idle - static_cast<int>(slot);
-    if (me.is_alive() && !me.is_recalling() && !me.is_submitting_gems() && !me.is_teleporting() &&
-        !enemies.empty()) {
+    // Reads only, so their order changes nothing: no enemy in view (most
+    // turns) needs none of the engine's.
+    const auto busy = bc::champion_state::recalling | bc::champion_state::submitting_gems |
+                      bc::champion_state::teleporting;
+    if (!enemies.empty() && me.is_alive() && !me.state().intersects(busy)) {
         const auto abilities = me.abilities();
         std::array<bool, 2> ready{};
         for (unsigned i = 0; i < ready.size(); ++i)
