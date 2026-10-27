@@ -213,7 +213,30 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     // Killing one is not enough: champions took on four for a low one and
     // died. A healer's heal counts as health on each of them, and teammates
     // heading home are leaving the fight. The damage we take by the end of
-    // each round is kept to check the fight against.
+    // each round is kept to check the fight against. A fight too dangerous
+    // to stay in (worker_skirmish()'s test: health and shields against exit
+    // damage and the bag margin) is no duel won, ours or a teammate's: one
+    // too dangerous where it stands leaves, as one below
+    // fight_retreat_health heads home (health_recovery_needed()).
+    const bool immune = passive == bc::passive_type::stun_immunity;
+    if (const auto risk = exit_risk(position, health, mitigation, gems, immune); risk.damage > 0) {
+        std::array<bool, 2> is_ready{};
+        for (unsigned i = 0; i < spells.size(); ++i)
+            if (spells[i].kind == bc::ability_kind::shield)
+                is_ready[i] = ready(bc::self().abilities()[i], bc::self().can_cast());
+        if (exit_pool(pool - health, is_ready) <= risk.damage + risk.margin)
+            return false;
+    }
+    std::uint32_t staying = 0;
+    for (std::size_t k = 0; k < allies.size(); ++k) {
+        const auto &a = allies[k];
+        if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
+            a.health < a.max_health * policy::fight_retreat_health)
+            continue;
+        const auto risk = exit_risk(a.position, a.health, a.mitigation, unsigned(a.gems), a.immune);
+        if (risk.damage <= 0 || a.health + a.shield + a.ready_shield > risk.damage + risk.margin)
+            staying |= 1u << k;
+    }
     struct Foe {
         float lasts, rate, burst;
     };
@@ -230,8 +253,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
         float rate = ours;
         for (std::size_t k = 0; k < allies.size(); ++k) {
             const auto &a = allies[k];
-            if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
-                a.health < a.max_health * policy::fight_retreat_health)
+            if (!(staying >> k & 1))
                 continue;
             if (distance(a.position, e.position) <= a.range + closing(a, false))
                 rate += a.damage_rate;

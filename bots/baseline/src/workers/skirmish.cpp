@@ -52,7 +52,6 @@ bool Bot::worker_skirmish() {
     // the teammate who sees the most of it reports.
     float ours = friendly_power(victim.position),
           theirs = std::max(enemy_power(victim.position), reported_power(victim.position));
-    float danger = incoming(position);
     // Price in imminent enemy respawns: a fight beside their base can be joined
     // by a full-health body, so the effective enemy power must reflect it.
     theirs += respawn_threat(position);
@@ -81,7 +80,7 @@ bool Bot::worker_skirmish() {
     // high-value and it is not fighting back, whereas a sliver still trading
     // has teammates behind it that punish an over-extend.
     bool nearly_dead = victim.health + victim.shield <= victim.max_health * 0.2f;
-    bool finish = nearly_dead && victim.channel && health > danger * 1.5f;
+    bool finish = nearly_dead && victim.channel;
     // A champion with no teammate within 6 fights the opening exchange of a
     // contact at aggression and stays only while as strong as the enemy, one
     // with a single teammate there at pair_aggression: willow best girl's
@@ -105,10 +104,40 @@ bool Bot::worker_skirmish() {
     // Heart of Ruin stays in (policy::hor_fight_factor).
     const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
     bool favourable = holding * (opening || dive ? policy::aggression : stay) * tank >= theirs;
-    if ((health < danger * 2.2f || !favourable) && !kill && !finish) {
+    // Too dangerous to stay, decided every round: our health and shields
+    // reach no further than the damage the enemies deal us before we are
+    // out of their reach from here (exit_damage(), their ready bursts at
+    // full and their cooldowns read) plus a margin for our bag (a round of
+    // their hits per prism_bag gems). The power test counts burst at a fifth
+    // and the fixed retreat at 35% health came after it landed: one enemy
+    // Marcella's spell took ours from 1226 to 307 in a round, 22 of our 72
+    // deaths against one ladder team went from near-full health to dead in
+    // 1-3 rounds, and 16 of 19 against another had a Marcella spell or a
+    // Heart of Ruin dash in them. A kill this turn, or a channelling sliver
+    // to finish, still holds us when we would survive the damage without
+    // the victim's part.
+    const bool immune = passive == bc::passive_type::stun_immunity;
+    const auto risk = exit_risk(position, health, mitigation, gems, immune);
+    float pool = health;
+    bool too_dangerous = false, overridden = false;
+    if (risk.damage > 0) {
+        pool = exit_pool(self_shield(), is_ready);
+        too_dangerous = pool <= risk.damage + risk.margin;
+        overridden = too_dangerous && (kill || finish) &&
+                     pool > exit_damage(position, immune, victim.position).damage * mitigation;
+    }
+    debug_block({
+        std::printf("RISK r=%u id=%u type=%d hp=%.0f pool=%.0f exit=%.0f margin=%.0f gems=%u fav=%d kill=%d "
+                    "finish=%d td=%d ovr=%d\n",
+                    round, id(bc::self()), int(type), health, pool, risk.damage, risk.margin, gems, int(favourable),
+                    int(kill), int(finish), int(too_dangerous), int(overridden));
+    });
+    if (too_dangerous && !overridden)
+        return leave_fight(victim.position);
+    if (!favourable && !kill && !finish) {
         // Break contact with a stronger group that can soon reach us rather
         // than walk into it alone: half our ladder fights started outnumbered.
-        if (!favourable && worker_danger(position).first) {
+        if (worker_danger(position).first) {
             worker_track_sightings(); // The camps by these enemies wait out the sighting.
             // Fight from where we stand: no dash into the group, and a ranged
             // champion shoots rather than walks.
@@ -135,9 +164,6 @@ bool Bot::worker_skirmish() {
             }
         }
         if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
-            retreating = health < max_health * policy::fight_retreat_health;
-            if (retreating)
-                return worker_escape();
             // Use a free ranged stun/poke on the way to the economic objective.
             // Ranged and unmoved, a shot costs no walk: fire back. Kept from
             // shooting there, our Prism stood beside a Vendetta for four
@@ -151,8 +177,7 @@ bool Bot::worker_skirmish() {
         }
         // The farming and travel that follow keep out of the stronger group's
         // reach.
-        if (!favourable)
-            avoid_reach();
+        avoid_reach();
         return false;
     }
     int d = distance(position, victim.position);
@@ -186,7 +211,7 @@ bool Bot::worker_skirmish() {
     // cast (Willow heals as it walks); at 3 they shoot, as willow's do in a
     // quarter to a third of their rounds in contact. willow's Prism, above 35%
     // health within 2, shoots in 44-75% of rounds; ours standing there too
-    // (stepping back only below fight_retreat_health) died more and Willow
+    // (stepping back only below 35% health) died more and Willow
     // healed less: ours reaches 2 tiles 18 rounds a game to willow's 7-13.
     const bool backline = type == bc::champion_type::prism || type == bc::champion_type::willow;
     // A teammate within 3 covers us: alone, the back line keeps a melee
@@ -317,6 +342,30 @@ bool Bot::worker_skirmish() {
     if (!acted && !moved && me.can_move() && !on_capture)
         moved = advance_attack(victim.position);
     return acted || moved;
+}
+
+bool Bot::leave_fight(vec2 victim) {
+    // A step out of every enemy's reach (no exit damage there) leaves us
+    // near, to come back once their spells are cooling: the tile nearest the
+    // victim. With none, the whole escape home.
+    const bool immune = passive == bc::passive_type::stun_immunity;
+    vec2 best = position;
+    if (bc::self().can_move()) {
+        int nearest = std::numeric_limits<int>::max();
+        blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
+        for (const vec2 tile : step_positions())
+            if (tile != position && distance(tile, victim) < nearest && exit_damage(tile, immune).damage <= 0) {
+                nearest = distance(tile, victim);
+                best = tile;
+            }
+    }
+    debug_block({ std::printf("RISKLEAVE r=%u id=%u step=%d\n", round, id(bc::self()), int(best != position)); });
+    if (best != position && move_step(best)) {
+        observe_fight();
+        combat(true, -1, true);
+        return true;
+    }
+    return worker_escape();
 }
 
 bool Bot::worker_pursue() {

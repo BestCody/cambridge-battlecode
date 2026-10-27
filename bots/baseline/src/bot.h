@@ -107,6 +107,8 @@ struct ObservedUnit {
     // attack reset's hit), and whether an attack reset is ready.
     float spell_burst = 0;
     bool reset_ready = false;
+    // The ability slots off cooldown, a bit each (exit_damage()).
+    std::uint8_t slot_ready = 0;
     int move_speed = 1;
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
@@ -279,6 +281,9 @@ float live_health(const ObservedUnit &u);
 void read_buffs(ObservedUnit &out);
 // The unit's shield now, 0 when it has none.
 float live_shield(const ObservedUnit &u);
+// Our own shield now, 0 when we have none (one engine read; the SDK's
+// buffs() decodes every record).
+float self_shield();
 
 // What a worker spent each turn on, for the time-use diagnostic.
 enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, farm, travel, count };
@@ -464,6 +469,23 @@ class Bot {
         std::uint32_t revision = 0;
     };
     mutable EnemyLanes enemy_lanes;
+    // The enemies exit_damage() counts (in view, then ghosts; none dead or
+    // channelling), packed in lanes of four and kept while threat_revision
+    // and the ghosts stand: tile; the rounds a stun holds it; the reach of
+    // its hits while we leave and of its first-round strike; the reach of
+    // its two slots' ready bursts and of a ready stun on us (-1: none); its
+    // hit and the two bursts. Padding reaches no tile. And the most all of
+    // them could deal (each burst, and a hit for every round of its reach
+    // and a stunned one) and their hits in one round.
+    struct ExitLanes {
+        std::vector<std::int32_t> x, y, held, reach, lunge, reach_a, reach_b, stun;
+        std::vector<float> hit, burst_a, burst_b;
+        std::size_t lanes = 0;
+        float most = 0, hits = 0;
+        std::uint32_t revision = 0;
+        int ghosts = -1;
+    };
+    mutable ExitLanes exit_lanes;
     std::vector<vec2> altars;
     // Altar locks (tribute.cpp), per altar: the last round an enemy was seen
     // banking at it and the last round a lock was seen on it (-1000: never);
@@ -634,6 +656,42 @@ class Bot {
     void observe_fight();
     void publish(unsigned claim);
     float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
+    // The damage enemy champions deal a champion on `tile` that leaves now,
+    // a tile a round, until it is out of every one's reach, before its
+    // mitigation (exit_lanes): each ready burst that reaches it next round
+    // lands once (a second the round after: one cast a turn); each enemy
+    // hits once a round while it is within that enemy's reach (one stunned
+    // now starts when its stun ends), a ready dash or reset that brings a
+    // strike within reach adding one; a ready stun on it (none when
+    // `immune`) holds it a round, a hit more from each enemy that reaches
+    // it. An enemy on `without` is left out. And one round of the hits of
+    // the enemies that hit it at all.
+    struct ExitDamage {
+        float damage = 0, round = 0;
+    };
+    ExitDamage exit_damage(vec2 tile, bool immune, vec2 without = {-1, -1}) const;
+    // exit_lanes, made again when stale.
+    const ExitLanes &exit_packed() const;
+    // Exit damage and the bag margin (a round of those hits per prism_bag
+    // gems carried), after `mitigation`; both 0 when the most the enemies
+    // could deal with that margin stays under `floor` (a lower bound of
+    // what they are weighed against: the answer is the same).
+    struct ExitRisk {
+        float damage = 0, margin = 0;
+    };
+    ExitRisk exit_risk(vec2 tile, float floor, float mitigation, unsigned carried, bool immune) const;
+    // Our health, shield and a ready shield spell's (cast as we walk), given
+    // our shield and slot readiness, or read here.
+    float exit_pool(float shield, const std::array<bool, 2> &is_ready) const;
+    float exit_pool() const;
+    // A step or landing onto a tile whose exit damage reaches our pool and
+    // is worse than here's: the micro refuses it. The pool and the damage
+    // here are read on first need.
+    struct ExitCheck {
+        const Bot &bot;
+        float pool = -1, here = 0;
+        bool lethal(vec2 tile);
+    };
     float friendly_power(vec2 at) const;
     // Our own power alone (friendly_power without teammates).
     float own_power() const;
@@ -706,6 +764,8 @@ class Bot {
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
+    // Out of a fight too dangerous to stay in (worker_skirmish()).
+    bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.
     bool worker_update_formation();
     float team_average_power() const;

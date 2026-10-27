@@ -134,6 +134,7 @@ bool Bot::attack_combo(bool escaping) {
                 steps.resize(side * side);
             listed = step_tiles.positions_into(steps);
         }
+        Bot::ExitCheck exits{*this};
         for (const vec2 tile : std::span(steps.data(), std::min<std::size_t>(listed, steps.size()))) {
             if (tile == position || origins.size() >= std::numeric_limits<std::uint64_t>::digits)
                 continue;
@@ -146,7 +147,9 @@ bool Bot::attack_combo(bool escaping) {
                 new_attack = wasm_v128_any_true(
                     wasm_f32x4_le(wasm_f32x4_convert_i32x4(apart), wasm_v128_load(&target_reach[k])));
             }
-            if (!new_attack)
+            // No standing tile we could not leave alive (exit damage), unless
+            // no worse than here.
+            if (!new_attack || exits.lethal(tile))
                 continue;
             origins.push_back(tile);
             if (sight.size() < origins.size())
@@ -977,6 +980,7 @@ bool Bot::attack_dash(vec2 victim) {
         const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best = position;
         float best_score = std::numeric_limits<float>::infinity();
+        Bot::ExitCheck exits{*this};
         for (std::uint32_t k = 0; k < count; ++k) {
             const vec2 tile = dash_landings[k];
             if (tile == position || distance(tile, victim) > range)
@@ -986,11 +990,13 @@ bool Bot::attack_dash(vec2 victim) {
             // A landing we would not survive is no attack (impact_dash()
             // refuses the same).
             const float danger = incoming(tile);
-            // Lethal and worse than standing here: no attack.
+            // Lethal and worse than standing here, this round or before we
+            // could leave: no attack.
             if (danger >= health && danger > incoming(position))
                 continue;
             float score = danger * 0.14f + float(distance(tile, victim));
-            if (score < best_score) {
+            // Checked only on a tile that would be chosen: the same choice.
+            if (score < best_score && !exits.lethal(tile)) {
                 best_score = score;
                 best = tile;
             }
@@ -1048,6 +1054,7 @@ bool Bot::follow_through() {
     vec2 best = position;
     float best_score = value(position);
     const float here = incoming(position);
+    Bot::ExitCheck exits{*this};
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
     for (const vec2 tile : step_positions()) {
         const float danger = incoming(tile);
@@ -1055,7 +1062,7 @@ bool Bot::follow_through() {
             continue; // Not onto a tile the attack search would refuse as lethal.
         // The step pays the damage it adds, as the combo's steps do.
         const float score = value(tile) - std::max(0.0f, danger - here);
-        if (score > best_score + 0.01f) {
+        if (score > best_score + 0.01f && !exits.lethal(tile)) {
             best = tile;
             best_score = score;
         }
@@ -1188,6 +1195,7 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best{-1, -1};
         float best_score = 0;
+        Bot::ExitCheck exits{*this};
         for (std::uint32_t k = 0; k < count; ++k) {
             const vec2 tile = dash_landings[k];
             if (tile == position || enemy_spawn_tile[tile_index(tile)])
@@ -1207,12 +1215,12 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
             if (!hits || !(score > best_score))
                 continue; // Danger only lowers the score: this landing cannot win.
             // A bruiser wants to be in the fight; only refuse a landing it
-            // would not survive.
+            // would not survive, this round or before it could leave.
             const float danger = incoming(tile, farm_group);
             if (danger >= health && danger > incoming(position, farm_group))
                 continue;
             score -= danger * 0.2f;
-            if (score > best_score) {
+            if (score > best_score && !exits.lethal(tile)) {
                 best_score = score;
                 best = tile;
             }

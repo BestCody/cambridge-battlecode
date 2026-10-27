@@ -150,6 +150,11 @@ float live_shield(const ObservedUnit &u) {
     return state.shielded ? state.shield : 0;
 }
 
+float self_shield() {
+    const auto state = read_buff_state(&bc::self());
+    return state.shielded ? state.shield : 0;
+}
+
 bc::detail::champion_info read_champion(const bc::champion &c) {
     bc::detail::champion_info info{};
     bc::detail::check(
@@ -250,6 +255,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         bc::detail::check(bc::detail::sdk_champion_cooldown(handle, ability_slot, &cooldown));
         // Castable at its next action: a slot at 1 is not (measured).
         const bool ready = cooldown <= 0;
+        slot_ready = std::uint8_t(slot_ready | unsigned(ready) << ability_slot);
         if (s.kind == bc::ability_kind::attack_reset) {
             damage_rate += strength / s.cooldown;
             if (ready) {
@@ -1342,6 +1348,193 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
             threat(k + unsigned(__builtin_ctz(lanes)));
     }
     return damage * mitigation;
+}
+
+const Bot::ExitLanes &Bot::exit_packed() const {
+    auto &packed = exit_lanes;
+    if (packed.revision != threat_revision || packed.ghosts != ghost_update) {
+        packed.revision = threat_revision;
+        packed.ghosts = ghost_update;
+        const std::size_t room = (enemies.size() + ghosts.size() + 3) & ~std::size_t{3};
+        if (packed.x.size() < room) {
+            for (auto *lanes : {&packed.x, &packed.y, &packed.held, &packed.reach, &packed.lunge, &packed.reach_a,
+                                &packed.reach_b, &packed.stun})
+                lanes->resize(room);
+            for (auto *lanes : {&packed.hit, &packed.burst_a, &packed.burst_b})
+                lanes->resize(room);
+        }
+        packed.most = packed.hits = 0;
+        std::size_t n = 0;
+        // Ghosts, as enemy_power() counts them; an unseen enemy's cooldowns
+        // are unknown, so its slots and dash count as ready. One on its spawn
+        // strikes from there.
+        for (const auto *list : {&enemies, &ghosts})
+            for (const auto &e : *list) {
+                if (e.health <= 0 || e.channel)
+                    continue;
+                const bool unseen = list == &ghosts;
+                const auto &kit = kit_of(e.champion(), e.type);
+                const unsigned ready = unseen ? 3u : e.slot_ready;
+                // Its strike next round: a melee one walks and strikes, a
+                // ranged one walks only when a ready reset gives the shot
+                // back; a ready dash adds its tiles (in place of the walk
+                // when no walk can follow it).
+                bool reset = false;
+                for (unsigned k = 0; k < kit.spells.size(); ++k)
+                    reset = reset || (ready >> k & 1 && kit.spells[k].kind == bc::ability_kind::attack_reset);
+                const int walk = e.range <= 1 || reset ? e.move_speed : 0;
+                const bool dash = e.dash_range > 0 && (unseen || e.dash_wait == 0);
+                const int lunge =
+                    e.range + (!dash ? walk : e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range)));
+                // Heart of Ruin's passive raises its spells as its hits
+                // (the strength reading already has it).
+                const float bonus = e.type == bc::champion_type::heart_of_ruin
+                                        ? 1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
+                                                  (1 - e.health / std::max(1.0f, e.max_health))
+                                        : 1.0f;
+                std::array<float, 2> burst{};
+                std::array<int, 2> reach{-1, -1};
+                int stun = -1;
+                for (unsigned k = 0; k < kit.spells.size(); ++k) {
+                    const auto &s = kit.spells[k];
+                    if (!(ready >> k & 1))
+                        continue;
+                    // A cast from where it stands, or after a walk when the
+                    // spell allows one.
+                    const int cast = int(s.range + s.radius) + (s.exclusive ? 0 : e.move_speed);
+                    if (s.kind == bc::ability_kind::attack_reset) {
+                        burst[k] = e.strength;
+                        reach[k] = lunge;
+                        // Marcella's enhanced hit stuns.
+                        if (s.enhanced)
+                            stun = std::max(stun, lunge);
+                    } else if (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
+                               s.kind == bc::ability_kind::aoe_damage ||
+                               (s.kind == bc::ability_kind::dash && s.modifier > 0)) {
+                        burst[k] = e.focus * s.modifier * bonus;
+                        reach[k] = cast;
+                        if (s.duration > 0 && s.kind != bc::ability_kind::damage)
+                            stun = std::max(stun, cast);
+                    }
+                }
+                packed.x[n] = e.position.x;
+                packed.y[n] = e.position.y;
+                packed.held[n] = e.stunned && e.stun_time > 0 ? e.stun_time : 0;
+                packed.reach[n] = std::max(e.range + e.move_speed, e.spell_reach);
+                packed.lunge[n] = lunge;
+                packed.reach_a[n] = reach[0];
+                packed.reach_b[n] = reach[1];
+                packed.stun[n] = stun;
+                packed.hit[n] = e.strength;
+                packed.burst_a[n] = burst[0];
+                packed.burst_b[n] = burst[1];
+                // A hit a round over its reach, one more for a stun on us
+                // (reach is at least 2: every champion walks).
+                packed.most += burst[0] + burst[1] + e.strength * float(packed.reach[n] + 1);
+                packed.hits += e.strength;
+                ++n;
+            }
+        packed.lanes = (n + 3) & ~std::size_t{3};
+        for (; n < packed.lanes; ++n) {
+            packed.x[n] = packed.y[n] = packed.held[n] = 0;
+            packed.reach[n] = packed.lunge[n] = packed.reach_a[n] = packed.reach_b[n] = packed.stun[n] = -1;
+            packed.hit[n] = packed.burst_a[n] = packed.burst_b[n] = 0;
+        }
+    }
+    return packed;
+}
+
+Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without) const {
+    const auto &packed = exit_packed();
+    if (!packed.lanes)
+        return {};
+    // Four enemies a step (one on `without` adds nothing). Distances count
+    // from the round each acts again (a stunned one loses its next), so
+    // every reach test is one compare.
+    const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y);
+    const v128_t out_x = wasm_i32x4_splat(without.x), out_y = wasm_i32x4_splat(without.y);
+    const v128_t one = wasm_i32x4_splat(1), none = wasm_f32x4_splat(0);
+    // One pass: what a ready stun on us adds (a hit from each enemy whose
+    // reach we stand in, and its round's hits where it had none) is summed
+    // apart and counted when any stun reaches us.
+    const v128_t zero = wasm_i32x4_splat(0);
+    v128_t damage = none, round_hits = none, held = none, held_round = none, stun = zero;
+    for (std::size_t k = 0; k < packed.lanes; k += 4) {
+        const v128_t x_k = wasm_v128_load(&packed.x[k]), y_k = wasm_v128_load(&packed.y[k]);
+        const v128_t d = wasm_i32x4_add(wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, x_k)),
+                                                       wasm_i32x4_abs(wasm_i32x4_sub(y, y_k))),
+                                        wasm_v128_load(&packed.held[k]));
+        const v128_t keep = wasm_v128_not(wasm_v128_and(wasm_i32x4_eq(x_k, out_x), wasm_i32x4_eq(y_k, out_y)));
+        stun = wasm_v128_or(stun, wasm_v128_and(keep, wasm_i32x4_le(d, wasm_v128_load(&packed.stun[k]))));
+        const v128_t next = wasm_i32x4_add(d, one);
+        const v128_t reach = wasm_v128_load(&packed.reach[k]);
+        // Rounds within its reach as we walk a tile a round, at least the
+        // strike its lunge lands.
+        const v128_t walking = wasm_i32x4_max(wasm_i32x4_sub(reach, d), zero);
+        const v128_t hits = wasm_i32x4_max(
+            walking, wasm_v128_and(wasm_i32x4_le(d, wasm_v128_load(&packed.lunge[k])), one));
+        const v128_t hit = wasm_v128_and(wasm_v128_load(&packed.hit[k]), keep);
+        // One cast a turn: the bursts in the better order, the second a tile further.
+        const v128_t a = wasm_v128_load(&packed.burst_a[k]), b = wasm_v128_load(&packed.burst_b[k]);
+        const v128_t reach_a = wasm_v128_load(&packed.reach_a[k]), reach_b = wasm_v128_load(&packed.reach_b[k]);
+        const v128_t a_first = wasm_f32x4_add(wasm_v128_and(a, wasm_i32x4_le(d, reach_a)),
+                                              wasm_v128_and(b, wasm_i32x4_le(next, reach_b)));
+        const v128_t b_first = wasm_f32x4_add(wasm_v128_and(b, wasm_i32x4_le(d, reach_b)),
+                                              wasm_v128_and(a, wasm_i32x4_le(next, reach_a)));
+        damage = wasm_f32x4_add(damage, wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(hits), hit),
+                                                       wasm_v128_and(wasm_f32x4_max(a_first, b_first), keep)));
+        const v128_t hitting = wasm_i32x4_gt(hits, zero), within = wasm_i32x4_le(d, reach);
+        round_hits = wasm_f32x4_add(round_hits, wasm_v128_and(hit, hitting));
+        held = wasm_f32x4_add(held, wasm_v128_and(hit, within));
+        held_round = wasm_f32x4_add(held_round, wasm_v128_and(hit, wasm_v128_andnot(within, hitting)));
+    }
+    if (!immune && wasm_v128_any_true(stun)) {
+        damage = wasm_f32x4_add(damage, held);
+        round_hits = wasm_f32x4_add(round_hits, held_round);
+    }
+    return {wasm_f32x4_extract_lane(damage, 0) + wasm_f32x4_extract_lane(damage, 1) +
+                wasm_f32x4_extract_lane(damage, 2) + wasm_f32x4_extract_lane(damage, 3),
+            wasm_f32x4_extract_lane(round_hits, 0) + wasm_f32x4_extract_lane(round_hits, 1) +
+                wasm_f32x4_extract_lane(round_hits, 2) + wasm_f32x4_extract_lane(round_hits, 3)};
+}
+
+Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, unsigned carried, bool immune) const {
+    // The lanes' bound first: below the floor, nothing is computed.
+    const auto &packed = exit_packed();
+    const float margin_share = float(carried) / float(policy::prism_bag);
+    if ((packed.most + packed.hits * margin_share) * mitigation < floor)
+        return {};
+    const auto taken = exit_damage(tile, immune);
+    return {taken.damage * mitigation, taken.round * margin_share * mitigation};
+}
+
+float Bot::exit_pool(float shield, const std::array<bool, 2> &is_ready) const {
+    float pool = health + shield;
+    for (unsigned i = 0; i < spells.size(); ++i)
+        if (is_ready[i] && spells[i].kind == bc::ability_kind::shield)
+            pool += focus * spells[i].modifier;
+    return pool;
+}
+
+float Bot::exit_pool() const {
+    // Only a shield slot's readiness counts: the others are not read.
+    std::array<bool, 2> is_ready{};
+    for (unsigned i = 0; i < spells.size(); ++i)
+        if (spells[i].kind == bc::ability_kind::shield)
+            is_ready[i] = ready(bc::self().abilities()[i], bc::self().can_cast());
+    return exit_pool(self_shield(), is_ready);
+}
+
+bool Bot::ExitCheck::lethal(vec2 tile) {
+    const bool immune = bot.passive == bc::passive_type::stun_immunity;
+    const float damage = bot.exit_risk(tile, bot.health, bot.mitigation, 0, immune).damage;
+    if (damage <= 0)
+        return false;
+    if (pool < 0) {
+        pool = bot.exit_pool();
+        here = bot.exit_damage(bot.position, immune).damage * bot.mitigation;
+    }
+    return damage >= pool && damage > here;
 }
 
 float Bot::own_power() const {
