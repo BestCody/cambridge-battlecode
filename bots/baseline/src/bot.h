@@ -103,6 +103,9 @@ struct ObservedUnit {
     vec2 position;
     float health = 0, max_health = 0, strength = 0, focus = 0, shield = 0, mitigation = 1;
     float damage_rate = 0, burst = 0, ready_shield = 0, healing_rate = 0;
+    // The damage of its spells cast since our last turn (cooldown within two
+    // rounds of full), which a hit on us since may hold.
+    float cast_damage = 0;
     // The ready damage spells' burst alone (burst also counts a ready
     // attack reset's hit), and whether an attack reset is ready.
     float spell_burst = 0;
@@ -121,6 +124,9 @@ struct ObservedUnit {
     bc::champion_type type{};
     // From live fields already read with one engine call (see sighting()).
     ObservedUnit(const bc::champion &c, const bc::detail::champion_info &info);
+    // An unseen enemy's record, its fields filled in by whoever makes it
+    // (note_hidden_hit()).
+    explicit ObservedUnit(const bc::champion &c) : ref(&c) {}
     // A sleeping camp carries no buffs, so they are read only when awake.
     ObservedUnit(const CampMemory &c, int group_index, const bc::detail::camp_state &info,
                  bool asleep = false);
@@ -387,6 +393,19 @@ class Bot {
     std::vector<bc::bitboard> ghost_where;
     std::vector<ObservedUnit> ghosts;
     std::vector<vec2> ghost_last;
+    // An enemy out of sight that hit us (note_hidden_hit()), on the unseen
+    // tile it struck from, kept until that tile is seen, an enemy comes into
+    // view or we are a sight radius away; listed after the sightings' ghosts
+    // (sighted_ghosts of them).
+    std::optional<ObservedUnit> hidden;
+    std::size_t sighted_ghosts = 0;
+    // The round of its last hit, the enemies out of view then (roster bits:
+    // one of them struck), what camps could have struck us this turn
+    // (play_worker_turn()), and the last round an enemy died.
+    int hidden_hit = -1;
+    std::uint32_t hidden_from = 0;
+    float camp_bound = 0;
+    int enemy_died = -1;
     int ghost_update = -1; // The round the records were last brought up to date.
     int enemy_sighted = -1000; // The last round an enemy was in view.
     // Enemy recalls (observe()), per enemy roster entry: its turn ends up to
@@ -774,6 +793,8 @@ class Bot {
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
+    // The fight decision against the hidden record alone (nothing in view).
+    bool confront_hidden();
     // Out of a fight too dangerous to stay in (worker_skirmish()).
     bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.
@@ -794,6 +815,13 @@ class Bot {
     // As if the enemy stood on `at`.
     bool enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const;
     void track_ghosts();
+    // A hit nothing in view could have struck makes the hidden record.
+    void note_hidden_hit(float lost);
+    // The most the living camps with our tile in reach strike for in a
+    // round, as the records stand.
+    float camp_reach_damage() const;
+    // Drops the hidden record from this turn's ghosts.
+    void drop_hidden();
     void worker_track_sightings();
     std::pair<int, int> worker_danger(vec2 tile) const;
     // The tile a step away from danger takes (our own: none).

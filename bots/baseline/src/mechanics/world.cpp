@@ -256,6 +256,13 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         // Castable at its next action: a slot at 1 is not (measured).
         const bool ready = cooldown <= 0;
         slot_ready = std::uint8_t(slot_ready | unsigned(ready) << ability_slot);
+        const bool cast = cooldown >= s.cooldown - 2;
+        if (cast && s.kind == bc::ability_kind::attack_reset)
+            cast_damage += strength;
+        else if (cast && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
+                          s.kind == bc::ability_kind::aoe_damage ||
+                          (s.kind == bc::ability_kind::dash && s.modifier > 0)))
+            cast_damage += focus * s.modifier;
         if (s.kind == bc::ability_kind::attack_reset) {
             damage_rate += strength / s.cooldown;
             if (ready) {
@@ -300,6 +307,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         damage_rate *= bonus;
         burst *= bonus;
         spell_burst *= bonus;
+        cast_damage *= bonus;
     }
     const std::array durability{bc::item_type::durability_emblem_of_strength,
                                 bc::item_type::durability_emblem_of_health,
@@ -844,13 +852,166 @@ void Bot::observe() {
                 shared.get(ally_slot[i]) == TeamMemory::recall || shared.leaving(ally_slot[i]);
     ghosts.clear();
     ghost_last.clear();
+    sighted_ghosts = 0;
     // Ghosts are kept for ghost_lifetime rounds after a sighting, so they
     // are tracked on those rounds too: an enemy that just stepped into a bush
-    // beside us is still there.
+    // beside us is still there. So is a hidden attacker's record.
     if (!enemies.empty())
         enemy_sighted = int(round);
-    if (int(round) - enemy_sighted <= policy::ghost_lifetime)
+    if (int(round) - enemy_sighted <= policy::ghost_lifetime || hidden)
         track_ghosts();
+}
+
+float Bot::camp_reach_damage() const {
+    // Groups far from us are passed by their centre (a group spans a few
+    // tiles; the longest camp reach is 5).
+    float damage = 0;
+    for (const auto &g : groups)
+        if (g.status == CampGroup::alive && distance(position, g.centre) <= 10)
+            for (const auto &c : g.camps)
+                if (c.health > 0 && distance(position, c.position) <= int(c.stats.base_attack_range))
+                    damage += std::max(c.read_strength, float(c.stats.base_strength));
+    return damage * camp_mitigation;
+}
+
+void Bot::note_hidden_hit(float lost) {
+    // More health lost than everything that could have struck us since our
+    // last turn: enemies in view within reach (two hits, and the spells they
+    // cast since: the turn order swaps each round, so up to two enemy turns
+    // fall between two of ours; counted with one, a third of the hidden hits
+    // raised were a visible enemy's second), enemies seen in the last rounds
+    // (two hits and their bursts),
+    // and the camps that had us in reach as our last turn left the records
+    // (camp_bound: one a teammate killed since may have struck first, as a
+    // wolf did our Heart of Ruin's, sending it into empty bushes). An enemy
+    // we cannot see struck for the rest, most likely from a bush: 14-23% of
+    // the damage ours took in ladder games came from unseen attackers (the
+    // opponents' 1-9%), against test-bot 12.5%, 56% of it while we fought
+    // others in view, whom the fight decision counted alone (19% of our
+    // deaths had such a hit in their last 5 rounds). Heals and shields only
+    // hide damage. An enemy that died since may have struck first: that turn
+    // is left out.
+    if (enemy_died == int(round))
+        return;
+    float bound = camp_bound;
+    for (const auto &e : enemies)
+        if (enemy_threatens(e, position))
+            bound += (2 * e.strength + e.cast_damage) * mitigation;
+    track_ghosts();
+    for (std::size_t k = 0; k < sighted_ghosts; ++k)
+        if (enemy_threatens(ghosts[k], ghost_last[k], position))
+            bound += (2 * ghosts[k].strength + ghosts[k].burst + ghosts[k].cast_damage) * mitigation;
+    const float excess = lost - bound;
+    if (excess <= 0)
+        return;
+    // Which enemy is not known: the record takes the hit as its strike each
+    // round, the biggest burst of the enemies alive out of view (their kits
+    // at the focus last seen, else the design's), and the average of their
+    // health. The tile: the unseen bush tile nearest us within the longest
+    // reach among them, else any unseen tile there; with neither, no enemy
+    // could have struck from out of sight.
+    // Only an enemy alive and unseen in the last rounds (those seen are
+    // counted above) can have struck; with none, nobody hidden did. An
+    // excess under half the weakest of their hits is a reading's slack.
+    int chosen = -1, reach = 0;
+    float biggest = -1, health_sum = 0, chosen_focus = 0, weakest = std::numeric_limits<float>::max();
+    unsigned bodies = 0;
+    std::uint32_t from = 0;
+    for (std::size_t i = 0; i < enemy_roster.size(); ++i) {
+        if (i < enemy_respawn.size() && enemy_respawn[i] >= 0)
+            continue; // Dead.
+        bool seen = i < ghost_sighted.size() && ghost_sighted[i] >= 0 &&
+                    int(round) - ghost_sighted[i] <= policy::ghost_lifetime;
+        for (std::size_t k = 0; k < enemies.size(); ++k)
+            seen = seen || enemy_slot[k] == i;
+        if (seen)
+            continue;
+        from |= 1u << i;
+        const auto &c = enemy_roster[i];
+        const auto kind = c.champion_name();
+        const auto design = c.base_stats();
+        const auto &kit = kit_of(c, kind);
+        const bool known = i < ghost_seen.size() && ghost_seen[i];
+        const float f = known ? std::max(ghost_seen[i]->focus, float(design.base_focus)) : float(design.base_focus);
+        const float s = known ? std::max(ghost_seen[i]->strength, float(design.base_strength))
+                              : float(design.base_strength);
+        float burst = 0;
+        int far = int(design.base_attack_range);
+        for (const auto &spell : kit.spells) {
+            if (spell.kind == bc::ability_kind::attack_reset)
+                burst = std::max(burst, s);
+            else if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
+                     spell.kind == bc::ability_kind::aoe_damage ||
+                     (spell.kind == bc::ability_kind::dash && spell.modifier > 0)) {
+                burst = std::max(burst, f * spell.modifier);
+                far = std::max(far, int(spell.range + spell.radius));
+            }
+        }
+        reach = std::max(reach, far);
+        weakest = std::min(weakest, float(design.base_strength));
+        health_sum += known ? ghost_seen[i]->max_health : float(design.base_health);
+        ++bodies;
+        if (burst > biggest) {
+            biggest = burst;
+            chosen = int(i);
+            chosen_focus = f;
+        }
+    }
+    if (chosen < 0 || excess < weakest * mitigation * 0.5f)
+        return;
+    auto unseen = around(position, float(reach));
+    unseen &= open_terrain;
+    subtract(unseen, visible);
+    vec2 at{-1, -1};
+    for (const bool bush : {true, false}) {
+        for (const vec2 p : unseen.positions())
+            if ((!bush || bush_tile[tile_index(p)]) && (at.x < 0 || distance(position, p) < distance(position, at)))
+                at = p;
+        if (at.x >= 0)
+            break;
+    }
+    if (at.x < 0)
+        return;
+    const auto &c = enemy_roster[std::size_t(chosen)];
+    const auto kind = c.champion_name();
+    const auto &kit = kit_of(c, kind);
+    ObservedUnit ghost(c);
+    ghost.type = kind;
+    ghost.position = at;
+    ghost.health = ghost.max_health = health_sum / float(bodies);
+    ghost.strength = ghost.damage_rate = excess / mitigation;
+    ghost.focus = chosen_focus;
+    ghost.burst = ghost.spell_burst = biggest;
+    ghost.range = distance(position, at); // It struck us from there.
+    ghost.move_speed = kit.move_speed;
+    ghost.immune = kit.immune;
+    ghost.slot_ready = 3;
+    for (const auto &spell : kit.spells) {
+        if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
+            spell.kind == bc::ability_kind::aoe_damage || (spell.kind == bc::ability_kind::dash && spell.modifier > 0))
+            ghost.spell_reach = std::max(ghost.spell_reach, int(spell.range + spell.radius));
+        if (spell.kind == bc::ability_kind::attack_reset)
+            ghost.reset_ready = true;
+        if (spell.kind == bc::ability_kind::dash) {
+            ghost.dash_range = std::int8_t(spell.range);
+            ghost.dash_wait = 0;
+            ghost.dash_cooldown = std::int8_t(std::clamp(int(spell.cooldown), 1, 100));
+            ghost.dash_walks = !spell.exclusive;
+        }
+    }
+    // A new hit replaces the last record.
+    ghosts.erase(ghosts.begin() + std::ptrdiff_t(sighted_ghosts), ghosts.end());
+    ghost_last.resize(sighted_ghosts);
+    hidden = ghost;
+    hidden_hit = int(round);
+    hidden_from = from;
+    ghosts.push_back(ghost);
+    ghost_last.push_back(at);
+    ++threat_revision;
+    debug_block({
+        std::printf("HIDDEN r=%u id=%u lost=%.0f excess=%.0f seen=%zu at=%d,%d d=%d type=%d burst=%.0f\n", round,
+                    id(bc::self()), lost, excess, enemies.size(), at.x, at.y, distance(position, at), int(kind), biggest);
+    });
 }
 
 void Bot::judge_recall(ObservedUnit &enemy, std::size_t entry) {
@@ -1658,8 +1819,10 @@ void Bot::track_enemy_respawns() {
         }
         if (alive)
             enemy_respawn[i] = -1;
-        else if (enemy_respawn[i] < 0)
+        else if (enemy_respawn[i] < 0) {
             enemy_respawn[i] = int(round) + rules::settings().respawn_time;
+            enemy_died = int(round);
+        }
     }
 }
 

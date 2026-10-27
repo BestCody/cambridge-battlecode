@@ -128,6 +128,32 @@ void Bot::track_ghosts() {
         ghost.stun_time = -1;
         ghost_last.push_back(ghost_seen[i]->position);
     }
+    // The hidden attacker last, where it struck from, until that tile is
+    // seen, one of the enemies out of view at its hit comes into view where
+    // it could have walked from the tile since (the hidden one, as like as
+    // not), or we are out of its area: kept on beyond that it would hold
+    // farmers off a bush long left, as ghosts kept past their lifetime did.
+    sighted_ghosts = ghosts.size();
+    bool shown = false;
+    if (hidden)
+        for (std::size_t k = 0; k < enemies.size(); ++k)
+            shown = shown || (hidden_from >> enemy_slot[k] & 1 &&
+                              distance(enemies[k].position, hidden->position) <=
+                                  (int(round) - hidden_hit + 1) * enemies[k].move_speed + 1);
+    if (hidden && (shown || visible.is_set(hidden->position) ||
+                   distance(position, hidden->position) > int(stats.vision_radius)))
+        hidden.reset();
+    if (hidden) {
+        ghosts.push_back(*hidden);
+        ghost_last.push_back(hidden->position);
+    }
+}
+
+void Bot::drop_hidden() {
+    hidden.reset();
+    ghosts.erase(ghosts.begin() + std::ptrdiff_t(sighted_ghosts), ghosts.end());
+    ghost_last.resize(sighted_ghosts);
+    ++threat_revision; // The lanes listed it.
 }
 
 // Danger at a tile: how many enemies could hit it, and by how many tiles the

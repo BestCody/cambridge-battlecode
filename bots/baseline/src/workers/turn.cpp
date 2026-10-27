@@ -70,6 +70,7 @@ void Bot::play_worker_turn() {
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
+        hidden.reset();
         buy_equipment();
         retreating = banking = false;
         target = -1;
@@ -91,6 +92,10 @@ void Bot::play_worker_turn() {
         chase.mode = Chase::none;
         return;
     }
+    // What camps in reach as our last turn left the records could have
+    // struck (note_hidden_hit()): looked up before observe() rewrites them,
+    // only when struck.
+    camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
     hit = health < before;
     // A chase ends once no enemy can reach us, and a stun means deciding it
@@ -102,6 +107,10 @@ void Bot::play_worker_turn() {
     for (const auto &e : enemies)
         attacked = attacked || enemy_threatens(e, position);
     shared.set_attacked(slot, attacked);
+    // Struck for more than everything we know of could: an enemy out of
+    // sight did.
+    if (hit)
+        note_hidden_hit(before - health);
     death_counted = false;
     if (hit && (attacked || threatened_last))
         champion_damage += before - health;

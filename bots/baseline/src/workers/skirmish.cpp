@@ -4,7 +4,7 @@
 bool Bot::worker_skirmish() {
     profiling::Scope scope(profiling::Stage::skirmish);
     if (enemies.empty())
-        return false;
+        return hidden && confront_hidden();
     const auto abilities = bc::self().abilities();
     // Nothing acts before the second use below, so readiness is read once.
     std::array<bool, 2> is_ready{};
@@ -342,6 +342,118 @@ bool Bot::worker_skirmish() {
     if (!acted && !moved && me.can_move() && !on_capture)
         moved = advance_attack(victim.position);
     return acted || moved;
+}
+
+bool Bot::confront_hidden() {
+    // An enemy out of sight hit us (note_hidden_hit()). It cannot be struck,
+    // so the fight decision has three ends: too dangerous to stay (its exit
+    // damage, its spells counted ready at the biggest burst of their
+    // champions), we leave; with our ward charged we look into its bush and,
+    // seeing enemies, fight them as any; a melee champion healthy enough to
+    // take that burst and the walk out steps onto the bush, which shows the
+    // whole bush, and strikes what it finds (a ranged one would shoot only
+    // a round later); otherwise we carry on. Help is called once an enemy is
+    // in view, by the usual report: one hit is no squad's worth.
+    auto &me = bc::self();
+    const vec2 at = hidden->position;
+    const bool immune = passive == bc::passive_type::stun_immunity;
+    std::array<bool, 2> is_ready{};
+    {
+        const auto abilities = me.abilities();
+        const bool can_cast = me.can_cast();
+        for (unsigned i = 0; i < is_ready.size(); ++i)
+            is_ready[i] = ready(abilities[i], can_cast);
+    }
+    const float pool = exit_pool(self_shield(), is_ready);
+    if (const auto risk = exit_risk(position, health, mitigation, gems, immune);
+        risk.damage > 0 && pool <= risk.damage + risk.margin) {
+        debug_block({ std::printf("HIDDENACT r=%u id=%u leave\n", round, id(bc::self())); });
+        return leave_fight(at);
+    }
+    // The rest answers a hit this round: without one the record only counts
+    // in the danger reckoning (stepping out of reach of a record unhit, our
+    // farmers walked back in to farm and out again).
+    if (hidden_hit != int(round))
+        return false;
+    // The ward on the placement tile nearest it, then everything we see.
+    if (me.ward_cooldown() <= 0 && !me.buffs().has_stun() &&
+        !me.restrictions().contains(bc::buff_restrictions::ward)) {
+        auto &placements = step_tiles;
+        me.ward_placement_tiles_into(placements);
+        bc::vision::ward_tiles_into(bc::team::ally, occupancy);
+        occupancy |= blocked;
+        occupancy &= placements;
+        placements ^= occupancy;
+        vec2 spot{-1, -1};
+        for (const vec2 p : placements.positions())
+            if (spot.x < 0 || distance(p, at) < distance(spot, at))
+                spot = p;
+        if (spot.x >= 0 && me.place_ward(spot)) {
+            ward = spot;
+            bc::vision::visible_tiles_into(visible);
+            observe_fight();
+            if (!enemies.empty()) {
+                debug_block({ std::printf("HIDDENACT r=%u id=%u ward-found %zu\n", round, id(bc::self()), enemies.size()); });
+                drop_hidden();
+                return worker_skirmish();
+            }
+            if (visible.is_set(at)) {
+                debug_block({ std::printf("HIDDENACT r=%u id=%u ward-empty\n", round, id(bc::self())); });
+                drop_hidden(); // Nobody there now.
+                return false;
+            }
+        }
+    }
+    // Not stepping in, a step away from it (step_away_tile(): fewer threats,
+    // then more room): our Willow, ranged, stood six rounds under an unseen
+    // Willow's 55-damage hits from a bush. Its reach with a ready burst is 3
+    // to 5 tiles, which one step never left. A capture's holder stays
+    // (leaving its tiles resets the capture).
+    const bool on_capture = target >= 0 && groups[target].status == CampGroup::capture &&
+                            groups[target].tiles().is_set(position);
+    const auto out = [&] {
+        if (on_capture)
+            return false;
+        const vec2 step = step_away_tile();
+        const bool stepped = step != position && move_step(step);
+        if (stepped) {
+            observe_fight();
+            combat(true, -1, true);
+        }
+        debug_block({ std::printf("HIDDENACT r=%u id=%u out=%d\n", round, id(bc::self()), int(stepped)); });
+        return stepped;
+    };
+    if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
+        return out();
+    // The fight rule, as worker_skirmish() weighs it for a champion alone,
+    // in a pair or with more.
+    int mates = 0;
+    for (const auto &a : allies)
+        mates += distance(position, a.position) <= 6;
+    const float stay = mates == 0 ? 1.0f : (mates == 1 ? policy::pair_aggression : policy::aggression);
+    const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
+    const float ours = mates == 0 ? own_power() : friendly_power(at);
+    const float theirs = std::max(enemy_power(at), reported_power(at)) + respawn_threat(position);
+    if (ours * stay * tank < theirs)
+        return out();
+    // The unseen bush tile within a step nearest it that we would walk out
+    // of alive.
+    vec2 best = position;
+    int nearest = std::numeric_limits<int>::max();
+    blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
+    for (const vec2 tile : step_positions())
+        if (tile != position && bush_tile[tile_index(tile)] && !visible.is_set(tile) && distance(tile, at) < nearest &&
+            exit_risk(tile, health, mitigation, gems, immune).damage < pool) {
+            nearest = distance(tile, at);
+            best = tile;
+        }
+    if (best == position || !move_step(best))
+        return out();
+    bc::vision::visible_tiles_into(visible);
+    observe_fight();
+    debug_block({ std::printf("HIDDENACT r=%u id=%u step found=%zu\n", round, id(bc::self()), enemies.size()); });
+    combat(true);
+    return true;
 }
 
 bool Bot::leave_fight(vec2 victim) {

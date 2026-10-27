@@ -246,6 +246,11 @@ inline constexpr int peel_range = 2;
 inline constexpr float peel_factor = 1.5f;
 inline constexpr float peel_prism_factor = 8.0f;
 inline constexpr int peel_support = 8;
+// A hit from an enemy out of sight (note_hidden_hit()) is stepped in on only
+// by a melee champion at hidden_step_health of its health or more: the step
+// onto the bush shows the whole bush, and a hit from one can be bait for a
+// group's burst.
+inline constexpr float hidden_step_health = 0.8f;
 // A heal waits for a teammate missing heal_trigger of a full heal (3 x
 // Focus for Willow): willow best girl's Willow never heals one missing
 // under 200 health (none of its casts in either sample; full heal 360) and
