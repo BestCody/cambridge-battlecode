@@ -32,6 +32,9 @@ for line in open(sys.argv[1], encoding="utf-8"):
                 spawn[c["team"]] = [(o["x"], o["y"]) for o in r["c"] if o["team"] == c["team"] and o["x"] >= 0]
         if spawn[0] and spawn[1]:
             break
+    missing = [t for t in (0, 1) if not spawn[t]]
+    if missing:
+        sys.exit(f"{dump}: team {missing[0]} never stands on the map; the dump is incomplete")
     pos = [{c["id"]: c for c in r["c"]} for r in rows]
     ids = sorted({cid for p_ in pos for cid in p_})
     home = lambda c: min(cheb((c["x"], c["y"]), s) for s in spawn[c["team"]])
