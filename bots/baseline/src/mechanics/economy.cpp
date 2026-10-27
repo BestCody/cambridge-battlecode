@@ -68,9 +68,11 @@ Build build_for(bc::champion_type type, bool hurt) {
                     5,
                     Item::bruiser_shard_of_focus};
         case bc::champion_type::prism:
-            // Hurt, a Health emblem first (Prospector most often): 27 of 29
-            // games after 250 champion damage or more.
-            return {{{{hurt ? Item::prospector_shard_of_health : Item::monster_shard_of_focus, 5}, // r90-204, 55%
+            // Hurt, a Health emblem first: 27 of 29 games after 250 champion
+            // damage or more (Prospector most often). We keep Monster's camp
+            // damage either way: opening with Prospector cost us 7 of 80 wins
+            // and 0.46 deaths a game, its cluster bonus short of slower clears.
+            return {{{{hurt ? Item::monster_shard_of_health : Item::monster_shard_of_focus, 5}, // r90-204, 55%
                       {Item::jungle_shard_of_health, 5},      // r383-416, 66%
                       {Item::bruiser_shard_of_focus, 5},      // r377-421, 57%; 12.3 a game
                       {Item::durability_shard_of_health, 5}}}, // r628-733, 44% (Home 31%)
