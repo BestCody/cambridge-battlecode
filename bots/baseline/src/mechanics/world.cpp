@@ -1417,28 +1417,34 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 }
 
 float Bot::enemy_power(vec2 at) const {
-    // Only enemies that can fight: not channelling or on their spawn, as
-    // friendly_power leaves out channelling allies. A stunned one counts
-    // without its burst (a stun costs it one action). Enemies out of sight
-    // count from their possible tile nearest us.
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
+    // Only enemies that can fight: not channelling, as friendly_power leaves
+    // out channelling allies. A stunned one counts without its burst (a stun
+    // costs it one action). Enemies out of sight count from their possible
+    // tile nearest us. One on its spawn fights from there and heals to full
+    // at the end of each of its turns there (docs/GameRules.md): it counts at
+    // full health, and as we do not strike it there, it reflects nothing.
+    // Left out, fights at their spawn's edge looked winnable: on
+    // 02treasure_box against DICTATOR_Sahur 9 of our 11 deaths began within 2
+    // tiles of their spawn, and 36% of their damage to our champions came
+    // from spawn tiles.
     float p = 0;
     for (const auto *list : {&enemies, &ghosts})
         for (const auto &e : *list) {
-            if (e.channel || enemy_spawn.is_set(e.position))
+            if (e.channel)
                 continue;
             int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
             if (arrival > 6)
                 continue;
+            const bool on_spawn = enemy_spawn_tile[tile_index(e.position)];
             // Focus fire also multiplies a retaliator's damage: each attacker
             // pays for its own hit, including the hit that kills the target.
-            float reflected = e.retaliation();
+            float reflected = on_spawn ? 0.0f : e.retaliation();
             if (reflected > 0)
                 for (const auto &a : allies)
                     if (!a.stunned && !a.channel &&
                         distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
                         reflected += e.retaliation();
-            p += std::sqrt(std::max(1.0f, e.health + e.shield + e.ready_shield) *
+            p += std::sqrt(std::max(1.0f, (on_spawn ? e.max_health : e.health) + e.shield + e.ready_shield) *
                            (e.damage_rate + reflected +
                             (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * 0.2f + e.healing_rate) /
                            e.mitigation) /
