@@ -653,6 +653,9 @@ class Bot {
     int nearest_unit(vec2 tile) const;
     // Also the number of units at that distance.
     int nearest_unit(vec2 tile, int &ties) const;
+    // The nearest unit to threat k's camp, and in threat_ties[k] the units
+    // there, worked out once per threat_revision.
+    int threat_target(std::size_t k) const;
     void observe_fight();
     void publish(unsigned claim);
     float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
@@ -664,12 +667,19 @@ class Bot {
     // now starts when its stun ends), a ready dash or reset that brings a
     // strike within reach adding one; a ready stun on it (none when
     // `immune`) holds it a round, a hit more from each enemy that reaches
-    // it. An enemy on `without` is left out. And one round of the hits of
-    // the enemies that hit it at all.
+    // it. An enemy on `without` is left out. With an enemy to leave, each
+    // awake camp whose nearest champion it would be (a tie shares the hits)
+    // hits it once a round until it is out of the camp's reach, after our
+    // camp mitigation. And one round of the hits of the enemies that hit it
+    // at all.
     struct ExitDamage {
         float damage = 0, round = 0;
     };
     ExitDamage exit_damage(vec2 tile, bool immune, vec2 without = {-1, -1}) const;
+    // Its camps' part alone (incoming()'s threats), and the whole given
+    // that part.
+    float exit_camps(vec2 tile) const;
+    ExitDamage exit_damage(vec2 tile, bool immune, vec2 without, float camps) const;
     // exit_lanes, made again when stale.
     const ExitLanes &exit_packed() const;
     // Exit damage and the bag margin (a round of those hits per prism_bag

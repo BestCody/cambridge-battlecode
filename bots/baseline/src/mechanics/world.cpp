@@ -1198,6 +1198,14 @@ int Bot::nearest_unit(vec2 tile, int &ties) const {
     return nearest;
 }
 
+int Bot::threat_target(std::size_t k) const {
+    if (threat_stamp[k] != threat_revision) {
+        threat_nearest[k] = nearest_unit(camps.slot(std::uint32_t(camp_threats[k])).position, threat_ties[k]);
+        threat_stamp[k] = threat_revision;
+    }
+    return threat_nearest[k];
+}
+
 void Bot::publish(unsigned claim) {
     // A capture's holder keeps its claim through fights, banking and stuns:
     // teammates leave a claimed capture to it (capture_outranked()), and two
@@ -1324,13 +1332,10 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
         // Camps attack the nearest champion, including our enemy. Avoid taking
         // aggro from the current tank (a unit nearer the camp than the tile);
         // a tie shares the hit among the units tied with us.
-        if (threat_stamp[k] != threat_revision) {
-            threat_nearest[k] = nearest_unit(c.position, threat_ties[k]);
-            threat_stamp[k] = threat_revision;
-        }
-        if (threat_nearest[k] < distance(tile, c.position))
+        const int nearest = threat_target(k);
+        if (nearest < distance(tile, c.position))
             return;
-        if (threat_nearest[k] == distance(tile, c.position)) {
+        if (nearest == distance(tile, c.position)) {
             damage += c.strength * camp_mitigation / float(1 + threat_ties[k]);
             return;
         }
@@ -1444,7 +1449,56 @@ const Bot::ExitLanes &Bot::exit_packed() const {
     return packed;
 }
 
+float Bot::exit_camps(vec2 tile) const {
+    // Awake camps strike the nearest champion every round, and leaving a
+    // fight under one costs a hit a round until we are out of its reach:
+    // left out, ours fought from beside awake elks as if the way out were
+    // free (on 01hooks against SkuBap elk hits were 31% of the damage we
+    // took before round 350; our Prism stood beside one, its nearest
+    // champion, for 8 rounds and died, and our Vendetta died walking out
+    // past one). Only with an enemy to leave: alone, camp choice prices the
+    // camps (visit_affordable()).
+    if (!exit_packed().lanes)
+        return 0;
+    // Each camp that would strike the tile, as incoming() finds them (its
+    // threats, eight a step): its hits from now until we walk out of its
+    // reach (it acts at the start of each round). One whose nearest
+    // champion is nearer than we are strikes that one; a tie shares the
+    // hits as incoming() shares them, a unit on the tile itself (a
+    // teammate's own) not counted as another.
+    float camp = 0;
+    const v128_t x = wasm_i16x8_splat(std::int16_t(tile.x)), y = wasm_i16x8_splat(std::int16_t(tile.y));
+    for (std::size_t k = 0; k < threat_lanes; k += 8) {
+        const v128_t dx = wasm_i16x8_abs(wasm_i16x8_sub(x, wasm_v128_load(&threat_x[k])));
+        const v128_t dy = wasm_i16x8_abs(wasm_i16x8_sub(y, wasm_v128_load(&threat_y[k])));
+        const v128_t hit = wasm_i16x8_le(wasm_i16x8_max(dx, dy), wasm_v128_load(&threat_reach[k]));
+        if (!wasm_v128_any_true(hit))
+            continue;
+        for (unsigned lanes = wasm_i16x8_bitmask(hit); lanes; lanes &= lanes - 1) {
+            const std::size_t t = k + unsigned(__builtin_ctz(lanes));
+            const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
+            if (c.health <= 0 || camp_dormant(c))
+                continue;
+            const int d = distance(tile, c.position), nearest = threat_target(t);
+            if (d > nearest)
+                continue;
+            int ties = 0;
+            if (d == nearest) {
+                ties = threat_ties[t];
+                for (std::size_t u = 0; u < unit_x.size(); ++u)
+                    ties -= unit_x[u] == tile.x && unit_y[u] == tile.y;
+            }
+            camp += c.strength * camp_mitigation * float(c.range - d + 1) / float(1 + ties);
+        }
+    }
+    return camp;
+}
+
 Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without) const {
+    return exit_damage(tile, immune, without, exit_camps(tile));
+}
+
+Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without, float camps) const {
     const auto &packed = exit_packed();
     if (!packed.lanes)
         return {};
@@ -1492,19 +1546,21 @@ Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without) const {
         damage = wasm_f32x4_add(damage, held);
         round_hits = wasm_f32x4_add(round_hits, held_round);
     }
-    return {wasm_f32x4_extract_lane(damage, 0) + wasm_f32x4_extract_lane(damage, 1) +
+    return {camps + wasm_f32x4_extract_lane(damage, 0) + wasm_f32x4_extract_lane(damage, 1) +
                 wasm_f32x4_extract_lane(damage, 2) + wasm_f32x4_extract_lane(damage, 3),
             wasm_f32x4_extract_lane(round_hits, 0) + wasm_f32x4_extract_lane(round_hits, 1) +
                 wasm_f32x4_extract_lane(round_hits, 2) + wasm_f32x4_extract_lane(round_hits, 3)};
 }
 
 Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, unsigned carried, bool immune) const {
-    // The lanes' bound first: below the floor, nothing is computed.
+    // The lanes' bound first, with the camps' part (a few camps, most out
+    // of reach of the tile): below the floor, nothing more is computed.
     const auto &packed = exit_packed();
     const float margin_share = float(carried) / float(policy::prism_bag);
-    if ((packed.most + packed.hits * margin_share) * mitigation < floor)
+    const float camps = exit_camps(tile);
+    if ((packed.most + packed.hits * margin_share + camps) * mitigation < floor)
         return {};
-    const auto taken = exit_damage(tile, immune);
+    const auto taken = exit_damage(tile, immune, {-1, -1}, camps);
     return {taken.damage * mitigation, taken.round * margin_share * mitigation};
 }
 
