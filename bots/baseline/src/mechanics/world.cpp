@@ -572,6 +572,7 @@ void Bot::initialise() {
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
     dash_terrain = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
     enemy_spawn_tiles = bc::map::spawn_region(bc::team::enemy).positions();
+    shared.set_groups(unsigned(groups.size()));
     initialised = true;
     last_plan = bc::round_number();
 }

@@ -377,19 +377,22 @@ inline Spell describe(const bc::ability &a) {
 }
 
 // Fixed wire format. Slots are allied champion handles in ascending order: five
-// 10-bit claims (our rosters have at most five bodies: no twin pick), then one
-// bit per slot, set while an enemy can hit that champion next round, then one
-// bit per slot, set while it rides a capture's recall home (its claim kept,
-// so teammates leave the capture to it).
+// 11-bit fields (our rosters have at most five bodies: no twin pick), each a
+// 10-bit claim and one flag. The flag of a fight request is set while an enemy
+// can hit that champion next round (attacked); of any other claim, while it
+// rides a capture's recall home (leaving: its claim kept, so teammates leave
+// the capture to it). Readers ask for attacked only with a request and for
+// leaving only of a recalling holder's claim, so one bit holds both; the nine
+// bits after the fields are free.
 // Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
 struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
+    static constexpr unsigned field = bits + 1, field_mask = (1u << field) - 1;
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
     static constexpr unsigned slots = 5;
-    static constexpr unsigned attacked_shift = slots * bits;
-    static constexpr unsigned leaving_shift = attacked_shift + slots;
-    static_assert(leaving_shift + slots <= 64);
+    static constexpr unsigned free_shift = slots * field;
+    static_assert(free_shift <= 64);
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and the squad it takes to beat the
     // enemies the reporter sees, or identify a champion travelling to that
@@ -419,31 +422,44 @@ struct TeamMemory {
         return (code - groups - 1) % slots + 1;
     }
     std::uint64_t raw = 0;
-    void read() { bc::shared_memory.read(0, std::span{&raw, 1}); }
-    unsigned get(unsigned slot) const { return slot < slots ? (raw >> (slot * bits)) & mask : 0; }
-    void set(unsigned slot, unsigned value) {
-        // Observation refreshed the word and no teammate acts during this
-        // turn. Each owner is the only writer of its own claim.
-        if (slot >= slots || get(slot) == (value & mask))
-            return;
-        read(); // Preserve claims written by earlier teammates this round.
-        raw =
-            (raw & ~(std::uint64_t(mask) << (slot * bits))) | (std::uint64_t(value & mask) << (slot * bits));
-        bc::shared_memory.write(0, std::span{&raw, 1});
+    // A request's codes, from the map's camp group count (none without
+    // formations): a range test where requested_force() divides.
+    void set_groups(unsigned groups) {
+        request_low = formations(groups) ? groups + 1 : 1;
+        request_high = formations(groups) ? groups * (slots + 1) : 0;
     }
-    bool attacked(unsigned slot) const { return flag(attacked_shift, slot); }
-    void set_attacked(unsigned slot, bool value) { set_flag(attacked_shift, slot, value); }
-    bool leaving(unsigned slot) const { return flag(leaving_shift, slot); }
-    void set_leaving(unsigned slot, bool value) { set_flag(leaving_shift, slot, value); }
+    bool is_request(unsigned code) const { return code >= request_low && code <= request_high; }
+    void read() { bc::shared_memory.read(0, std::span{&raw, 1}); }
+    unsigned get(unsigned slot) const { return slot < slots ? (raw >> (slot * field)) & mask : 0; }
+    // Our own claim (each owner is the only writer of its own field).
+    void set(unsigned slot, unsigned value) { write(slot, value & mask); }
+    bool attacked(unsigned slot) const { return flag(slot) && is_request(get(slot)); }
+    void set_attacked(unsigned slot, bool value) {
+        own_attacked = value;
+        write(slot, get(slot));
+    }
+    bool leaving(unsigned slot) const { return flag(slot) && !is_request(get(slot)); }
+    void set_leaving(unsigned slot, bool value) {
+        own_leaving = value;
+        write(slot, get(slot));
+    }
 
   private:
-    bool flag(unsigned shift, unsigned slot) const { return slot < slots && (raw >> (shift + slot) & 1); }
-    void set_flag(unsigned shift, unsigned slot, bool value) {
-        if (slot >= slots || flag(shift, slot) == value)
+    // Our own flags, kept here: the field holds the one its claim carries.
+    bool own_attacked = false, own_leaving = false;
+    unsigned request_low = 1, request_high = 0;
+    bool flag(unsigned slot) const { return slot < slots && (raw >> (slot * field + bits) & 1); }
+    void write(unsigned slot, unsigned code) {
+        // Observation refreshed the word and no teammate acts during this
+        // turn.
+        if (slot >= slots)
             return;
-        read();
-        const std::uint64_t bit = std::uint64_t{1} << (shift + slot);
-        raw = value ? raw | bit : raw & ~bit;
+        const bool carried = is_request(code) ? own_attacked : own_leaving;
+        const std::uint64_t value = code | unsigned(carried) << bits;
+        if (((raw >> (slot * field)) & field_mask) == value)
+            return;
+        read(); // Preserve claims written by earlier teammates this round.
+        raw = (raw & ~(std::uint64_t(field_mask) << (slot * field))) | (value << (slot * field));
         bc::shared_memory.write(0, std::span{&raw, 1});
     }
 };
