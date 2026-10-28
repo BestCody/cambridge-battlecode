@@ -1,0 +1,16 @@
+{
+ "logloss": 0.0010570844169706106,
+ "accuracy": 0.999884975940801,
+ "balanced_accuracy": 0.5,
+ "macro_f1": 0.49997124233128837,
+ "majority_baseline": 0.999884975940801,
+ "n": 52163,
+ "per_class_recall": {
+  "no": 1.0,
+  "yes": 0.0
+ },
+ "support": {
+  "no": 52157,
+  "yes": 6
+ }
+}

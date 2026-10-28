@@ -1,0 +1,3 @@
+# Regenerable and large: rebuild with extract/run_extract.py and build_dataset.py
+data/
+__pycache__/
