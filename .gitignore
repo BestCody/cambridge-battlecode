@@ -6,3 +6,7 @@ bots/*/build/
 bots/*/target/
 notes
 .vscode
+
+# print dont int: full replays, extracted data and 600-round checkpoints (4.4 GB unpacked)
+/print_dont_int*.zip
+playground.txt
