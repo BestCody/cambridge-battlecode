@@ -103,6 +103,8 @@ struct ObservedUnit {
     vec2 position;
     float health = 0, max_health = 0, strength = 0, focus = 0, shield = 0, mitigation = 1;
     float damage_rate = 0, burst = 0, ready_shield = 0, healing_rate = 0;
+    // The share of camp damage it takes (a Jungle emblem; 1 without).
+    float camp_mitigation = 1;
     // The damage of its spells cast since our last turn (cooldown within two
     // rounds of full), which a hit on us since may hold.
     float cast_damage = 0;
@@ -523,11 +525,14 @@ class Bot {
     // round on camps.
     struct RosterKit {
         std::array<Spell, 2> spells;
-        float camp_multiplier = 1, camp_rate = 0;
+        float camp_multiplier = 1, camp_rate = 0, focus = 0, health = 0;
     };
     std::vector<RosterKit> roster_kits;
     // Camp choice's workspace, per group its claimants' summed camp rates.
     std::vector<float> claim_rates;
+    // The camp damage share a Jungle emblem leaves (a teammate's, from its
+    // team memory flag).
+    float jungle_share = 1;
     // The capture gold multiplier (Vesper's passive, Treasure).
     float gold_bonus = 1;
     // Turn ends our recall takes: five, three with a Home emblem.

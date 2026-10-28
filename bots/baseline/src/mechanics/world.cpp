@@ -317,6 +317,13 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
             mitigation = 1 - item_effect(item).magnitude;
             break;
         }
+    const std::array jungle{bc::item_type::jungle_emblem_of_strength, bc::item_type::jungle_emblem_of_health,
+                            bc::item_type::jungle_emblem_of_focus};
+    for (auto item : jungle)
+        if (items[static_cast<unsigned>(item)]) {
+            camp_mitigation = 1 - item_effect(item).magnitude;
+            break;
+        }
 }
 
 ObservedUnit::ObservedUnit(const CampMemory &c, int group_index, const bc::detail::camp_state &info,
@@ -391,7 +398,8 @@ void Bot::initialise() {
         roster_power.push_back(std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus)));
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
-                                   design.camp_damage_multiplier});
+                                   design.camp_damage_multiplier,
+                               float(design.base_focus), float(design.base_health)});
     }
     float ally_power_sum = 0;
     for (auto p : roster_power)
@@ -573,6 +581,7 @@ void Bot::initialise() {
     dash_terrain = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
     enemy_spawn_tiles = bc::map::spawn_region(bc::team::enemy).positions();
     shared.set_groups(unsigned(groups.size()));
+    jungle_share = 1 - item_effect(bc::item_type::jungle_emblem_of_strength).magnitude;
     initialised = true;
     last_plan = bc::round_number();
 }

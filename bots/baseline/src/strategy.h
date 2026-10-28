@@ -100,6 +100,15 @@ inline constexpr int recall_chase_turns = 3;
 // camp bodies) before it is left out for stuck_rounds.
 inline constexpr int stuck_turns = 3;
 inline constexpr int stuck_rounds = 40;
+// Hard camps (golems and monoliths: hard_camp_health or more) are cleared by a
+// party: whoever claims one first waits out of the camps' reach until a
+// teammate claiming it too is there, then they strike together. Alone a golem
+// (5,000 health, 120 a round, reach 4) outlasts any champion's health and a
+// monolith (20,000, 200, reach 5) more so; willow best girl strikes monoliths
+// with 2.41 champions a round, ours with 1.12, and ours struck golems 7 times
+// a game and monoliths 2. The wait for the partner is in the group's score
+// (camp choice), so a claimant whose partner is too far away chooses again.
+inline constexpr float hard_camp_health = 5000;
 inline constexpr float casualty_margin = 0.12f;
 inline constexpr int replan_period = 4;
 inline constexpr float assist_finish_credit = 0.55f;
@@ -382,8 +391,10 @@ inline Spell describe(const bc::ability &a) {
 // can hit that champion next round (attacked); of any other claim, while it
 // rides a capture's recall home (leaving: its claim kept, so teammates leave
 // the capture to it). Readers ask for attacked only with a request and for
-// leaving only of a recalling holder's claim, so one bit holds both; the nine
-// bits after the fields are free.
+// leaving only of a recalling holder's claim, so one bit holds both. After the
+// fields, one bit per slot says that champion carries a Jungle emblem (camp
+// damage taken -30%), for a hard camp's party whose tank is out of view; the
+// last four bits are free.
 // Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
 struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
@@ -391,8 +402,8 @@ struct TeamMemory {
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
     static constexpr unsigned slots = 5;
-    static constexpr unsigned free_shift = slots * field;
-    static_assert(free_shift <= 64);
+    static constexpr unsigned jungle_shift = slots * field;
+    static_assert(jungle_shift + slots <= 64);
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and the squad it takes to beat the
     // enemies the reporter sees, or identify a champion travelling to that
@@ -439,6 +450,15 @@ struct TeamMemory {
         write(slot, get(slot));
     }
     bool leaving(unsigned slot) const { return flag(slot) && !is_request(get(slot)); }
+    bool jungle(unsigned slot) const { return slot < slots && (raw >> (jungle_shift + slot) & 1); }
+    void set_jungle(unsigned slot, bool value) {
+        if (slot >= slots || jungle(slot) == value)
+            return;
+        read();
+        const std::uint64_t bit = std::uint64_t{1} << (jungle_shift + slot);
+        raw = value ? raw | bit : raw & ~bit;
+        bc::shared_memory.write(0, std::span{&raw, 1});
+    }
     void set_leaving(unsigned slot, bool value) {
         own_leaving = value;
         write(slot, get(slot));

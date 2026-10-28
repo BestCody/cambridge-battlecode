@@ -97,6 +97,7 @@ void Bot::play_worker_turn() {
     // only when struck.
     camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
+    shared.set_jungle(slot, camp_mitigation < 1); // For teammates' hard-camp parties.
     hit = health < before;
     // A chase ends once no enemy can reach us, and a stun means deciding it
     // again; a turn spent on anything else keeps it.
