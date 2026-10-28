@@ -4,3 +4,5 @@ matches/
 replays/
 bots/*/build/
 bots/*/target/
+notes
+.vscode

@@ -1,0 +1,243 @@
+[1mdiff --git a/bots/baseline/src/bot.h b/bots/baseline/src/bot.h[m
+[1mindex e59d57c..81d8b69 100644[m
+[1m--- a/bots/baseline/src/bot.h[m
+[1m+++ b/bots/baseline/src/bot.h[m
+[36m@@ -528,6 +528,8 @@[m [mclass Bot {[m
+     std::vector<RosterKit> roster_kits;[m
+     // Camp choice's workspace, per group its claimants' summed camp rates.[m
+     std::vector<float> claim_rates;[m
+[32m+[m[32m    // Per group: (neighbour group, distance), nearest first, at most three.[m
+[32m+[m[32m    std::vector<std::vector<std::pair<int, int>>> hops;[m
+     // The capture gold multiplier (Vesper's passive, Treasure).[m
+     float gold_bonus = 1;[m
+     // Turn ends our recall takes: five, three with a Home emblem.[m
+[36m@@ -785,6 +787,12 @@[m [mclass Bot {[m
+     void place_lock();[m
+     bool worker_pursue();[m
+     bool home_after_capture(const CampGroup &g) const;[m
+[32m+[m[32m    // How far behind the enemy's tributed gems we are, 0 (even or ahead) to 1.[m
+[32m+[m[32m    float behind_pressure() const;[m
+[32m+[m[32m    // Each group's up to three nearest neighbour groups.[m
+[32m+[m[32m    void build_hops();[m
+[32m+[m[32m    // Whether chaining a nearby camp beats recalling now.[m
+[32m+[m[32m    bool chain_better_than_home(const CampGroup &g) const;[m
+     float basic_damage() const;[m
+     void track_enemy_respawns();[m
+     bool camp_dormant(const ObservedUnit &c) const;[m
+[1mdiff --git a/bots/baseline/src/strategy.h b/bots/baseline/src/strategy.h[m
+[1mindex c6db8e9..170bd72 100644[m
+[1m--- a/bots/baseline/src/strategy.h[m
+[1m+++ b/bots/baseline/src/strategy.h[m
+[36m@@ -284,6 +284,19 @@[m [minline constexpr float enemy_side_factor = 0.4f;[m
+ // of its new targets when one is up (ours 22%) and keeps its bag for the[m
+ // Focus it gives, so its teammates hold the monster captures.[m
+ inline constexpr float prism_safe_gem_factor = 2.0f;[m
+[32m+[m[32m// Behind on tributed gems: how fast the pressure ramps in (rounds), how much[m
+[32m+[m[32m// cheaper a death looks, and how much more willing we are to fight.[m
+[32m+[m[32minline constexpr int   behind_ramp = 150;[m
+[32m+[m[32minline constexpr float behind_risk_relief = 0.3f;[m
+[32m+[m[32minline constexpr float behind_fight_bonus = 0.2f;[m
+[32m+[m[32m// Chaining camps: neighbour radius (tiles), longest respawn wait worth standing[m
+[32m+[m[32m// for (rounds), discount on a two-camp plan, and the income a 30-gold shard adds.[m
+[32m+[m[32minline constexpr int   hop_radius = 14;[m
+[32m+[m[32minline constexpr int   hop_max_wait = 8;[m
+[32m+[m[32minline constexpr float chain_discount = 0.9f;[m
+[32m+[m[32minline constexpr float shard_income_gain = 0.04f;[m
+[32m+[m[32m// Gold that sends a holder home when no chain is worth it: one shard.[m
+[32m+[m[32minline constexpr int   min_shop_gold = 30;[m
+ } // namespace policy[m
+ [m
+ // Next-round action order. Tiers are disjoint so plain damage never outranks[m
+[1mdiff --git a/bots/baseline/src/workers/farming.cpp b/bots/baseline/src/workers/farming.cpp[m
+[1mindex 493a29c..4180511 100644[m
+[1m--- a/bots/baseline/src/workers/farming.cpp[m
+[1m+++ b/bots/baseline/src/workers/farming.cpp[m
+[36m@@ -6,6 +6,8 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+     // A group we were walled off from lately is no candidate.[m
+     const int walled = int(round) < stuck_group_until ? stuck_group : -1;[m
+     profiling::Scope scope(profiling::Stage::choose);[m
+[32m+[m[32m    if (hops.size() != groups.size())[m
+[32m+[m[32m        build_hops();[m
+     measure_paths(1);[m
+     float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));[m
+     float gold_value = policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress;[m
+[36m@@ -64,6 +66,9 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+             marks[g] |= enemy_on;[m
+     const int here = group_at(position);[m
+     const float gem_weight = gem_reward_weight(opening), gem_risk = gem_risk_weight(opening);[m
+[32m+[m[32m    const float behind = behind_pressure();[m
+[32m+[m[32m    const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;[m
+[32m+[m[32m    const float camp_risk = policy::camp_risk_weight * (1.0f - policy::behind_risk_relief * behind);[m
+     const int capture_time = rules::settings().capture_time;[m
+     const float health_scale = std::max(100.0f, health), spare = std::max(0.0f, health - reserve);[m
+     // The Willow keeps to its Prism's group (policy::willow_follow).[m
+[36m@@ -229,6 +234,37 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+     const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,[m
+                 healing = nearby_healing;[m
+     const std::array<Spell, 2> kit = spells;[m
+[32m+[m[32m    // Each group's best neighbour as a second leg of one plan: the neighbour's[m
+[32m+[m[32m    // reward, and the time it adds (walk, respawn wait, clear, capture).[m
+[32m+[m[32m    const float team_dps = std::max(1.0f, flat_dps * our_multiplier);[m
+[32m+[m[32m    const auto gather_pairs = [&] {[m
+[32m+[m[32m        for (std::size_t i = 0; i < count; ++i) {[m
+[32m+[m[32m            float best_rate = 0, best_reward = 0, best_extra = 0;[m
+[32m+[m[32m            for (const auto &[j, hop] : hops[i]) {[m
+[32m+[m[32m                const auto &n = groups[j];[m
+[32m+[m[32m                if (int(j) == excluded || int(j) == walled || lanes.sighted[j])[m
+[32m+[m[32m                    continue;[m
+[32m+[m[32m                if (n.status == CampGroup::capture && (claims[j] || (marks[j] & ally_on)))[m
+[32m+[m[32m                    continue;[m
+[32m+[m[32m                if (lanes.reach[j] >= 5.0f && !claims[j]) // Monoliths stay team-only.[m
+[32m+[m[32m                    continue;[m
+[32m+[m[32m                const float wait =[m
+[32m+[m[32m                    n.status == CampGroup::cooling ? float(std::max(0, n.respawn - now - hop)) : 0.0f;[m
+[32m+[m[32m                if (wait > float(policy::hop_max_wait))[m
+[32m+[m[32m                    continue;[m
+[32m+[m[32m                const float reward = lanes.gem_reward[j] + gold_weight * lanes.gold[j];[m
+[32m+[m[32m                const float extra = float(hop) * travel_scale + wait * policy::respawn_wait_weight +[m
+[32m+[m[32m                                    lanes.remaining[j] / team_dps + float(capture_time) + 1;[m
+[32m+[m[32m                if (reward / extra > best_rate) {[m
+[32m+[m[32m                    best_rate = reward / extra;[m
+[32m+[m[32m                    best_reward = reward;[m
+[32m+[m[32m                    best_extra = extra;[m
+[32m+[m[32m                }[m
+[32m+[m[32m            }[m
+[32m+[m[32m            lanes.pair_reward[i] = best_reward;[m
+[32m+[m[32m            lanes.pair_extra[i] = best_extra;[m
+[32m+[m[32m        }[m
+[32m+[m[32m    };[m
+     const auto pick = [](v128_t yes, v128_t no, v128_t when) { return wasm_v128_bitselect(yes, no, when); };[m
+     const auto mark_set = [&](v128_t m, std::int32_t bit) {[m
+         return wasm_i32x4_ne(wasm_v128_and(m, splat_int(bit)), no_bits);[m
+[36m@@ -368,7 +404,7 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+             const v128_t risk_weight = pick(splat(gem_risk), one, wasm_v128_load(&lanes.gem[i]));[m
+             // The unshared claims term, (claims - partners) * 0.55, is zero.[m
+             value = wasm_f32x4_div([m
+[31m-                value, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(policy::camp_risk_weight)),[m
+[32m+[m[32m                value, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(camp_risk)),[m
+                                                                          risk_weight)),[m
+                                       crowding));[m
+             // Camp damage persists, so a clear longer than our health lasts[m
+[36m@@ -398,7 +434,7 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+             v128_t visits = wasm_f32x4_div(reward, wasm_f32x4_pmax(one, visits_duration));[m
+             visits = wasm_f32x4_div(visits, wasm_f32x4_add(one, wasm_f32x4_mul(visits_duration, splat(policy::plan_hazard))));[m
+             visits = wasm_f32x4_div([m
+[31m-                visits, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(visit_risk, splat(policy::camp_risk_weight)),[m
+[32m+[m[32m                visits, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(visit_risk, splat(camp_risk)),[m
+                                                                          risk_weight)),[m
+                                        crowding));[m
+             visits = pick(zero, visits,[m
+[36m@@ -406,6 +442,21 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+                                        wasm_v128_andnot(wasm_f32x4_lt(visit_health, splat(100.0f)), is_held)));[m
+             value = pick(zero, value, wasm_f32x4_gt(duration, splat(rounds_left)));[m
+             value = wasm_f32x4_pmax(value, visits);[m
+[32m+[m[32m            {[m
+[32m+[m[32m                const v128_t pr = wasm_v128_load(&lanes.pair_reward[i]);[m
+[32m+[m[32m                const v128_t px = wasm_v128_load(&lanes.pair_extra[i]);[m
+[32m+[m[32m                const v128_t pair_duration = wasm_f32x4_add(duration, px);[m
+[32m+[m[32m                v128_t pair = wasm_f32x4_div(wasm_f32x4_add(reward, pr), wasm_f32x4_pmax(one, pair_duration));[m
+[32m+[m[32m                pair = wasm_f32x4_div([m
+[32m+[m[32m                    pair, wasm_f32x4_add(one, wasm_f32x4_mul(pair_duration, splat(policy::plan_hazard))));[m
+[32m+[m[32m                pair = wasm_f32x4_div([m
+[32m+[m[32m                    pair, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(camp_risk)),[m
+[32m+[m[32m                                                                            risk_weight)),[m
+[32m+[m[32m                                         crowding));[m
+[32m+[m[32m                pair = pick(zero, pair, wasm_f32x4_gt(pair_duration, splat(rounds_left)));[m
+[32m+[m[32m                pair = pick(zero, pair, wasm_f32x4_le(pr, zero)); // No neighbour: no pair.[m
+[32m+[m[32m                value = wasm_f32x4_pmax(value, wasm_f32x4_mul(pair, splat(policy::chain_discount)));[m
+[32m+[m[32m            }[m
+             value = wasm_f32x4_div([m
+                 value, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_add(travel, waiting), splat(travel_hazard))));[m
+             value = pick(wasm_f32x4_mul(value, splat(policy::enemy_side_factor)), value,[m
+[36m@@ -443,6 +494,7 @@[m [mint Bot::worker_choose_group(int excluded) {[m
+     float best = -1;[m
+     int choice = -1;[m
+     gather();[m
+[32m+[m[32m    gather_pairs();[m
+     for (std::size_t i = 0; i < padded; i += 4)[m
+         score_lanes(i);[m
+     for (;;) {[m
+[36m@@ -809,9 +861,17 @@[m [mbool Bot::home_after_capture(const CampGroup &g) const {[m
+         for (const auto &e : *list)[m
+             if (distance(position, e.position) <= 8)[m
+                 return false;[m
+[31m-    return health < max_health * policy::home_capture_health ||[m
+[31m-           (passive != bc::passive_type::gem_focus && int(round) - left_spawn < policy::short_trip_rounds) ||[m
+[31m-           bc::self().gold_count() >= policy::home_capture_gold;[m
+[32m+[m[32m    // Hurt: always home (a little less eagerly when behind).[m
+[32m+[m[32m    if (health < max_health * policy::home_capture_health * (1.0f - 0.5f * behind_pressure()))[m
+[32m+[m[32m        return true;[m
+[32m+[m[32m    // A neighbour worth more than the trip: stay out. Returning false makes[m
+[32m+[m[32m    // the next turn cancel this recall.[m
+[32m+[m[32m    if (chain_better_than_home(g))[m
+[32m+[m[32m        return false;[m
+[32m+[m[32m    // Otherwise the old fallbacks: a short trip out, or gold for a shard.[m
+[32m+[m[32m    const bool short_trip =[m
+[32m+[m[32m        passive != bc::passive_type::gem_focus && int(round) - left_spawn < policy::short_trip_rounds;[m
+[32m+[m[32m    return short_trip || bc::self().gold_count() >= unsigned(policy::min_shop_gold);[m
+ }[m
+ [m
+ bool Bot::ally_draws_attacks(const CampGroup &g) const {[m
+[36m@@ -823,3 +883,89 @@[m [mbool Bot::ally_draws_attacks(const CampGroup &g) const {[m
+                 return true;[m
+     return false;[m
+ }[m
+[32m+[m
+[32m+[m[32mfloat Bot::behind_pressure() const {[m
+[32m+[m[32m    const float ours = float(bc::global_submitted_gems(bc::team::ally));[m
+[32m+[m[32m    const float theirs = float(bc::global_submitted_gems(bc::team::enemy));[m
+[32m+[m[32m    const float scale = std::max(40.0f, float(rules::settings().winning_gems) * 0.08f);[m
+[32m+[m[32m    const float ramp = std::min(1.0f, float(round) / float(policy::behind_ramp)); // early gaps are noise[m
+[32m+[m[32m    return std::clamp((theirs - ours) / scale, 0.0f, 1.0f) * ramp;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mvoid Bot::build_hops() {[m
+[32m+[m[32m    hops.assign(groups.size(), {});[m
+[32m+[m[32m    for (std::size_t i = 0; i < groups.size(); ++i) {[m
+[32m+[m[32m        for (std::size_t j = 0; j < groups.size(); ++j) {[m
+[32m+[m[32m            if (i == j)[m
+[32m+[m[32m                continue;[m
+[32m+[m[32m            const int d = distance(groups[i].centre, groups[j].centre);[m
+[32m+[m[32m            if (d <= policy::hop_radius)[m
+[32m+[m[32m                hops[i].push_back({int(j), d});[m
+[32m+[m[32m        }[m
+[32m+[m[32m        std::sort(hops[i].begin(), hops[i].end(),[m
+[32m+[m[32m                  [](const auto &a, const auto &b) { return a.second < b.second; });[m
+[32m+[m[32m        if (hops[i].size() > 3)[m
+[32m+[m[32m            hops[i].resize(3);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m// decides when to go for another camp instead of just going home[m
+[32m+[m[32mbool Bot::chain_better_than_home(const CampGroup &g) const {[m
+[32m+[m[32m    const int gi = int(&g - groups.data());[m
+[32m+[m[32m    if (gi < 0 || std::size_t(gi) >= hops.size())[m
+[32m+[m[32m        return false;[m
+[32m+[m[32m    const float progress = std::min(1.0f, float(round) / float(std::max(1u, rules::settings().max_rounds / 2)));[m
+[32m+[m[32m    const float gem_w = gem_reward_weight(opening);[m
+[32m+[m[32m    const float gold_w =[m
+[32m+[m[32m        (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * gold_bonus;[m
+[32m+[m[32m    const float behind = behind_pressure();[m
+[32m+[m[32m    const float spare =[m
+[32m+[m[32m        std::max(0.0f, health - std::max(max_health * policy::casualty_margin, incoming(position) * 2));[m
+[32m+[m[32m    const float health_scale = std::max(100.0f, health);[m
+[32m+[m[32m    const float gold_now = float(bc::self().gold_count());[m
+[32m+[m
+[32m+[m[32m    float best_margin = 0;[m
+[32m+[m[32m    for (const auto &[j, hop] : hops[gi]) {[m
+[32m+[m[32m        const auto &n = groups[j];[m
+[32m+[m[32m        if (n.status == CampGroup::capture)[m
+[32m+[m[32m            continue;[m
+[32m+[m[32m        const float wait =[m
+[32m+[m[32m            n.status == CampGroup::cooling ? float(std::max(0, n.respawn - int(round) - hop)) : 0.0f;[m
+[32m+[m[32m        if (wait > float(policy::hop_max_wait))[m
+[32m+[m[32m            continue;[m
+[32m+[m[32m        bool monolith = false; // Team-only, as in the scorer.[m
+[32m+[m[32m        for (const auto &c : n.camps)[m
+[32m+[m[32m            monolith = monolith || c.stats.base_attack_range >= 5;[m
+[32m+[m[32m        if (monolith)[m
+[32m+[m[32m            continue;[m
+[32m+[m
+[32m+[m[32m        const float clear =[m
+[32m+[m[32m            std::max(1.0f, (n.status == CampGroup::cooling ? n.max_health : n.health) / dps(n));[m
+[32m+[m[32m        const float time_n = float(hop) + wait + clear + float(rules::settings().capture_t
