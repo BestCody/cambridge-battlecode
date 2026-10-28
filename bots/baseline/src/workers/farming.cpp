@@ -200,7 +200,14 @@ int Bot::worker_choose_group(int excluded) {
             // The altar term, and the walk across a group longer than two
             // attack ranges: a row of 30 gold clusters scored as one quick
             // clear and walked ours along it into the enemy's half.
-            lanes.altar[i] = std::min(20, g.altar_distance) * 0.25f + float(std::max(0, extent - 2 * range));
+            // A gem group's walk counts the more for fewer altars
+            // (policy::scarce_altar_weight); gold needs no tribute.
+            const float altar_weight =
+                0.25f + (gem_value > 0
+                             ? policy::scarce_altar_weight / float(std::max<std::size_t>(1, altars.size()))
+                             : 0.0f);
+            lanes.altar[i] = float(std::min(policy::altar_walk_cap, g.altar_distance)) * altar_weight +
+                             float(std::max(0, extent - 2 * range));
         }
     }
     // Strikes a kit's stuns take from a camp per round: a stunned camp loses
