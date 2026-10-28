@@ -26,11 +26,14 @@ int Bot::worker_choose_group(int excluded) {
     // each claim is also a partner), and an ally or an enemy standing on it.
     enum : std::uint8_t { ally_on = 2, enemy_on = 4 };
     static std::vector<std::uint8_t> claims, marks;
+    // A hard group's partner's arrival, in rounds (-1: its party is its
+    // claimants), for its wait beyond our walk (gather()).
+    static std::vector<float> partner_arrival;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (s != slot && living(s) && shared.get(s) >= 1 && shared.get(s) <= groups.size())
-            ++claims[shared.get(s) - 1];
+        if (const int c = mate_claim(s); c >= 0)
+            ++claims[c];
     // Each teammate's damage per round on camps (from its live strength and
     // focus in view, else its type's base) and, per camp, its claimants'
     // summed.
@@ -38,17 +41,21 @@ int Bot::worker_choose_group(int excluded) {
     const unsigned kits = unsigned(std::min<std::size_t>(roster_kits.size(), TeamMemory::slots));
     for (unsigned s = 0; s < kits; ++s)
         mate_rate[s] = roster_kits[s].camp_rate;
-    for (const auto &ally : allies)
-        for (unsigned s = 0; s < kits; ++s)
-            if (ally.champion() == roster[s]) {
-                const auto &kit = roster_kits[s];
-                mate_rate[s] = camp_dps(kit.spells, ally.strength, ally.focus, 1) * kit.camp_multiplier;
-                break;
-            }
-    claim_rates.assign(groups.size(), 0.0f);
     for (unsigned s = 0; s < kits; ++s)
-        if (s != slot && living(s) && shared.get(s) >= 1 && shared.get(s) <= groups.size())
-            claim_rates[shared.get(s) - 1] += mate_rate[s];
+        if (const int k = slot_ally[s]; k >= 0) {
+            const auto &ally = allies[std::size_t(k)];
+            const auto &kit = roster_kits[s];
+            mate_rate[s] = camp_dps(kit.spells, ally.strength, ally.focus, 1) * kit.camp_multiplier;
+        }
+    claim_rates.assign(groups.size(), 0.0f);
+    // And the healing each clear gets (group_heal(), in one pass).
+    static std::vector<float> claim_heals;
+    claim_heals.assign(groups.size(), self_heal());
+    for (unsigned s = 0; s < kits; ++s)
+        if (const int c = mate_claim(s); c >= 0) {
+            claim_rates[std::size_t(c)] += mate_rate[s];
+            claim_heals[std::size_t(c)] += slot_heal(s);
+        }
     const auto standing_on = [&](vec2 p) {
         const int g = group_at(p);
         return g >= 0 && distance(p, groups[g].centre) <= int(groups[g].camps.size()) ? g : -1;
@@ -73,9 +80,8 @@ int Bot::worker_choose_group(int excluded) {
     int prism_group = -1;
     if (type == bc::champion_type::willow)
         for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-            if (s != slot && living(s) && opening.roster_types[s] == bc::champion_type::prism &&
-                shared.get(s) >= 1 && shared.get(s) <= groups.size())
-                prism_group = int(shared.get(s)) - 1;
+            if (opening.roster_types[s] == bc::champion_type::prism && mate_claim(s) >= 0)
+                prism_group = mate_claim(s);
     // A group's helpers are the teammates claiming it: willow best girl's
     // champions farm apart (61-74% of the time within 6 of a teammate, two or
     // more on 32% of its clears from round 150 to 400) and join teammates'
@@ -98,14 +104,15 @@ int Bot::worker_choose_group(int excluded) {
         std::unique_ptr<float[]> floats;
         // Fixed: masks for a gem reward, a group on the enemy's side and a
         // safe gem group (harmless camps only); the gem reward, the gold, the
-        // altar term, the camp loss factor, the camp count, the walk from home
-        // and the camps' longest reach.
+        // altar term, the camp count and the walk from home.
         std::int32_t *gem, *enemy_side, *safe_gems, *hard;
-        float *gem_reward, *gold, *altar, *loss_factor, *camp_count, *home, *reach;
-        // This choice's state, with the claimants' summed camp rates and, for
-        // a hard group nobody claims, the wait for a partner.
+        float *gem_reward, *gold, *altar, *camp_count, *home, *reach;
+        // This choice's state, with the group's shared facts (hard, its
+        // camps' longest reach, the strikers' work), the claimants' summed
+        // camp rates, the healing a clear gets and, for a hard group nobody
+        // claims, the wait for a partner.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
-        float *remaining, *splash, *pressure, *claims, *claim_rate, *scores, *partner_wait;
+        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait;
         // A hard group's party (its claimants, else the nearest free
         // teammate): its camp rate besides ours; the camp's strikes its stuns
         // take away, per round (ours too); its shields now and per round
@@ -117,26 +124,27 @@ int Bot::worker_choose_group(int excluded) {
         // per round (a Willow in it heals the tank).
         float *party_health, *party_spare, *party_heal;
         // A cluster group's run (gather_run): the reward and the time its
-        // members add, and whether the run scored above the group alone.
+        // members add, and whether the run scored above the group alone;
+        // and whether the clear is planned as a spell-range siege.
         float *run_reward, *run_time;
-        std::int32_t *run_won;
+        std::int32_t *run_won, *siege_won;
     };
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
-        lanes.ints.reset(new std::int32_t[11 * padded]);
-        lanes.floats.reset(new float[24 * padded]);
+        lanes.ints.reset(new std::int32_t[12 * padded]);
+        lanes.floats.reset(new float[25 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
-              &lanes.path, &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won}) {
+              &lanes.path, &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won, &lanes.siege_won}) {
             *lane = next_int;
             next_int += padded;
         }
         float *next_float = lanes.floats.get();
         for (auto **lane : {&lanes.gem_reward, &lanes.gold, &lanes.altar, &lanes.remaining, &lanes.splash,
-                            &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.loss_factor,
-                            &lanes.claim_rate, &lanes.camp_count, &lanes.home, &lanes.reach,
+                            &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work,
+                            &lanes.claim_rate, &lanes.heal, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
                             &lanes.party_heal, &lanes.run_reward, &lanes.run_time}) {
@@ -148,7 +156,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.respawn, lanes.siege_open, lanes.marks})
                 lane[i] = 0;
             for (auto *lane : {lanes.gem_reward, lanes.gold, lanes.altar, lanes.remaining, lanes.splash,
-                               lanes.pressure, lanes.claims, lanes.loss_factor, lanes.claim_rate,
+                               lanes.pressure, lanes.claims, lanes.striker_work, lanes.claim_rate, lanes.heal,
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
                                lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.run_reward,
@@ -163,32 +171,25 @@ int Bot::worker_choose_group(int excluded) {
             const auto gem_value = g.unit.gem_value();
             lanes.gem[i] = gem_value > 0 ? -1 : 0;
             lanes.enemy_side[i] = g.enemy_distance < g.home_distance ? -1 : 0;
-            bool harmless = gem_value > 0, hard = false;
-            for (const auto &c : g.camps) {
+            bool harmless = gem_value > 0;
+            for (const auto &c : g.camps)
                 harmless = harmless && c.stats.base_strength <= 0;
-                hard = hard || float(c.stats.base_health) >= policy::hard_camp_health;
-            }
             lanes.safe_gems[i] = harmless ? -1 : 0;
-            lanes.hard[i] = hard ? -1 : 0;
             lanes.gem_reward[i] = gem_value * gem_weight;
             lanes.gold[i] = float(g.unit.gold_value());
-            lanes.loss_factor[i] = camp_loss_factor(g);
             lanes.camp_count[i] = float(g.camps.size());
             lanes.home[i] = float(g.home_distance);
-            float reach = 0;
             // The farthest two camps apart (Chebyshev): the larger of the
             // spans along the two axes, from one pass rather than every pair.
             int low_x = std::numeric_limits<int>::max(), high_x = std::numeric_limits<int>::min();
             int low_y = low_x, high_y = high_x;
             for (const auto &c : g.camps) {
-                reach = std::max(reach, float(c.stats.base_attack_range));
                 low_x = std::min(low_x, c.position.x);
                 high_x = std::max(high_x, c.position.x);
                 low_y = std::min(low_y, c.position.y);
                 high_y = std::max(high_y, c.position.y);
             }
             const int extent = g.camps.empty() ? 0 : std::max(high_x - low_x, high_y - low_y);
-            lanes.reach[i] = reach;
             // The altar term, and the walk across a group longer than two
             // attack ranges: a row of 30 gold clusters scored as one quick
             // clear and walked ours along it into the enemy's half.
@@ -240,7 +241,14 @@ int Bot::worker_choose_group(int excluded) {
             path[i] = paths[i];
             siege[i] = range > 1 && g.siege_open > 0 ? -1 : 0;
             mark[i] = marks[i];
-            remaining[i] = g.status == CampGroup::cooling ? g.max_health : g.health;
+            // The group's shared facts (CampGroup::refresh_live()): of its
+            // living camps while it lives, else of the whole group (a capture
+            // has no living camps, and was read as no hard group, reach 0).
+            const bool whole = g.status != CampGroup::alive;
+            remaining[i] = whole ? g.max_health : g.health;
+            lanes.striker_work[i] = whole ? g.whole_work : g.live_work;
+            lanes.hard[i] = (whole ? g.hard : g.live_hard) ? -1 : 0;
+            lanes.reach[i] = float(whole ? g.reach : g.live_reach);
             splash[i] = g.splash;
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
@@ -250,38 +258,58 @@ int Bot::worker_choose_group(int excluded) {
                                        int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory
                                    ? -1
                                    : 0;
-        for (std::size_t i = 0; i < count; ++i)
+        for (std::size_t i = 0; i < count; ++i) {
             lanes.claim_rate[i] = claim_rates[i];
-        // A hard group's party: its claimants, else the nearest free
-        // teammate, whose walk beyond ours is the wait (from where it is in
-        // view, else from its claimed group, else from home).
+            lanes.heal[i] = claim_heals[i];
+        }
+        // A hard group's party: its claimants, else the teammate who could be
+        // there soonest: what keeps it busy (the rest of a clear or capture
+        // it is on, a recall), then its walk (walk_bound(): from where it is
+        // in view, else from its claimed group, else from home). One in a
+        // fight, or on its way to one, is not free. Its arrival beyond our
+        // walk is the wait, measured again whenever our walk is. The nearest
+        // by straight line, busy or not, was waited for by champions that
+        // stood beside golems for a partner that never came.
+        partner_arrival.assign(count, -1.0f);
         for (std::size_t i = 0; i < count; ++i) {
             lanes.partner_wait[i] = 0;
             if (!lanes.hard[i])
                 continue;
             unsigned party = 0;
-            int nearest = -1, nearest_mate = bc::distance_field::unreachable;
+            int nearest = -1;
+            float soonest = std::numeric_limits<float>::max();
             for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s) {
                 if (s == slot || !living(s))
                     continue;
                 const unsigned code = shared.get(s);
-                if (code == i + 1)
+                if (code == i + 1) {
                     party |= 1u << s;
-                vec2 where = code >= 1 && code <= groups.size() ? groups[code - 1].centre : home_centre;
-                const ObservedUnit *seen = nullptr;
-                for (std::size_t k = 0; k < allies.size(); ++k)
-                    if (ally_slot[k] == s)
-                        seen = &allies[k];
-                if (seen)
-                    where = seen->position;
-                if (const int d = distance(where, groups[i].centre); d < nearest_mate) {
-                    nearest_mate = d;
+                    continue;
+                }
+                if (code == TeamMemory::unavailable || TeamMemory::fight_group(code, groups.size()) >= 0)
+                    continue;
+                vec2 where = home_centre;
+                float busy = 0;
+                if (code >= 1 && code <= groups.size()) {
+                    const auto &h = groups[code - 1];
+                    where = h.centre;
+                    if (h.status == CampGroup::capture)
+                        busy = float(std::max(0, capture_payout(h) - int(round)));
+                    else if (h.status == CampGroup::alive && h.health < h.max_health)
+                        busy = h.health / std::max(1.0f, mate_rate[s]) + float(capture_time + 1);
+                } else if (code == TeamMemory::recall)
+                    busy = float(recall_turns);
+                if (const int k = slot_ally[s]; k >= 0)
+                    where = allies[std::size_t(k)].position;
+                if (const float arrival = busy + float(walk_bound(where, int(i))); arrival < soonest) {
+                    soonest = arrival;
                     nearest = int(s);
                 }
             }
             if (!party && nearest >= 0) {
                 party = 1u << nearest;
-                lanes.partner_wait[i] = float(std::max(0, nearest_mate - lanes.path[i]));
+                partner_arrival[i] = soonest;
+                lanes.partner_wait[i] = std::max(0.0f, soonest - float(lanes.path[i]));
             }
             float rate = 0, stun = own_stun, shield = own_shield, shield_rate = own_shield_rate,
                   tank = camp_mitigation * mitigation, party_health = health, party_spare = spare, heal = own_heal;
@@ -290,15 +318,14 @@ int Bot::worker_choose_group(int excluded) {
                     continue;
                 float mate_focus = roster_kits[s].focus, mate_health = roster_kits[s].health,
                       mate_max = roster_kits[s].health;
-                bool in_view = false;
-                for (const auto &ally : allies)
-                    if (ally.champion() == roster[s]) {
-                        in_view = true;
-                        mate_focus = ally.focus;
-                        mate_health = ally.health;
-                        mate_max = ally.max_health;
-                        tank = std::min(tank, ally.camp_mitigation * ally.mitigation);
-                    }
+                const bool in_view = slot_ally[s] >= 0;
+                if (in_view) {
+                    const auto &ally = allies[std::size_t(slot_ally[s])];
+                    mate_focus = ally.focus;
+                    mate_health = ally.health;
+                    mate_max = ally.max_health;
+                    tank = std::min(tank, ally.camp_mitigation * ally.mitigation);
+                }
                 // Out of view, its Jungle emblem from its team memory flag.
                 if (!in_view && shared.jungle(s))
                     tank = std::min(tank, jungle_share);
@@ -356,8 +383,7 @@ int Bot::worker_choose_group(int excluded) {
     // alias the members themselves, so each would be read again (and the
     // terms made from it worked out again) for every four groups.
     const int our_range = range, now = int(round), current = target;
-    const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,
-                healing = nearby_healing;
+    const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation;
     const std::array<Spell, 2> kit = spells;
     // Cluster runs. A short trip's capture ends in a recall home
     // (home_after_capture()), which every version that kept farming instead
@@ -382,8 +408,8 @@ int Bot::worker_choose_group(int excluded) {
         link_clusters();
         taken.assign(count, 0);
         for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-            if (const int claimed = TeamMemory::objective(shared.get(s), unsigned(count)); s != slot && claimed >= 0)
-                taken[claimed] = 1;
+            if (const int claimed = mate_claim(s); claimed >= 0)
+                taken[std::size_t(claimed)] = 1;
         run_mark.resize(count);
     }
     // A cluster group's clear as score_lanes() works it out with nobody
@@ -512,19 +538,18 @@ int Bot::worker_choose_group(int excluded) {
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // Each camp takes at least one hit.
             clear = wasm_f32x4_pmax(clear, wasm_f32x4_div(camps_in_group, wasm_f32x4_add(one, helpers)));
-            // clear_loss(g, clear).
-            v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear),
-                                         splat(camp_scale));
-            loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
+            // The clear's camp damage: the strikers' work at the clearing speed,
+            // in rounds of a striker's strength.
+            const v128_t striker_rounds = wasm_f32x4_div(wasm_v128_load(&lanes.striker_work[i]), speed);
+            v128_t loss = wasm_f32x4_mul(striker_rounds, splat(camp_scale));
             // A hard group's party clear: the camps strike the tank, less
             // what the party's stuns take away, and its shields soak some.
             // Struck every round at our own share, a monolith clear came to
             // tens of thousands; the clears watched cost 3,500-4,000.
             {
-                const v128_t strikes =
-                    wasm_f32x4_mul(clear, wasm_f32x4_pmax(zero, wasm_f32x4_sub(one, wasm_v128_load(&lanes.party_stun[i]))));
-                v128_t party_loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, strikes), wasm_v128_load(&lanes.tank_scale[i]));
-                party_loss = wasm_f32x4_mul(party_loss, wasm_v128_load(&lanes.loss_factor[i]));
+                const v128_t strikes = wasm_f32x4_mul(
+                    striker_rounds, wasm_f32x4_pmax(zero, wasm_f32x4_sub(one, wasm_v128_load(&lanes.party_stun[i]))));
+                v128_t party_loss = wasm_f32x4_mul(strikes, wasm_v128_load(&lanes.tank_scale[i]));
                 party_loss = wasm_f32x4_sub(
                     party_loss, wasm_f32x4_add(wasm_v128_load(&lanes.party_shield[i]),
                                                wasm_f32x4_mul(wasm_v128_load(&lanes.party_shield_rate[i]), clear)));
@@ -547,10 +572,10 @@ int Bot::worker_choose_group(int excluded) {
                         saved, wasm_f32x4_mul(splat(our_focus * spell.modifier),
                                               wasm_f32x4_add(one, wasm_f32x4_div(clear, cooldown))));
                 if (spell.kind == bc::ability_kind::cc)
-                    saved = wasm_f32x4_add(saved, wasm_f32x4_div(wasm_f32x4_mul(pressure, clear), cooldown));
+                    saved = wasm_f32x4_add(saved, wasm_f32x4_div(striker_rounds, cooldown)); // While strikers live.
             }
             loss = wasm_f32x4_sub(loss, pick(zero, saved, hard));
-            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(splat(healing), clear));
+            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(wasm_v128_load(&lanes.heal[i]), clear));
             loss = wasm_f32x4_pmax(zero, loss);
             v128_t risk = wasm_f32x4_div(wasm_f32x4_pmax(zero, wasm_f32x4_sub(loss, splat(spare))),
                                          splat(health_scale));
@@ -569,9 +594,7 @@ int Bot::worker_choose_group(int excluded) {
             for (const auto &spell : kit) {
                 const bool area = spell.kind == bc::ability_kind::aoe_damage;
                 // Area spells, and the targeted spells that can target a camp.
-                if (spell.range > 3 &&
-                    (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc || area) &&
-                    (area || spell.targets.contains(bc::ability_target_mask::camps)))
+                if (siege_spell(spell))
                     ranged_dps = wasm_f32x4_add(
                         ranged_dps,
                         wasm_f32x4_mul(splat(our_focus * spell.modifier / spell.cooldown), area ? splash : one));
@@ -587,6 +610,7 @@ int Bot::worker_choose_group(int excluded) {
                     wasm_v128_load(&lanes.siege_open[i])),
                 wasm_f32x4_lt(siege,
                               wasm_f32x4_mul(clear, wasm_f32x4_add(one, wasm_f32x4_mul(splat(3.0f), risk)))));
+            wasm_v128_store(&lanes.siege_won[i], sieging);
             clear = pick(siege, clear, sieging);
             risk = pick(splat(0.1f), risk, sieging);
             clear = pick(zero, clear, is_held);
@@ -739,6 +763,8 @@ int Bot::worker_choose_group(int excluded) {
             for (std::size_t k = i; k < i + 4 && k < count; ++k)
                 if (lanes.path[k] != group_path[k]) {
                     lanes.path[k] = group_path[k];
+                    if (partner_arrival[k] >= 0) // The partner's wait beyond the new walk.
+                        lanes.partner_wait[k] = std::max(0.0f, partner_arrival[k] - float(lanes.path[k]));
                     gather_run(k, nullptr); // Its run starts from the new walk.
                     changed = true;
                 }
@@ -753,6 +779,7 @@ int Bot::worker_choose_group(int excluded) {
     // on its way, keeps it.
     if (choice < 0 || choice != target)
         cluster_run.clear();
+    siege_group = choice >= 0 && lanes.siege_won[choice] ? choice : -1;
     if (choice >= 0 && cluster_run.empty() && lanes.run_won[choice]) {
         gather_run(std::size_t(choice), &cluster_run);
         std::reverse(cluster_run.begin(), cluster_run.end());
@@ -825,14 +852,7 @@ void Bot::worker_farm() {
     bool engaged = false;
     if (target >= 0 && groups[target].status == CampGroup::alive && groups[target].health < groups[target].max_health) {
         const auto &h = groups[target];
-        int reach = 0;
-        bool hard = false;
-        for (const auto &c : h.camps)
-            if (c.health > 0) {
-                reach = std::max(reach, int(c.stats.base_attack_range));
-                hard = hard || float(c.stats.base_health) >= policy::hard_camp_health;
-            }
-        engaged = hard && distance(position, h.centre) <= reach + 3;
+        engaged = h.live_hard && distance(position, h.centre) <= h.live_reach + 3;
     }
     // At most one choice per turn: one made earlier this turn stands.
     if (last_plan != int(round) &&
@@ -907,18 +927,12 @@ void Bot::worker_farm() {
     // reach, until a teammate claiming it too is there (policy::
     // hard_camp_health). Camp choice weighs the wait each replan.
     const bool woken = g.attacked >= int(round) - rules::settings().camp_sleep_time - 1;
-    int far = 0;
-    bool hard = false;
-    for (const auto &c : g.camps)
-        if (c.health > 0) {
-            far = std::max(far, int(c.stats.base_attack_range));
-            hard = hard || float(c.stats.base_health) >= policy::hard_camp_health;
-        }
-    if (hard && !woken) {
+    const int far = g.live_reach;
+    if (g.live_hard && !woken) {
         bool partner = false;
         for (std::size_t i = 0; i < allies.size(); ++i)
-            partner = partner || (TeamMemory::objective(shared.get(ally_slot[i]), groups.size()) == target &&
-                                  distance(allies[i].position, g.centre) <= far + 3);
+            partner = partner ||
+                      (mate_claim(ally_slot[i]) == target && distance(allies[i].position, g.centre) <= far + 3);
         if (!partner) {
             auto wait = siege_tiles(g, float(far + 1), false);
             subtract(wait, blocked);
@@ -930,19 +944,13 @@ void Bot::worker_farm() {
             return;
         }
     }
-    float clear = g.health / dps(g);
-    float spell_range = 0;
-    for (const auto &s : spells)
-        if (s.modifier > 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                               s.kind == bc::ability_kind::aoe_damage))
-            spell_range = std::max(spell_range, s.range);
-    // Spell-range sieges are for ranged casters, and only when no ally is
-    // closer to the camp: camps attack the nearest champion, so with a closer
-    // ally we attack from normal range.
-    bool siege =
-        range > 1 && spell_range > 3 && clear_loss(g, clear) > health * (1 - policy::casualty_margin);
-    if (siege && ally_draws_attacks(g))
-        siege = false;
+    // A spell-range siege as camp choice planned it (siege_group), unless an
+    // ally is closer to the camps: they attack the nearest champion, so with
+    // a closer ally we attack from normal range. Farming decided it again
+    // from another formula (our rate alone, its own threshold) and could
+    // disagree with the plan.
+    const float spell_range = siege_reach;
+    bool siege = siege_group == target && !ally_draws_attacks(g);
     // A mask kept between turns, cleared: a new one costs an allocation.
     auto &goals = farm_goals;
     goals.clear();
@@ -1079,7 +1087,7 @@ int Bot::claimed_by(const ObservedUnit &ally) const {
     // The camp an ally's published claim names, or -1.
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
         if (s != slot && ally.champion() == roster[s])
-            return TeamMemory::objective(shared.get(s), groups.size());
+            return mate_claim(s);
     return -1;
 }
 
@@ -1273,7 +1281,7 @@ int Bot::cluster_walk(int a, int b) const {
 
 bool Bot::teammate_claims(int group) const {
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (s != slot && TeamMemory::objective(shared.get(s), unsigned(groups.size())) == group)
+        if (mate_claim(s) == group)
             return true;
     return false;
 }

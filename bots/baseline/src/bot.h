@@ -74,6 +74,17 @@ struct CampGroup {
     // at p is the distance from p to the nearest camp.
     std::unique_ptr<std::uint16_t[]> walk_tiles;
     enum Status { alive, capture, cooling } status = alive;
+    // Facts every reader shares, of the whole group (as it respawns) and of
+    // its living camps (refresh_live(), whenever their health is read):
+    // hard (a camp of policy::hard_camp_health or more: a party's clear),
+    // the longest camp reach, and the strikers' work (striker_work()).
+    // Camp choice and farming read the living ones while the group lives:
+    // a group whose golem was dead was a hard party wait for the choice
+    // and none for the farming.
+    bool hard = false, live_hard = false;
+    int reach = 0, live_reach = 0;
+    float whole_work = 0, live_work = 0;
+    void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
     float count_splash() const;
@@ -84,18 +95,36 @@ struct CampGroup {
     mutable std::optional<bc::bitboard> tile_mask;
 };
 
-// The share of strength x clear time a clear costs the champions clearing it
-// (camp choice's risk, the siege decision), by the camps that strike back,
-// fitted to measured clears: one 0.68, two 0.5, three or more 0.35 (they die
-// one by one, and ranged attackers stay within reach of fewer of them). A flat
-// 0.68 for every group of several camps overstated the cost of two- and
-// three-monster camps 1.4-3x; the fit won 16 more of 490 games (46 of 70 head
-// to head) and raised gems by round 300 from 97 to 107.
-inline float camp_loss_factor(const CampGroup &g) {
-    int strikers = 0;
-    for (const auto &c : g.camps)
-        strikers += c.stats.base_strength > 0;
-    return strikers <= 1 ? (g.camps.size() > 1 ? 0.68f : 1.0f) : strikers == 2 ? 0.5f : 0.35f;
+// The camp damage of a clear per unit of clearing rate (camp choice's risk,
+// the siege decision): combat() hits the camps that strike back first, the
+// most strength per health first, so each strikes until the health cleared
+// before it and its own is gone; the sum of strength x that health, divided
+// by the rate, is the clear's camp damage. Harmless camps cost nothing. A
+// fitted share of strength x the whole clear (0.68, 0.5, 0.35 by strikers)
+// stood in while the harmless clusters went first: the elk beside two
+// clusters struck through the whole clear, and one beside twenty would have.
+// Whole: the group as it respawns. A group has few strikers: each goes into
+// place as it is found (no sort call).
+inline float striker_work(const CampGroup &g, bool whole) {
+    static std::vector<std::pair<float, float>> strikers; // Strength, health.
+    strikers.clear();
+    for (const auto &c : g.camps) {
+        const float health = whole ? float(c.stats.base_health) : c.health;
+        if (c.stats.base_strength <= 0 || health <= 0)
+            continue;
+        const std::pair<float, float> s{float(c.stats.base_strength), health};
+        std::size_t k = strikers.size();
+        strikers.push_back(s);
+        for (; k > 0 && s.first * strikers[k - 1].second > strikers[k - 1].first * s.second; --k)
+            strikers[k] = strikers[k - 1];
+        strikers[k] = s;
+    }
+    float work = 0, cleared = 0;
+    for (const auto &[strength, health] : strikers) {
+        cleared += health;
+        work += strength * cleared;
+    }
+    return work;
 }
 struct ObservedUnit {
     // The roster's champion or the camp group's camp: those never move.
@@ -298,6 +327,18 @@ enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce,
 
 // One bit per tile, row-major, from the engine's packed export of a mask: one
 // call of about 200 fuel, where testing tiles one by one costs a call each.
+// Tiles a unit closes on us in a round and still strikes: a melee one walks
+// and strikes in one turn, a ranged one cannot walk and shoot unless a ready
+// attack reset gives the shot back; a ready dash adds its tiles (in place of
+// the walk when no walk can follow it). One rule for the chase, the threat
+// bits and the exit lanes.
+inline int closing_tiles(const ObservedUnit &e, bool reset, bool dash) {
+    const int walk = e.range <= 1 || reset ? e.move_speed : 0;
+    if (!dash || e.dash_range <= 0)
+        return walk;
+    return e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range));
+}
+
 class TileBits {
     // The export writes every byte, so the buffer is never zero-filled (memory
     // fills cost about a fuel per byte).
@@ -346,6 +387,9 @@ class Bot {
     std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
+    // The group camp choice planned a spell-range siege of (-1: none), for
+    // worker_farm() to stand as planned.
+    int siege_group = -1;
     // Walled off (camp bodies sealing the only route): turns of a walk that
     // made no step, and the group or altar left out until a round.
     int farm_stalls = 0, stuck_group = -1, stuck_group_until = -1;
@@ -354,7 +398,6 @@ class Bot {
     vec2 previous{-1, -1}, position{}, ward{-1, -1}, origin_position{-1, -1};
     float health = 0, max_health = 0, strength = 0, focus = 0, camp_multiplier = 1, camp_mitigation = 1,
           mitigation = 1;
-    float nearby_healing = 0;
     unsigned gems = 0;
     int range = 1;
     bc::champion_type type{};
@@ -373,9 +416,11 @@ class Bot {
     std::size_t camp_lanes = 0;
     std::vector<bc::champion> roster;
     std::vector<ObservedUnit> enemies, allies;
-    // Each ally in view's roster slot, in allies' order, and those slots' bits.
+    // Each ally in view's roster slot, in allies' order, and those slots'
+    // bits; and each slot's entry in allies (-1: out of view).
     std::array<std::uint8_t, TeamMemory::slots> ally_slot{};
     unsigned seen_slots = 0;
+    std::array<int, TeamMemory::slots> slot_ally{};
     // Each enemy in view's entry in enemy_roster, in enemies' order.
     std::array<std::uint8_t, 8> enemy_slot{};
     // This round's fight report: the group nearest the enemy we see and the
@@ -583,9 +628,9 @@ class Bot {
     int map_width = 0, map_height = 0;
     // Immutable: camp tiles and the group on each (tile_group is written, and
     // read, only where camp_tile is set), bush tiles, tiles no area spell may
-    // be centred on (walls, holes and altars), and the enemy spawn.
+    // be centred on (walls, holes and altars), and the two spawns.
     std::unique_ptr<std::uint16_t[]> tile_group;
-    TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile;
+    TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile, own_spawn_tile;
     // Camps in view, refreshed by each observation (with the sleeping ones
     // when asleep_known, and the living ones); unseen ward placements.
     TileBits camp_in_view, camp_asleep, camp_living, unseen_tile;
@@ -640,8 +685,9 @@ class Bot {
     float siege_reach = 0;
     std::size_t siege_cursor = 0;
     // Every camp's tile; walls, altars and the enemy spawn, which no dash may
-    // cross or land on; and the enemy spawn's tiles.
-    bc::bitboard camp_tiles{bc::uninitialized}, dash_terrain{bc::uninitialized};
+    // cross or land on; our spawn (the engine builds a new mask per call,
+    // about 600 fuel); and the enemy spawn's tiles.
+    bc::bitboard camp_tiles{bc::uninitialized}, dash_terrain{bc::uninitialized}, own_spawn{bc::uninitialized};
     std::vector<vec2> enemy_spawn_tiles;
     // Items changed since the last stat refresh: only shopping changes them.
     bool equipment_dirty = true;
@@ -679,6 +725,11 @@ class Bot {
     const bc::distance_field &altar_walk();
     // Searches to path_bound (level 1), twice it (2) or completely (3).
     void measure_paths(int level);
+    // The walk from a tile to a group: its own field's when built, else a
+    // lower bound (the straight line, the landmark fields).
+    int walk_bound(vec2 from, int group) const;
+    // The lower bound itself, from the landmark fields' values at `from`.
+    int landmark_bound(int group, vec2 from, int home_here, int altar_here) const;
     void measure_farthest(const bc::distance_field &field, int CampGroup::*farthest);
     bool background_search();
     void prepare_routes();
@@ -734,7 +785,7 @@ class Bot {
     struct ExitRisk {
         float damage = 0, margin = 0;
     };
-    ExitRisk exit_risk(vec2 tile, float floor, float mitigation, unsigned carried, bool immune) const;
+    ExitRisk exit_risk(vec2 tile, float floor, float mitigation, float camp_share, unsigned carried, bool immune) const;
     // Our health, shield and a ready shield spell's (cast as we walk), given
     // our shield and slot readiness, or read here.
     float exit_pool(float shield, const std::array<bool, 2> &is_ready) const;
@@ -753,7 +804,11 @@ class Bot {
     float enemy_power(vec2 at) const;
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
-    float clear_loss(const CampGroup &g, float clear_time) const;
+    // Healing per round a clear gets: our own heal if it can target us, and a
+    // teammate's (observed in view, else its kit's) when it claims the group.
+    float self_heal() const;
+    float slot_heal(unsigned s) const;
+    float group_heal(int group) const;
     // Whether a visit to the group can afford the walk out of its reach
     // under its fire (camp choice's visit_health of 100+).
     bool visit_affordable(const CampGroup &g) const;
@@ -776,6 +831,8 @@ class Bot {
     // combat.cpp, micro.cpp
     bool combat(bool fighting_champions, int farm_group = -1, bool escaping = false);
     float kill_value(const ObservedUnit &enemy) const;
+    // What our own death costs, as a kill of us is worth to them.
+    float death_cost() const { return 200 + float(gems) * 7 + strength * 3; }
     // How much an enemy diving a teammate counts in our choices (1: no dive).
     float peel_factor(const ObservedUnit &enemy) const;
     bool attack_combo(bool escaping);
@@ -826,7 +883,7 @@ class Bot {
     // A run member is open on arrival: no teammate's claim on it (`claimed`),
     // no enemy seen near it lately, and alive or back by then.
     bool cluster_open(int group, int arrival, bool claimed) const;
-    // A teammate's published objective names the group; an enemy was seen
+    // A teammate claims the group (mate_claim()); an enemy was seen
     // near it within policy::worker_sighting_memory rounds.
     bool teammate_claims(int group) const;
     bool enemy_near_lately(int group) const;
@@ -836,12 +893,19 @@ class Bot {
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
     int claimed_by(const ObservedUnit &ally) const;
+    // A teammate's camp claim: the group a living teammate's plain claim
+    // names, else -1 (every reader of claims uses this one rule).
+    int mate_claim(unsigned s) const;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).
     bool confront_hidden();
+    // The fight rule: our power (ours: with the teammates that arrive) at the
+    // weight of who is near, against theirs (worker_skirmish(),
+    // confront_hidden()).
+    bool fight_favourable(float ours, float theirs, bool opening, bool dive) const;
     // Out of a fight too dangerous to stay in (worker_skirmish()).
     bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.

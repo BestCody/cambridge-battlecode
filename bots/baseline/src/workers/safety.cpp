@@ -178,16 +178,7 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
 }
 
 namespace {
-// Tiles an enemy closes on us in a round and still strikes: a melee one walks
-// and strikes in one turn, a ranged one cannot walk and shoot unless a ready
-// attack reset gives the shot back; a ready dash adds its tiles (in place of
-// the walk when no walk can follow it).
-int closing(const ObservedUnit &e, bool dash) {
-    const int walk = e.range <= 1 || e.reset_ready ? e.move_speed : 0;
-    if (!dash || e.dash_range <= 0)
-        return walk;
-    return e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range));
-}
+int closing(const ObservedUnit &e, bool dash) { return closing_tiles(e, e.reset_ready, dash); }
 
 // Our dash: tiles, rounds until usable (-1: no dash), cooldown, and whether a
 // walk can follow it.
@@ -245,7 +236,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     // too dangerous where it stands leaves, as one below
     // fight_retreat_health heads home (health_recovery_needed()).
     const bool immune = passive == bc::passive_type::stun_immunity;
-    if (const auto risk = exit_risk(position, health, mitigation, gems, immune); risk.damage > 0) {
+    if (const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune); risk.damage > 0) {
         std::array<bool, 2> is_ready{};
         for (unsigned i = 0; i < spells.size(); ++i)
             if (spells[i].kind == bc::ability_kind::shield)
@@ -259,7 +250,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
         if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
             a.health < a.max_health * policy::fight_retreat_health)
             continue;
-        const auto risk = exit_risk(a.position, a.health, a.mitigation, unsigned(a.gems), a.immune);
+        const auto risk = exit_risk(a.position, a.health, a.mitigation, a.camp_mitigation, unsigned(a.gems), a.immune);
         if (risk.damage <= 0 || a.health + a.shield + a.ready_shield > risk.damage + risk.margin)
             staying |= 1u << k;
     }
@@ -290,7 +281,10 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     }
     if (foes.empty())
         return false;
-    std::sort(foes.begin(), foes.end(), [](const Foe &a, const Foe &b) { return a.lasts < b.lasts; });
+    // Killed in the order that takes the least damage, as striker_work()
+    // orders camps: the most damage per round of killing first (the quickest
+    // kill first left a slow, hard-hitting foe striking longest).
+    std::sort(foes.begin(), foes.end(), [](const Foe &a, const Foe &b) { return a.lasts * b.rate < b.lasts * a.rate; });
     // Each falls when the kills before it and its own are done.
     for (std::size_t k = 1; k < foes.size(); ++k)
         foes[k].lasts += foes[k - 1].lasts;
@@ -497,16 +491,7 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
             // Safety is the nearest teammate in view further from the
             // enemies than we are (on the fight path; a retreat heads home),
             // else home.
-            static const vec2 home = [] {
-                const auto tiles = bc::map::spawn_region(bc::team::ally).positions();
-                int x = 0, y = 0, n = 0;
-                for (const auto p : tiles) {
-                    x += p.x;
-                    y += p.y;
-                    ++n;
-                }
-                return n ? vec2{x / n, y / n} : vec2{0, 0};
-            }();
+            const vec2 home = home_centre;
             const auto exposure = [&](vec2 at) {
                 int nearest = std::numeric_limits<int>::max();
                 for (const auto &e : enemies)
@@ -558,7 +543,7 @@ bool Bot::run_to_safety() {
     // race needed it; spells that allow walking still go off. The step away
     // (toward any teammate in the fight) is cheaper but is not the run the
     // race checked: it lost 109 gems a game to v35 where this won 67.
-    bc::bitboard goals = bc::map::spawn_region(bc::team::ally);
+    bc::bitboard goals = own_spawn;
     vec2 toward = home_centre;
     for (std::size_t i = 0; i < allies.size(); ++i)
         if (int(ally_slot[i]) == chase.mate) {

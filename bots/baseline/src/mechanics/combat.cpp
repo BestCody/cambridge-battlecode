@@ -45,13 +45,16 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
                !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
     };
+    // Our rate on the farmed group's camps (camp choice's own).
+    const float camp_rate = !fighting_champions && farm_group >= 0 ? dps(groups[farm_group]) : 1.0f;
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
             return 0.0f;
         float effective = damage * (u.enemy() ? u.mitigation : camp_multiplier);
         float value = std::min(effective, u.health + u.shield);
+        const float useful = value;
         if (effective >= u.health + u.shield) {
-            value += u.enemy() ? kill_value(u) : u.strength * 8 + 20;
+            value += u.enemy() ? kill_value(u) : u.strength * 8;
             if (passive == bc::passive_type::reset_cooldowns_on_kill)
                 value += 60;
         }
@@ -62,14 +65,19 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             if (u.channel && cc && !u.immune)
                 value += 120 + u.gems * 3;
         } else
-            value += u.strength * effective / std::max(1.0f, u.health) * 3;
+            // Strikers first (striker_work()): a hit ends a striker
+            // useful / rate rounds sooner and spares its strength each of
+            // them; a harmless camp spares nothing, as every camp must fall.
+            // A one-hit kill on a harmless cluster outranked a hit on the elk
+            // beside it, which struck through the whole clear.
+            value += u.strength * useful / camp_rate;
         if (cc && !(u.stunned && u.stun_time > 0) && !u.immune)
             value += controls[&u - targets.data()];
         if (u.retaliation() > 0 && effective > 0) {
             const float recoil = u.retaliation() * mitigation;
             value -= recoil * (1 + std::min(2.0f, gems / 100.0f));
             if (recoil >= health + own_shield)
-                value -= 200 + gems * 7 + strength * 3;
+                value -= death_cost();
         }
         return value;
     };
@@ -296,7 +304,12 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
-            if (farm_group >= 0)
+            // Only a cast that strikes the group wakes it: a heal or shield
+            // cast on the way woke sleeping camps in our records (and let a
+            // hard group's party go in without its partner). A reset's
+            // attack marks the group as any attack does.
+            if (farm_group >= 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
+                                    s.kind == bc::ability_kind::aoe_damage))
                 groups[farm_group].attacked = round;
             bool gone = false;
             for (std::size_t i = 0; i < targets.size(); ++i) {
@@ -326,8 +339,7 @@ float Bot::basic_damage() const {
     // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
     if (passive != bc::passive_type::missing_health_damage)
         return strength;
-    return strength * (1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
-                               (1 - health / std::max(1.0f, max_health)));
+    return strength * hor_bonus(health, max_health);
 }
 
 float Bot::peel_factor(const ObservedUnit &enemy) const {

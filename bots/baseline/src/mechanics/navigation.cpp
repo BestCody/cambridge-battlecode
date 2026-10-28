@@ -291,7 +291,7 @@ void Bot::drop_waking_landings(bc::bitboard &landings, int reach, float radius, 
 }
 
 bool Bot::health_recovery_needed() const {
-    if (bc::map::spawn_region(bc::team::ally).is_set(position))
+    if (own_spawn_tile[tile_index(position)])
         return health < max_health;
     // Also home when the health left only covers the damage it is taking
     // (camp damage included) for the rounds it takes to walk out of reach of
@@ -312,7 +312,7 @@ bool Bot::health_recovery_needed() const {
 
 void Bot::retreat_to_spawn() {
     auto &me = bc::self();
-    const auto &spawn = bc::map::spawn_region(bc::team::ally);
+    const auto &spawn = own_spawn;
     if (spawn.is_set(position) ||
         me.state().intersects(bc::champion_state::recalling | bc::champion_state::teleporting |
                               bc::champion_state::submitting_gems) ||
