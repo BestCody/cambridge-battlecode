@@ -26,6 +26,9 @@ int Bot::worker_choose_group(int excluded) {
     // each claim is also a partner), and an ally or an enemy standing on it.
     enum : std::uint8_t { ally_on = 2, enemy_on = 4 };
     static std::vector<std::uint8_t> claims, marks;
+    // A hard group's partner's arrival, in rounds (-1: its party is its
+    // claimants), for its wait beyond our walk (gather()).
+    static std::vector<float> partner_arrival;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
@@ -253,36 +256,55 @@ int Bot::worker_choose_group(int excluded) {
             lanes.claim_rate[i] = claim_rates[i];
             lanes.heal[i] = claim_heals[i];
         }
-        // A hard group's party: its claimants, else the nearest free
-        // teammate, whose walk beyond ours is the wait (from where it is in
-        // view, else from its claimed group, else from home).
+        // A hard group's party: its claimants, else the teammate who could be
+        // there soonest: what keeps it busy (the rest of a clear or capture
+        // it is on, a recall), then its walk (walk_bound(): from where it is
+        // in view, else from its claimed group, else from home). One in a
+        // fight, or on its way to one, is not free. Its arrival beyond our
+        // walk is the wait, measured again whenever our walk is. The nearest
+        // by straight line, busy or not, was waited for by champions that
+        // stood beside golems for a partner that never came.
+        partner_arrival.assign(count, -1.0f);
         for (std::size_t i = 0; i < count; ++i) {
             lanes.partner_wait[i] = 0;
             if (!lanes.hard[i])
                 continue;
             unsigned party = 0;
-            int nearest = -1, nearest_mate = bc::distance_field::unreachable;
+            int nearest = -1;
+            float soonest = std::numeric_limits<float>::max();
             for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s) {
                 if (s == slot || !living(s))
                     continue;
                 const unsigned code = shared.get(s);
-                if (code == i + 1)
+                if (code == i + 1) {
                     party |= 1u << s;
-                vec2 where = code >= 1 && code <= groups.size() ? groups[code - 1].centre : home_centre;
-                const ObservedUnit *seen = nullptr;
+                    continue;
+                }
+                if (code == TeamMemory::unavailable || TeamMemory::fight_group(code, groups.size()) >= 0)
+                    continue;
+                vec2 where = home_centre;
+                float busy = 0;
+                if (code >= 1 && code <= groups.size()) {
+                    const auto &h = groups[code - 1];
+                    where = h.centre;
+                    if (h.status == CampGroup::capture)
+                        busy = float(std::max(0, capture_payout(h) - int(round)));
+                    else if (h.status == CampGroup::alive && h.health < h.max_health)
+                        busy = h.health / std::max(1.0f, mate_rate[s]) + float(capture_time + 1);
+                } else if (code == TeamMemory::recall)
+                    busy = float(recall_turns);
                 for (std::size_t k = 0; k < allies.size(); ++k)
                     if (ally_slot[k] == s)
-                        seen = &allies[k];
-                if (seen)
-                    where = seen->position;
-                if (const int d = distance(where, groups[i].centre); d < nearest_mate) {
-                    nearest_mate = d;
+                        where = allies[k].position;
+                if (const float arrival = busy + float(walk_bound(where, int(i))); arrival < soonest) {
+                    soonest = arrival;
                     nearest = int(s);
                 }
             }
             if (!party && nearest >= 0) {
                 party = 1u << nearest;
-                lanes.partner_wait[i] = float(std::max(0, nearest_mate - lanes.path[i]));
+                partner_arrival[i] = soonest;
+                lanes.partner_wait[i] = std::max(0.0f, soonest - float(lanes.path[i]));
             }
             float rate = 0, stun = own_stun, shield = own_shield, shield_rate = own_shield_rate,
                   tank = camp_mitigation * mitigation, party_health = health, party_spare = spare, heal = own_heal;
@@ -738,6 +760,8 @@ int Bot::worker_choose_group(int excluded) {
             for (std::size_t k = i; k < i + 4 && k < count; ++k)
                 if (lanes.path[k] != group_path[k]) {
                     lanes.path[k] = group_path[k];
+                    if (partner_arrival[k] >= 0) // The partner's wait beyond the new walk.
+                        lanes.partner_wait[k] = std::max(0.0f, partner_arrival[k] - float(lanes.path[k]));
                     gather_run(k, nullptr); // Its run starts from the new walk.
                     changed = true;
                 }

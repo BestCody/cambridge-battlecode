@@ -70,6 +70,10 @@ void Bot::play_worker_turn() {
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
+        // A dead Prism's bag went to its killer: it published its last bag
+        // for the whole respawn, and teammates counted those gems as ours.
+        if (passive == bc::passive_type::gem_focus)
+            shared.set_prism_bag(0);
         chase.mode = Chase::none;
         hidden.reset();
         buy_equipment();

@@ -374,6 +374,22 @@ void Bot::initialise() {
     std::sort(roster.begin(), roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
     roster_power.reserve(roster.size());
     roster_kits.reserve(roster.size());
+    // A type's power from its design: its health with its shield, against
+    // its damage. The SDK already holds every design; building another
+    // reloads it.
+    const auto design_power = [&](bc::champion_type type) {
+        const auto index = static_cast<std::size_t>(type);
+        std::optional<bc::champion> loaded;
+        const auto &immutable =
+            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
+        const auto design = immutable.base_stats();
+        const auto &described = kit_of(immutable, type).spells;
+        float hp = design.base_health;
+        for (const auto &spell : described)
+            if (spell.kind == bc::ability_kind::shield)
+                hp += design.base_focus * spell.modifier;
+        return std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus));
+    };
     for (std::size_t s = 0; s < roster.size(); ++s) {
         // Draft order is public and persistent. A faster ally may already have
         // dashed into a bush before this champion's first turn, so even its
@@ -391,23 +407,21 @@ void Bot::initialise() {
         // The type's kit now, from its design, rather than on first sight:
         // its spells, described once.
         const auto &described = kit_of(immutable, drafted).spells;
-        float hp = design.base_health;
-        for (const auto &spell : described)
-            if (spell.kind == bc::ability_kind::shield)
-                hp += design.base_focus * spell.modifier;
-        roster_power.push_back(std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus)));
+        roster_power.push_back(design_power(drafted));
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
                                    design.camp_damage_multiplier,
                                float(design.base_focus), float(design.base_health)});
     }
-    float ally_power_sum = 0;
-    for (auto p : roster_power)
-        ally_power_sum += p;
-    enemy_average_power = roster_power.empty() ? 0.0f : ally_power_sum / float(roster_power.size());
     enemy_roster = bc::champions(bc::team::enemy);
     std::sort(enemy_roster.begin(), enemy_roster.end(),
               [](const auto &a, const auto &b) { return id(a) < id(b); });
+    // Their types are public without vision: the enemies' average is theirs
+    // (it was our own roster's).
+    float enemy_power_sum = 0;
+    for (const auto &e : enemy_roster)
+        enemy_power_sum += design_power(e.champion_name());
+    enemy_average_power = enemy_roster.empty() ? 0.0f : enemy_power_sum / float(enemy_roster.size());
     enemy_respawn.assign(enemy_roster.size(), -1);
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
@@ -672,6 +686,24 @@ void Bot::measure_farthest(const bc::distance_field &field, int CampGroup::*fart
     }
 }
 
+int Bot::walk_bound(vec2 from, int group) const {
+    if (const std::uint16_t *walks = walk_of[group])
+        return walks[tile_index(from)];
+    // As measure_paths() bounds a walk it has not searched: the straight
+    // line to the nearest camp, and a landmark field L bounds it from both
+    // sides (L(nearest camp) - L(here), L(here) - L(farthest camp)).
+    const auto &g = groups[group];
+    int least = std::numeric_limits<int>::max();
+    for (const auto &c : g.camps)
+        least = std::min(least, distance(from, c.position));
+    if (const int here = home_field.get(from); here != bc::distance_field::unreachable)
+        least = std::max({least, g.home_distance - here, here - g.home_farthest});
+    if (altar_field_ready)
+        if (const int here = altar_field.get(from); here != bc::distance_field::unreachable)
+            least = std::max({least, g.altar_distance - here, here - g.altar_farthest});
+    return least;
+}
+
 void Bot::measure_paths(int level) {
     // Walking distance from here to each group. Terrain never changes, so
     // this is reused until we move; dynamic occupancy is routed locally.
@@ -877,7 +909,7 @@ float Bot::camp_reach_damage() const {
             for (const auto &c : g.camps)
                 if (c.health > 0 && distance(position, c.position) <= int(c.stats.base_attack_range))
                     damage += std::max(c.read_strength, float(c.stats.base_strength));
-    return damage * camp_mitigation;
+    return damage * camp_mitigation * mitigation; // As incoming() and clear_loss() take camp hits.
 }
 
 void Bot::note_hidden_hit(float lost) {

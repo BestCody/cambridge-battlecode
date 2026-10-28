@@ -691,6 +691,9 @@ class Bot {
     const bc::distance_field &altar_walk();
     // Searches to path_bound (level 1), twice it (2) or completely (3).
     void measure_paths(int level);
+    // The walk from a tile to a group: its own field's when built, else a
+    // lower bound (the straight line, the landmark fields).
+    int walk_bound(vec2 from, int group) const;
     void measure_farthest(const bc::distance_field &field, int CampGroup::*farthest);
     bool background_search();
     void prepare_routes();

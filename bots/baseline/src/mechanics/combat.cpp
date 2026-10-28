@@ -304,7 +304,12 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
-            if (farm_group >= 0)
+            // Only a cast that strikes the group wakes it: a heal or shield
+            // cast on the way woke sleeping camps in our records (and let a
+            // hard group's party go in without its partner). A reset's
+            // attack marks the group as any attack does.
+            if (farm_group >= 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
+                                    s.kind == bc::ability_kind::aoe_damage))
                 groups[farm_group].attacked = round;
             bool gone = false;
             for (std::size_t i = 0; i < targets.size(); ++i) {
