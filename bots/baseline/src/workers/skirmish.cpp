@@ -87,24 +87,12 @@ bool Bot::worker_skirmish() {
     // lone champions hit in 34-78% of contacts and leave in 29-61% whatever
     // the odds, dying in 0-6%; ours, staying at aggression up to 3 times
     // their health against them, died in 10-32%.
-    int mates = 0;
-    for (const auto &a : allies)
-        mates += distance(position, a.position) <= 6;
     if (int(round) - contact_last > policy::contact_gap)
         contact_start = int(round);
     contact_last = int(round);
     const bool opening = int(round) - contact_start < policy::lone_opening;
-    const float stay = mates == 0 ? 1.0f : (mates == 1 ? policy::pair_aggression : policy::aggression);
     const bool dive = peel_factor(victim) > 1;
-    // Alone after the opening, our own power against theirs: teammates that
-    // might arrive kept ours in fights against two or more until they died
-    // (13% of healthy lone contacts, willow best girl's 4-5%; its champions
-    // trade the opening and are out of reach by round 5 in half of them).
-    const float holding = mates == 0 && !opening && !dive ? own_power() : ours;
-    // Heart of Ruin stays in (policy::hor_fight_factor).
-    const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
-    bool favourable = holding * (opening || dive ? policy::aggression : stay) * tank *
-                          (1.0f + policy::behind_fight_bonus * behind_pressure()) >= theirs;
+    bool favourable = fight_favourable(ours, theirs, opening, dive);
     // Too dangerous to stay, decided every round: our health and shields
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
@@ -118,7 +106,7 @@ bool Bot::worker_skirmish() {
     // to finish, still holds us when we would survive the damage without
     // the victim's part.
     const bool immune = passive == bc::passive_type::stun_immunity;
-    const auto risk = exit_risk(position, health, mitigation, gems, immune);
+    const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune);
     float pool = health;
     bool too_dangerous = false, overridden = false;
     if (risk.damage > 0) {
@@ -366,7 +354,7 @@ bool Bot::confront_hidden() {
             is_ready[i] = ready(abilities[i], can_cast);
     }
     const float pool = exit_pool(self_shield(), is_ready);
-    if (const auto risk = exit_risk(position, health, mitigation, gems, immune);
+    if (const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune);
         risk.damage > 0 && pool <= risk.damage + risk.margin) {
         debug_block({ std::printf("HIDDENACT r=%u id=%u leave\n", round, id(bc::self())); });
         return leave_fight(at);
@@ -426,16 +414,9 @@ bool Bot::confront_hidden() {
     };
     if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
         return out();
-    // The fight rule, as worker_skirmish() weighs it for a champion alone,
-    // in a pair or with more.
-    int mates = 0;
-    for (const auto &a : allies)
-        mates += distance(position, a.position) <= 6;
-    const float stay = mates == 0 ? 1.0f : (mates == 1 ? policy::pair_aggression : policy::aggression);
-    const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
-    const float ours = mates == 0 ? own_power() : friendly_power(at);
+    // The fight rule worker_skirmish() decides by (no opening or dive here).
     const float theirs = std::max(enemy_power(at), reported_power(at)) + respawn_threat(position);
-    if (ours * stay * tank < theirs)
+    if (!fight_favourable(friendly_power(at), theirs, false, false))
         return out();
     // The unseen bush tile within a step nearest it that we would walk out
     // of alive.
@@ -444,7 +425,7 @@ bool Bot::confront_hidden() {
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
     for (const vec2 tile : step_positions())
         if (tile != position && bush_tile[tile_index(tile)] && !visible.is_set(tile) && distance(tile, at) < nearest &&
-            exit_risk(tile, health, mitigation, gems, immune).damage < pool) {
+            exit_risk(tile, health, mitigation, camp_mitigation, gems, immune).damage < pool) {
             nearest = distance(tile, at);
             best = tile;
         }
@@ -499,4 +480,27 @@ bool Bot::worker_pursue() {
     if (runner.health > runner.max_health * policy::pursue_health * (1.0f + 0.5f * behind))
         return false;
     return advance_attack(runner.position);
+}
+
+bool Bot::fight_favourable(float ours, float theirs, bool opening, bool dive) const {
+    // A champion with no teammate within 6 fights the opening exchange of a
+    // contact at aggression and stays only while as strong as the enemy, one
+    // with a single teammate there at pair_aggression: willow best girl's
+    // lone champions hit in 34-78% of contacts and leave in 29-61% whatever
+    // the odds, dying in 0-6%; ours, staying at aggression up to 3 times
+    // their health against them, died in 10-32%.
+    int mates = 0;
+    for (const auto &a : allies)
+        mates += distance(position, a.position) <= 6;
+    const float stay = mates == 0 ? 1.0f : (mates == 1 ? policy::pair_aggression : policy::aggression);
+    // Alone after the opening, our own power against theirs: teammates that
+    // might arrive kept ours in fights against two or more until they died
+    // (13% of healthy lone contacts, willow best girl's 4-5%; its champions
+    // trade the opening and are out of reach by round 5 in half of them).
+    const float holding = mates == 0 && !opening && !dive ? own_power() : ours;
+    // Heart of Ruin stays in (policy::hor_fight_factor).
+    const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
+    return holding * (opening || dive ? policy::aggression : stay) * tank *
+               (1.0f + policy::behind_fight_bonus * behind_pressure()) >=
+           theirs;
 }

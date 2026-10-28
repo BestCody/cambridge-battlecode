@@ -12,7 +12,7 @@ bool Bot::worker_escape() {
     // still come.
     if (!worker_update_formation())
         publish(TeamMemory::recall);
-    if (bc::map::spawn_region(bc::team::ally).is_set(position)) {
+    if (own_spawn_tile[tile_index(position)]) {
         if (health >= max_health) {
             retreating = false;
             return false;
@@ -137,7 +137,7 @@ void Bot::play_worker_turn() {
         }
         return;
     }
-    const bool at_spawn = bc::map::spawn_region(bc::team::ally).is_set(position);
+    const bool at_spawn = own_spawn_tile[tile_index(position)];
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
         recall_tile = {-1, -1};
@@ -212,7 +212,7 @@ void Bot::fake_recall() {
     // each of ours. Teammates tell a real recall by its report. A channel
     // blocks every later action, so it is the turn's last; one already
     // going needs none, and a stun refuses it.
-    static const auto spawn = bc::map::spawn_region(bc::team::ally);
+    const auto &spawn = own_spawn;
     const auto state = bc::self().state();
     if (!state.contains(bc::champion_state::alive) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems) || state.contains(bc::champion_state::teleporting) ||
@@ -295,7 +295,7 @@ void Bot::worker_priority() {
                 continue;
             const bool lethal = burst >= hp + e.shield;
             const int tier = lethal ? priority_tier::finish : priority_tier::damage;
-            const float value = lethal ? burst + 200 + e.gems * 7 : burst;
+            const float value = lethal ? burst + kill_value(e) : burst;
             best = std::max(best, tier + std::min(int(value), priority_tier::span));
         }
         if (best > 0)

@@ -14,6 +14,27 @@ CampGroup::CampGroup(bc::map::camp_group g, std::span<CampMemory> members)
         centre /= static_cast<int>(camps.size());
     health = max_health;
     max_pressure = pressure;
+    for (const auto &m : camps) {
+        hard = hard || float(m.stats.base_health) >= policy::hard_camp_health;
+        reach = std::max(reach, int(m.stats.base_attack_range));
+    }
+    whole_work = striker_work(*this, true);
+    // Every camp lives at the start: the living facts are the whole's. (Worked
+    // out again, they took the first turn past its fuel on a 130-group map.)
+    live_hard = hard;
+    live_reach = reach;
+    live_work = whole_work;
+}
+
+void CampGroup::refresh_live() {
+    live_hard = false;
+    live_reach = 0;
+    for (const auto &m : camps)
+        if (m.health > 0) {
+            live_hard = live_hard || float(m.stats.base_health) >= policy::hard_camp_health;
+            live_reach = std::max(live_reach, int(m.stats.base_attack_range));
+        }
+    live_work = striker_work(*this, false);
 }
 
 float CampGroup::count_splash() const {
@@ -300,9 +321,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
     if (type == bc::champion_type::heart_of_ruin) {
         // Its passive adds up to half again to all its damage with missing
         // health; the readings leave it out.
-        const float bonus =
-            1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
-                    (1 - health / std::max(1.0f, max_health));
+        const float bonus = hor_bonus(health, max_health);
         strength *= bonus;
         damage_rate *= bonus;
         burst *= bonus;
@@ -365,8 +384,7 @@ void Bot::initialise() {
     auto a = me.abilities();
     spells = {describe(a[0]), describe(a[1])};
     for (const auto &s : spells)
-        if (s.range > 3 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                            s.kind == bc::ability_kind::aoe_damage))
+        if (siege_spell(s))
             siege_reach = std::max(siege_reach, s.range);
     if (bc::draft_memory.size() >= sizeof opening)
         std::memcpy(&opening, bc::draft_memory.data(), sizeof opening);
@@ -384,11 +402,14 @@ void Bot::initialise() {
             index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
         const auto design = immutable.base_stats();
         const auto &described = kit_of(immutable, type).spells;
-        float hp = design.base_health;
-        for (const auto &spell : described)
+        float hp = design.base_health, heal = 0;
+        for (const auto &spell : described) {
             if (spell.kind == bc::ability_kind::shield)
                 hp += design.base_focus * spell.modifier;
-        return std::sqrt(hp * spell_dps(described, design.base_strength, design.base_focus));
+            if (spell.kind == bc::ability_kind::heal)
+                heal += design.base_focus * spell.modifier / float(spell.cooldown);
+        }
+        return unit_power(hp, spell_dps(described, design.base_strength, design.base_focus), 0, heal, 1);
     };
     for (std::size_t s = 0; s < roster.size(); ++s) {
         // Draft order is public and persistent. A faster ally may already have
@@ -445,6 +466,8 @@ void Bot::initialise() {
         home_centre = count ? vec2{sx / count, sy / count} : position;
     }
     search_job_cost = turn_work() - search_start;
+    own_spawn = bc::map::spawn_region(bc::team::ally);
+    own_spawn_tile.load(own_spawn);
     const auto neutral_terrain = bc::map::walls() | bc::map::holes() | bc::map::altars();
     no_centre_tile.load(neutral_terrain);
     // The camp layout, as map::camp_groups() lists it, read with one engine
@@ -689,18 +712,22 @@ void Bot::measure_farthest(const bc::distance_field &field, int CampGroup::*fart
 int Bot::walk_bound(vec2 from, int group) const {
     if (const std::uint16_t *walks = walk_of[group])
         return walks[tile_index(from)];
-    // As measure_paths() bounds a walk it has not searched: the straight
-    // line to the nearest camp, and a landmark field L bounds it from both
-    // sides (L(nearest camp) - L(here), L(here) - L(farthest camp)).
+    return landmark_bound(group, from, home_field.get(from),
+                          altar_field_ready ? int(altar_field.get(from)) : bc::distance_field::unreachable);
+}
+
+int Bot::landmark_bound(int group, vec2 from, int home_here, int altar_here) const {
+    // The straight line to the nearest camp, and a landmark field L bounds
+    // the walk from both sides: the group is at least L(nearest camp) -
+    // L(here) and L(here) - L(farthest camp) away (unreachable: no bound).
     const auto &g = groups[group];
     int least = std::numeric_limits<int>::max();
     for (const auto &c : g.camps)
         least = std::min(least, distance(from, c.position));
-    if (const int here = home_field.get(from); here != bc::distance_field::unreachable)
-        least = std::max({least, g.home_distance - here, here - g.home_farthest});
-    if (altar_field_ready)
-        if (const int here = altar_field.get(from); here != bc::distance_field::unreachable)
-            least = std::max({least, g.altar_distance - here, here - g.altar_farthest});
+    if (home_here != bc::distance_field::unreachable)
+        least = std::max({least, g.home_distance - home_here, home_here - g.home_farthest});
+    if (altar_here != bc::distance_field::unreachable)
+        least = std::max({least, g.altar_distance - altar_here, altar_here - g.altar_farthest});
     return least;
 }
 
@@ -782,19 +809,8 @@ void Bot::measure_paths(int level) {
             group_path[i] = path;
             group_bounded[i] = 0;
         } else {
-            int straight = std::numeric_limits<int>::max();
-            for (const auto &c : groups[i].camps)
-                straight = std::min(straight, distance(position, c.position));
-            // A landmark field L bounds the walk from both sides: the group is
-            // at least L(nearest camp) - L(here) and L(here) - L(farthest
-            // camp) away.
-            const auto &g = groups[i];
-            int least = std::max(int(limit) + 1, straight);
-            if (connected)
-                least = std::max({least, g.home_distance - home_here, home_here - g.home_farthest});
-            if (altar_here != bc::distance_field::unreachable)
-                least = std::max({least, g.altar_distance - altar_here, altar_here - g.altar_farthest});
-            group_path[i] = least;
+            // Past the search's limit, and at least the landmark bound.
+            group_path[i] = std::max(int(limit) + 1, landmark_bound(int(i), position, home_here, altar_here));
         }
     }
 }
@@ -855,11 +871,13 @@ void Bot::observe() {
             judge_recall(enemies.emplace_back(enemy_roster[i], *info), i);
         }
     seen_slots = 0;
+    slot_ally.fill(-1);
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
         if (s == slot)
             continue;
         else if (const auto info = sighting(roster[s])) {
             ally_slot[allies.size()] = std::uint8_t(s);
+            slot_ally[s] = int(allies.size());
             seen_slots |= 1u << s;
             allies.emplace_back(roster[s], *info);
         }
@@ -909,7 +927,7 @@ float Bot::camp_reach_damage() const {
             for (const auto &c : g.camps)
                 if (c.health > 0 && distance(position, c.position) <= int(c.stats.base_attack_range))
                     damage += std::max(c.read_strength, float(c.stats.base_strength));
-    return damage * camp_mitigation * mitigation; // As incoming() and clear_loss() take camp hits.
+    return damage * camp_mitigation * mitigation; // As incoming() takes camp hits.
 }
 
 void Bot::note_hidden_hit(float lost) {
@@ -1167,6 +1185,7 @@ void Bot::observe_group(std::size_t i) {
             g.splash = g.full_splash;
             for (auto &c : g.camps)
                 c.health = c.stats.base_health;
+            g.refresh_live();
         }
         return;
     }
@@ -1286,6 +1305,7 @@ void Bot::observe_group(std::size_t i) {
     }
     g.health = health;
     g.pressure = pressure;
+    g.refresh_live();
     g.quiet = quiet ? int(round) : -10;
     g.quiet_records = camps.count(int(i));
     // Splash accelerates only the health shared by surviving targets.
@@ -1430,26 +1450,11 @@ float Bot::dps(const CampGroup &g) const {
 }
 
 bool Bot::visit_affordable(const CampGroup &g) const {
-    float reach = 0;
-    for (const auto &c : g.camps)
-        reach = std::max(reach, float(c.stats.base_attack_range));
+    // The reach camp choice reads (CampGroup's shared facts).
+    const float reach = float(g.status == CampGroup::alive ? g.live_reach : g.reach);
     const float exit_steps = std::max(0.0f, reach - float(range - 1));
     const float usable = std::max(100.0f, max_health * (1 - policy::retreat_health));
     return usable - g.pressure * exit_steps * camp_mitigation * mitigation >= 100.0f;
-}
-
-float Bot::clear_loss(const CampGroup &g, float clear_time) const {
-    // The strikers' work at the rate that clears the group in clear_time.
-    const float strikes = striker_work(g, false) * clear_time / std::max(1.0f, g.health);
-    float loss = strikes * camp_mitigation * mitigation;
-    for (const auto &s : spells) {
-        if (s.kind == bc::ability_kind::shield)
-            loss -= focus * s.modifier * (1 + clear_time / s.cooldown);
-        if (s.kind == bc::ability_kind::cc)
-            loss -= strikes / s.cooldown; // A stun spares a strike only while strikers live.
-    }
-    loss -= group_heal(int(&g - groups.data())) * clear_time;
-    return std::max(0.0f, loss);
 }
 
 float Bot::self_heal() const {
@@ -1460,10 +1465,19 @@ float Bot::self_heal() const {
     return rate;
 }
 
+int Bot::mate_claim(unsigned s) const {
+    // A fight a teammate reports near a group, or the claim a dead one left,
+    // is no claim: cluster runs, capture holders and hard groups' partners
+    // read them as one where camp choice did not.
+    const unsigned code = shared.get(s);
+    return s != slot && s < roster.size() && roster[s].is_alive() && code >= 1 && code <= groups.size()
+               ? int(code) - 1
+               : -1;
+}
+
 float Bot::slot_heal(unsigned s) const {
-    for (const auto &a : allies)
-        if (a.champion() == roster[s])
-            return a.healing_rate;
+    if (s < slot_ally.size() && slot_ally[s] >= 0)
+        return allies[std::size_t(slot_ally[s])].healing_rate;
     float rate = 0;
     if (s < roster_kits.size())
         for (const auto &spell : roster_kits[s].spells)
@@ -1479,7 +1493,7 @@ float Bot::group_heal(int group) const {
     float rate = self_heal();
     const unsigned count = unsigned(std::min<std::size_t>(roster.size(), TeamMemory::slots));
     for (unsigned s = 0; s < count; ++s)
-        if (s != slot && roster[s].is_alive() && shared.get(s) == unsigned(group) + 1)
+        if (mate_claim(s) == group)
             rate += slot_heal(s);
     return rate;
 }
@@ -1611,23 +1625,16 @@ const Bot::ExitLanes &Bot::exit_packed() const {
                 const bool unseen = list == &ghosts;
                 const auto &kit = kit_of(e.champion(), e.type);
                 const unsigned ready = unseen ? 3u : e.slot_ready;
-                // Its strike next round: a melee one walks and strikes, a
-                // ranged one walks only when a ready reset gives the shot
-                // back; a ready dash adds its tiles (in place of the walk
-                // when no walk can follow it).
+                // Its strike next round (closing_tiles()), its reset and dash
+                // ready as read (an unseen one's counted ready).
                 bool reset = false;
                 for (unsigned k = 0; k < kit.spells.size(); ++k)
                     reset = reset || (ready >> k & 1 && kit.spells[k].kind == bc::ability_kind::attack_reset);
-                const int walk = e.range <= 1 || reset ? e.move_speed : 0;
-                const bool dash = e.dash_range > 0 && (unseen || e.dash_wait == 0);
-                const int lunge =
-                    e.range + (!dash ? walk : e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range)));
+                const int lunge = e.range + closing_tiles(e, reset, unseen || e.dash_wait == 0);
                 // Heart of Ruin's passive raises its spells as its hits
                 // (the strength reading already has it).
-                const float bonus = e.type == bc::champion_type::heart_of_ruin
-                                        ? 1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
-                                                  (1 - e.health / std::max(1.0f, e.max_health))
-                                        : 1.0f;
+                const float bonus =
+                    e.type == bc::champion_type::heart_of_ruin ? hor_bonus(e.health, e.max_health) : 1.0f;
                 std::array<float, 2> burst{};
                 std::array<int, 2> reach{-1, -1};
                 int stun = -1;
@@ -1719,14 +1726,14 @@ float Bot::exit_camps(vec2 tile) const {
                 for (std::size_t u = 0; u < unit_x.size(); ++u)
                     ties -= unit_x[u] == tile.x && unit_y[u] == tile.y;
             }
-            camp += c.strength * camp_mitigation * float(c.range - d + 1) / float(1 + ties);
+            camp += c.strength * float(c.range - d + 1) / float(1 + ties); // The unit's camp share is the caller's.
         }
     }
     return camp;
 }
 
 Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without) const {
-    return exit_damage(tile, immune, without, exit_camps(tile));
+    return exit_damage(tile, immune, without, exit_camps(tile) * camp_mitigation);
 }
 
 Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without, float camps) const {
@@ -1783,12 +1790,13 @@ Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without, float cam
                 wasm_f32x4_extract_lane(round_hits, 2) + wasm_f32x4_extract_lane(round_hits, 3)};
 }
 
-Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, unsigned carried, bool immune) const {
+Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, float camp_share, unsigned carried,
+                             bool immune) const {
     // The lanes' bound first, with the camps' part (a few camps, most out
     // of reach of the tile): below the floor, nothing more is computed.
     const auto &packed = exit_packed();
     const float margin_share = float(carried) / float(policy::prism_bag);
-    const float camps = exit_camps(tile);
+    const float camps = exit_camps(tile) * camp_share; // Its Jungle emblem's, ours or an ally's.
     if ((packed.most + packed.hits * margin_share + camps) * mitigation < floor)
         return {};
     const auto taken = exit_damage(tile, immune, {-1, -1}, camps);
@@ -1814,7 +1822,7 @@ float Bot::exit_pool() const {
 
 bool Bot::ExitCheck::lethal(vec2 tile) {
     const bool immune = bot.passive == bc::passive_type::stun_immunity;
-    const float damage = bot.exit_risk(tile, bot.health, bot.mitigation, 0, immune).damage;
+    const float damage = bot.exit_risk(tile, bot.health, bot.mitigation, bot.camp_mitigation, 0, immune).damage;
     if (damage <= 0)
         return false;
     if (pool < 0) {
@@ -1825,12 +1833,14 @@ bool Bot::ExitCheck::lethal(vec2 tile) {
 }
 
 float Bot::own_power() const {
-    float ready_shield = 0, burst = 0;
+    float ready_shield = 0, burst = 0, heal = 0;
     const auto kit = bc::self().abilities();
     const bool can_cast = bc::self().can_cast();
-    for (unsigned i = 0; i < spells.size(); ++i)
+    for (unsigned i = 0; i < spells.size(); ++i) {
+        const auto &s = spells[i];
+        if (s.kind == bc::ability_kind::heal)
+            heal += focus * s.modifier / float(s.cooldown); // As ObservedUnit's healing_rate.
         if (ready(kit[i], can_cast)) {
-            const auto &s = spells[i];
             if (s.kind == bc::ability_kind::shield)
                 ready_shield = focus * s.modifier;
             else if (s.kind == bc::ability_kind::attack_reset)
@@ -1838,8 +1848,9 @@ float Bot::own_power() const {
             else if (s.modifier > 0 && s.kind != bc::ability_kind::heal)
                 burst = std::max(burst, focus * s.modifier);
         }
-    return std::sqrt(std::max(1.0f, health + ready_shield) *
-                     (spell_dps(spells, strength, focus) + burst * 0.2f) / mitigation);
+    }
+    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus), burst, heal,
+                      mitigation);
 }
 
 float Bot::friendly_power(vec2 at) const {
@@ -1859,8 +1870,8 @@ float Bot::friendly_power(vec2 at) const {
         if (fight >= 0 && !same_fight(fight, at))
             continue;
         const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
-        p += std::sqrt(std::max(1.0f, a.health + a.shield + a.ready_shield) *
-                       (a.damage_rate + ally_burst * 0.2f + a.healing_rate) / a.mitigation) *
+        p += unit_power(a.health + a.shield + a.ready_shield, a.damage_rate, ally_burst, a.healing_rate,
+                        a.mitigation) *
              0.9f / (1 + arrival * 0.4f);
     }
     // Teammates out of our sight under attack in this fight are in it, at
@@ -1956,10 +1967,9 @@ float Bot::enemy_power(vec2 at) const {
                     if (!a.stunned && !a.channel &&
                         distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
                         reflected += e.retaliation();
-            p += std::sqrt(std::max(1.0f, (on_spawn ? e.max_health : e.health) + e.shield + e.ready_shield) *
-                           (e.damage_rate + reflected +
-                            (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * 0.2f + e.healing_rate) /
-                           e.mitigation) /
+            p += unit_power((on_spawn ? e.max_health : e.health) + e.shield + e.ready_shield,
+                            e.damage_rate + reflected, e.stunned && e.stun_time > 0 ? 0.0f : e.burst,
+                            e.healing_rate, e.mitigation) /
                  (1 + arrival * 0.3f);
         }
     return p;

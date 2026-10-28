@@ -77,7 +77,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             const float recoil = u.retaliation() * mitigation;
             value -= recoil * (1 + std::min(2.0f, gems / 100.0f));
             if (recoil >= health + own_shield)
-                value -= 200 + gems * 7 + strength * 3;
+                value -= death_cost();
         }
         return value;
     };
@@ -339,8 +339,7 @@ float Bot::basic_damage() const {
     // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
     if (passive != bc::passive_type::missing_health_damage)
         return strength;
-    return strength * (1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
-                               (1 - health / std::max(1.0f, max_health)));
+    return strength * hor_bonus(health, max_health);
 }
 
 float Bot::peel_factor(const ObservedUnit &enemy) const {

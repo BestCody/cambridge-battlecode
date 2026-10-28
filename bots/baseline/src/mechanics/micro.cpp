@@ -492,7 +492,7 @@ bool Bot::attack_combo(bool escaping) {
         s.own_health -= recoil - absorbed;
         s.score -= recoil * (1 + std::min(2.0f, gems / 100.0f));
         if (s.own_health <= 0)
-            s.score -= 200 + gems * 7 + strength * 3;
+            s.score -= death_cost();
     };
     // The states after a first action, per standing tile and action, made on
     // first use in this search (marked with its serial), and the last state
@@ -676,7 +676,7 @@ bool Bot::attack_combo(bool escaping) {
         b.own_shield = wasm_f32x4_sub(b.own_shield, absorbed);
         b.own_health = wasm_f32x4_sub(b.own_health, wasm_f32x4_sub(recoil, absorbed));
         b.score = wasm_f32x4_sub(b.score, wasm_f32x4_mul(recoil, wasm_f32x4_splat(1 + std::min(2.0f, gems / 100.0f))));
-        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(200 + gems * 7 + strength * 3)), b.score,
+        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(death_cost())), b.score,
                          wasm_f32x4_le(b.own_health, zero));
     };
     // The credits evaluate() adds after the actions, standing on our own tile.
@@ -1046,7 +1046,7 @@ bool Bot::follow_through() {
             const int arrival = std::max(0, distance(tile, e.position) - range);
             float damage = std::min(hit * e.mitigation, e.health + e.shield);
             if (again && e.health + e.shield <= hit * e.mitigation)
-                damage += 200 + e.gems * 7;
+                damage += kill_value(e);
             best = std::max(best, damage / (1 + arrival));
         }
         return best;
@@ -1058,8 +1058,10 @@ bool Bot::follow_through() {
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
     for (const vec2 tile : step_positions()) {
         const float danger = incoming(tile);
-        if (danger >= health)
-            continue; // Not onto a tile the attack search would refuse as lethal.
+        // Not onto a tile the attack search refuses as lethal: one as deadly
+        // as standing here is no worse (attack_dash(), impact_dash()).
+        if (danger >= health && danger > here)
+            continue;
         // The step pays the damage it adds, as the combo's steps do.
         const float score = value(tile) - std::max(0.0f, danger - here);
         if (score > best_score + 0.01f && !exits.lethal(tile)) {

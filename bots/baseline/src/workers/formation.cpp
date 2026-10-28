@@ -3,8 +3,8 @@
 
 namespace {
 float observed_power(const ObservedUnit &unit) {
-    return std::sqrt(std::max(1.0f, unit.health + unit.shield + unit.ready_shield) *
-                     (unit.damage_rate + unit.burst * 0.2f + unit.healing_rate) / unit.mitigation);
+    return unit_power(unit.health + unit.shield + unit.ready_shield, unit.damage_rate, unit.burst,
+                      unit.healing_rate, unit.mitigation);
 }
 } // namespace
 
@@ -13,7 +13,7 @@ float Bot::team_average_power() const {
     // public starting kit, visible allies their current health and upgrades;
     // no hidden live state is queried. Dead allies counted at full power
     // (and in the count) sized squads that could not come.
-    float team_power = std::sqrt(std::max(1.0f, health) * spell_dps(spells, strength, focus) / mitigation);
+    float team_power = own_power();
     unsigned living = 1 + unsigned(allies.size());
     for (std::size_t s = 0; s < roster.size(); ++s)
         if (s != slot && !(seen_slots >> s & 1) && roster[s].is_alive()) {

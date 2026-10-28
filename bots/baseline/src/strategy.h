@@ -553,6 +553,15 @@ inline float gem_risk_weight(const DraftPlan &plan) {
 }
 
 // A damaging dash (Heart of Ruin) counts as a damage spell.
+// A unit's fighting power, ours, an ally's, an enemy's or a type's: its
+// health with its shields, against what it deals (its damage rate, a fifth of
+// its ready burst, its healing), over its mitigation. Four formulas left our
+// own shields and healing out where an enemy's counted them: a lone Willow
+// undervalued itself.
+inline float unit_power(float pool, float rate, float burst, float heal, float mitigation) {
+    return std::sqrt(std::max(1.0f, pool) * (rate + burst * 0.2f + heal) / mitigation);
+}
+
 inline float spell_dps(const std::array<Spell, 2> &spells, float strength, float focus, float splash = 1) {
     float result = strength * splash;
     for (const auto &s : spells) {
@@ -566,6 +575,26 @@ inline float spell_dps(const std::array<Spell, 2> &spells, float strength, float
             result += focus * s.modifier / s.cooldown;
     }
     return result;
+}
+
+// Heart of Ruin's passive: up to half again on all its damage with missing
+// health (the engine's readings leave it out).
+inline float hor_bonus(float health, float max_health) {
+    return 1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
+                   (1 - health / std::max(1.0f, max_health));
+}
+
+// A spell that clears camps from beyond their reach (a spell-range siege):
+// an area spell, or a damage or stun spell that can target a camp, reaching
+// four or more and dealing damage. One rule for camp choice's siege rate,
+// the farming stand and the background siege checks: three rules sent a
+// champion whose only long spell cannot target camps to stand where it
+// could not strike.
+inline bool siege_spell(const Spell &s) {
+    return s.range > 3 && s.modifier > 0 &&
+           (s.kind == bc::ability_kind::aoe_damage ||
+            ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
+             s.targets.contains(bc::ability_target_mask::camps)));
 }
 
 // Damage per round on camps, for camp choice: hits, resets, area spells, the

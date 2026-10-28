@@ -33,7 +33,7 @@ bool Bot::worker_tribute() {
     // once when an altar is a few steps away. Prism, whose focus grows with
     // the gems it carries, keeps them and banks a big bag (theirs: 0.7 banks
     // a game, median 198 gems, the first around round 500).
-    static const auto spawn = bc::map::spawn_region(bc::team::ally);
+    const auto &spawn = own_spawn;
     const bool keeps = passive == bc::passive_type::gem_focus;
     // The altar we were walled off from lately is no nearby altar.
     const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&

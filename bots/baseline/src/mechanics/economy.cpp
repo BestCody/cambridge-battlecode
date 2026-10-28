@@ -160,7 +160,7 @@ void Bot::buy_equipment() {
     // (lock_wanted()), as willow best girl buys them (about 8 a game).
     // Shopping neither kills nor revives: life is read once.
     const bool alive = me.is_alive();
-    const bool can_shop = !alive || bc::map::spawn_region(bc::team::ally).is_set(me.position());
+    const bool can_shop = !alive || own_spawn.is_set(me.position());
     if (can_shop && alive) {
         carrying_lock = me.consumables()[bc::consumable_type::altar_lock].count() > 0;
         bool wanted = false;
