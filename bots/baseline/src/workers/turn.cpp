@@ -98,6 +98,8 @@ void Bot::play_worker_turn() {
     camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
     shared.set_jungle(slot, camp_mitigation < 1); // For teammates' hard-camp parties.
+    if (passive == bc::passive_type::gem_focus)
+        shared.set_prism_bag(gems); // For teammates' gem race (behind_pressure()).
     hit = health < before;
     // A chase ends once no enemy can reach us, and a stun means deciding it
     // again; a turn spent on anything else keeps it.

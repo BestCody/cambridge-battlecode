@@ -1832,6 +1832,8 @@ void Bot::track_enemy_respawns() {
         else if (enemy_respawn[i] < 0) {
             enemy_respawn[i] = int(round) + rules::settings().respawn_time;
             enemy_died = int(round);
+            if (i < ghost_seen.size())
+                ghost_seen[i].reset(); // Its bag went with it (behind_pressure()).
         }
     }
 }

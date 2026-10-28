@@ -530,11 +530,12 @@ class Bot {
     std::vector<RosterKit> roster_kits;
     // Camp choice's workspace, per group its claimants' summed camp rates.
     std::vector<float> claim_rates;
-    // The camp damage share a Jungle emblem leaves (a teammate's, from its
-    // team memory flag).
-    float jungle_share = 1;
-    // Per group: (neighbour group, distance), nearest first, at most three.
-    std::vector<std::vector<std::pair<int, int>>> hops;
+    // The camp damage share a Jungle emblem leaves (a teammate's, from its
+    // team memory flag).
+    float jungle_share = 1;
+    // behind_pressure() is worked out once a round.
+    mutable int behind_round = -1;
+    mutable float behind_value = 0;
     // The capture gold multiplier (Vesper's passive, Treasure).
     float gold_bonus = 1;
     // Turn ends our recall takes: five, three with a Home emblem.
@@ -792,12 +793,9 @@ class Bot {
     void place_lock();
     bool worker_pursue();
     bool home_after_capture(const CampGroup &g) const;
-    // How far behind the enemy's tributed gems we are, 0 (even or ahead) to 1.
+    // How far behind in the gem race we are, 0 (even or ahead) to 1: the gap
+    // against what the leader still needs to win.
     float behind_pressure() const;
-    // Each group's up to three nearest neighbour groups.
-    void build_hops();
-    // Whether chaining a nearby camp beats recalling now.
-    bool chain_better_than_home(const CampGroup &g) const;
     float basic_damage() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
