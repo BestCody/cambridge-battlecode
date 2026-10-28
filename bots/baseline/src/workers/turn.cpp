@@ -4,6 +4,7 @@
 
 bool Bot::worker_escape() {
     profiling::Scope scope(profiling::Stage::retreat);
+    cluster_run.clear(); // A retreat ends a cluster run.
     // Flee even when an enemy can reach us next turn: fleeing loses some free
     // hits but survives far more often. Standing traded down to death in two
     // thirds of the fights we were losing, where the top team breaks contact.
@@ -74,6 +75,7 @@ void Bot::play_worker_turn() {
         buy_equipment();
         retreating = banking = false;
         target = -1;
+        cluster_run.clear();
         return;
     }
     buy_equipment();

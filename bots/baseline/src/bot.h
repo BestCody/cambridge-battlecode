@@ -530,6 +530,24 @@ class Bot {
     std::vector<RosterKit> roster_kits;
     // Camp choice's workspace, per group its claimants' summed camp rates.
     std::vector<float> claim_rates;
+    // Cluster runs (worker_choose_group()). Two cluster groups (gem or gold
+    // clusters only) are linked when their nearest camp tiles lie within a
+    // capture's time of each other. Per group: whether it is a cluster
+    // group, and its links once made (cluster_links_of()), link_count of
+    // them from link_first in cluster_links (-1: not made), nearest first,
+    // the gap a walk once either group's walk field was there (walked), else
+    // Chebyshev, checked at walk_cursor link_checked. And the rest of the run
+    // being taken, its next member last.
+    struct ClusterLink {
+        int group = -1, apart = 0;
+        bool walked = false;
+    };
+    std::vector<std::uint8_t> cluster_group;
+    std::vector<std::int32_t> link_first;
+    std::vector<std::uint16_t> link_count;
+    std::vector<std::size_t> link_checked;
+    std::vector<ClusterLink> cluster_links;
+    std::vector<int> cluster_run;
     // The camp damage share a Jungle emblem leaves (a teammate's, from its
     // team memory flag).
     float jungle_share = 1;
@@ -796,6 +814,24 @@ class Bot {
     // How far behind in the gem race we are, 0 (even or ahead) to 1: the gap
     // against what the leader still needs to win.
     float behind_pressure() const;
+    // Cluster runs (worker_choose_group()): which groups are cluster groups
+    // (once), and a cluster group's links, made on its first need and their
+    // walks checked as walk fields come. The span lasts until the next
+    // group's links are made.
+    void link_clusters();
+    std::span<const ClusterLink> cluster_links_of(int g);
+    // The walk between two groups' nearest camp tiles, from either one's walk
+    // field (walking is symmetric): one of them must be built.
+    int cluster_walk(int a, int b) const;
+    // A run member is open on arrival: no teammate's claim on it (`claimed`),
+    // no enemy seen near it lately, and alive or back by then.
+    bool cluster_open(int group, int arrival, bool claimed) const;
+    // A teammate's published objective names the group; an enemy was seen
+    // near it within policy::worker_sighting_memory rounds.
+    bool teammate_claims(int group) const;
+    bool enemy_near_lately(int group) const;
+    // The run's next member is open by the time we walk there from here.
+    bool run_continues() const;
     float basic_damage() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;

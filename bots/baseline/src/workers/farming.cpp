@@ -116,16 +116,20 @@ int Bot::worker_choose_group(int excluded) {
         // types' base), what it can spend above the reserve, and its heals
         // per round (a Willow in it heals the tank).
         float *party_health, *party_spare, *party_heal;
+        // A cluster group's run (gather_run): the reward and the time its
+        // members add, and whether the run scored above the group alone.
+        float *run_reward, *run_time;
+        std::int32_t *run_won;
     };
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
-        lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[22 * padded]);
+        lanes.ints.reset(new std::int32_t[11 * padded]);
+        lanes.floats.reset(new float[24 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
-              &lanes.path, &lanes.siege_open, &lanes.marks, &lanes.sighted}) {
+              &lanes.path, &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won}) {
             *lane = next_int;
             next_int += padded;
         }
@@ -135,7 +139,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.claim_rate, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
-                            &lanes.party_heal}) {
+                            &lanes.party_heal, &lanes.run_reward, &lanes.run_time}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -147,7 +151,8 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.pressure, lanes.claims, lanes.loss_factor, lanes.claim_rate,
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
-                               lanes.party_health, lanes.party_spare, lanes.party_heal})
+                               lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.run_reward,
+                               lanes.run_time})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -347,6 +352,94 @@ int Bot::worker_choose_group(int excluded) {
     const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,
                 healing = nearby_healing;
     const std::array<Spell, 2> kit = spells;
+    // Cluster runs. A short trip's capture ends in a recall home
+    // (home_after_capture()), which every version that kept farming instead
+    // lost 5-9 games of 80 to; but a row of gem or gold clusters a tile or
+    // two apart (each its own group and capture) was then taken one per
+    // trip. A cluster group's run is the clusters taken after it on the same
+    // trip: next, the nearest cluster group linked to the last member
+    // (cluster_links_of()) that is not in the run and is open on arrival
+    // (cluster_open()), while the capture that pays it still ends in the
+    // short trip's recall: the recall starts recall_turns before the
+    // payout, within short_trip_rounds of leaving spawn. Only a champion
+    // that recalls after a short trip, during one, plans runs (not the
+    // Prism, which keeps its gems).
+    const bool runs = passive != bc::passive_type::gem_focus && now - left_spawn < policy::short_trip_rounds;
+    const float run_deadline = float(left_spawn + policy::short_trip_rounds + recall_turns);
+    // Teammates' claims (each one's objective), and the groups in the run
+    // being planned, marked with its stamp.
+    static std::vector<std::uint8_t> taken;
+    static std::vector<std::uint32_t> run_mark;
+    static std::uint32_t run_stamp = 0;
+    if (runs) {
+        link_clusters();
+        taken.assign(count, 0);
+        for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+            if (const int claimed = TeamMemory::objective(shared.get(s), unsigned(count)); s != slot && claimed >= 0)
+                taken[claimed] = 1;
+        run_mark.resize(count);
+    }
+    // A cluster group's clear as score_lanes() works it out with nobody
+    // claiming it (a run member is unclaimed).
+    const auto cluster_clear = [&](int k) {
+        const auto &g = groups[k];
+        float rate = flat_dps;
+        for (const auto &spell : kit)
+            if (spell.kind == bc::ability_kind::aoe_damage)
+                rate += our_focus * spell.modifier * (g.splash - 1) / float(spell.cooldown);
+        rate += dash_rate * std::min(2.0f, float(g.camps.size()));
+        const float remaining = g.status == CampGroup::cooling ? g.max_health : g.health;
+        return std::max(remaining / std::max(1.0f, rate * our_multiplier * policy::team_clear_share),
+                        float(g.camps.size()));
+    };
+    // Group k's run: the reward and time its members add (none without a
+    // run), and with `members` the members after k in order. Each member
+    // costs the walk onto its tiles from the last one's, its clear and its
+    // capture; the first capture pays after the walk onto the group's tiles
+    // (or its respawn), its clear and its capture.
+    const auto gather_run = [&](std::size_t k, std::vector<int> *members) {
+        float extra_reward = 0, extra_time = 0;
+        const auto &g = groups[k];
+        if (runs && cluster_group[k] && lanes.path[k] != bc::distance_field::unreachable) {
+            const float walk = float(lanes.path[k]) * travel_scale;
+            float finish = float(now) + capture_time + 1 +
+                           (g.status == CampGroup::cooling ? std::max(walk, float(g.respawn - now)) : walk) +
+                           (g.status == CampGroup::capture ? 0.0f : cluster_clear(int(k)));
+            const float first = finish;
+            run_mark[k] = ++run_stamp;
+            // A member takes at least a capture and a round more.
+            for (int last = int(k); finish + float(capture_time + 1) < run_deadline;) {
+                // The last member's links are nearest first: the first open
+                // one is the next.
+                int next = -1;
+                float arrival = 0;
+                for (const auto &link : cluster_links_of(last)) {
+                    if (link.apart > capture_time)
+                        break;
+                    arrival = finish + float(link.apart) * travel_scale;
+                    if (run_mark[link.group] != run_stamp && link.group != walled &&
+                        cluster_open(link.group, int(arrival), taken[link.group])) {
+                        next = link.group;
+                        break;
+                    }
+                }
+                if (next < 0)
+                    break;
+                const float done = arrival + cluster_clear(next) + capture_time + 1;
+                if (done >= run_deadline)
+                    break;
+                run_mark[next] = run_stamp;
+                if (members)
+                    members->push_back(next);
+                extra_reward += lanes.gem_reward[next] + gold_weight * lanes.gold[next];
+                finish = done;
+                last = next;
+            }
+            extra_time = finish - first;
+        }
+        lanes.run_reward[k] = extra_reward;
+        lanes.run_time[k] = extra_time;
+    };
     const auto pick = [](v128_t yes, v128_t no, v128_t when) { return wasm_v128_bitselect(yes, no, when); };
     const auto mark_set = [&](v128_t m, std::int32_t bit) {
         return wasm_i32x4_ne(wasm_v128_and(m, splat_int(bit)), no_bits);
@@ -563,6 +656,22 @@ int Bot::worker_choose_group(int excluded) {
             // and a Willow heals it, nobody goes home mid-clear (golem and
             // monolith clears watched), so the trips-home plan is not its plan.
             value = wasm_f32x4_pmax(value, pick(zero, visits, hard));
+            // A cluster group's run (gather_run) is one plan: the group's
+            // reward and time with its members', under the same hazards. The
+            // better of the two stands; with no run it is the group's own.
+            {
+                const v128_t run_duration = wasm_f32x4_add(duration, wasm_v128_load(&lanes.run_time[i]));
+                v128_t run = wasm_f32x4_div(wasm_f32x4_add(reward, wasm_v128_load(&lanes.run_reward[i])),
+                                            wasm_f32x4_pmax(one, run_duration));
+                run = wasm_f32x4_div(run, wasm_f32x4_add(one, wasm_f32x4_mul(run_duration, splat(policy::plan_hazard))));
+                run = wasm_f32x4_div(
+                    run, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(camp_risk)),
+                                                                           risk_weight)),
+                                        crowding));
+                run = pick(zero, run, wasm_f32x4_gt(run_duration, splat(rounds_left)));
+                wasm_v128_store(&lanes.run_won[i], wasm_f32x4_gt(run, value));
+                value = wasm_f32x4_pmax(value, run);
+            }
             value = wasm_f32x4_div(
                 value, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_add(travel, waiting), splat(travel_hazard))));
             value = pick(wasm_f32x4_mul(value, splat(enemy_side_mul)), value,
@@ -600,6 +709,8 @@ int Bot::worker_choose_group(int excluded) {
     float best = -1;
     int choice = -1;
     gather();
+    for (std::size_t i = 0; i < count; ++i)
+        gather_run(i, nullptr);
     for (std::size_t i = 0; i < padded; i += 4)
         score_lanes(i);
     for (;;) {
@@ -621,6 +732,7 @@ int Bot::worker_choose_group(int excluded) {
             for (std::size_t k = i; k < i + 4 && k < count; ++k)
                 if (lanes.path[k] != group_path[k]) {
                     lanes.path[k] = group_path[k];
+                    gather_run(k, nullptr); // Its run starts from the new walk.
                     changed = true;
                 }
             if (changed)
@@ -628,12 +740,29 @@ int Bot::worker_choose_group(int excluded) {
         }
     }
     last_plan = round;
+    // The chosen group's run, when it scored above the group alone, is taken
+    // (worker_farm()): its members after the group, the next last. A choice
+    // of another group ends the run being taken; the same group, a member
+    // on its way, keeps it.
+    if (choice < 0 || choice != target)
+        cluster_run.clear();
+    if (choice >= 0 && cluster_run.empty() && lanes.run_won[choice]) {
+        gather_run(std::size_t(choice), &cluster_run);
+        std::reverse(cluster_run.begin(), cluster_run.end());
+    }
     return choice;
 }
 
 void Bot::worker_farm() {
     profiling::Scope scope(profiling::Stage::farm);
     auto &me = bc::self();
+    // A teammate's claim on a member of our cluster run, or an enemy seen
+    // near one, ends the run: walking on would find it taken or meet them.
+    for (const int member : cluster_run)
+        if (teammate_claims(member) || enemy_near_lately(member)) {
+            cluster_run.clear();
+            break;
+        }
     // Walled off from the target (camp bodies sealing the only corridor and
     // no visit affordable through them): ours stood still beside a monolith
     // pair for 15-40 rounds. Leave it out for a while and choose another.
@@ -662,6 +791,18 @@ void Bot::worker_farm() {
             bot.farm_stalls = idle ? bot.farm_stalls + 1 : 0;
         }
     } farm_stalls_count{*this, position};
+    // A capture we held paid: the cluster run takes its next member, open on
+    // our arrival, without a new choice; one no longer open ends the run, and
+    // camp choice plans again as for any finished group.
+    if (target >= 0 && groups[target].status == CampGroup::cooling && capture_group == target &&
+        capture_since >= 0 && !cluster_run.empty()) {
+        if (run_continues()) {
+            target = cluster_run.back();
+            cluster_run.pop_back();
+            last_plan = round; // This turn's choice.
+        } else
+            cluster_run.clear();
+    }
     const bool finished = target >= 0 && groups[target].status == CampGroup::cooling;
     // A capture a few steps away that we outrank its holders on (the bigger
     // bag or first there, capture_outranked()) is ours to step onto: camp choice, which
@@ -739,6 +880,8 @@ void Bot::worker_farm() {
                 capture_group = target;
             }
             homeward = home_after_capture(g);
+            if (homeward)
+                cluster_run.clear(); // Home ends the run.
         }
         combat(false, target); // Heals and shields still work while holding a camp.
         ward_ahead(g.centre);
@@ -1017,8 +1160,145 @@ bool Bot::home_after_capture(const CampGroup &g) const {
     // An emblem's gold: home to buy it, power for the rest of the game.
     if (bc::self().gold_count() >= policy::home_capture_gold)
         return true;
+    // A cluster run (worker_choose_group()) with its next member open goes
+    // on: the run was planned to end in this recall after its last capture.
+    // Returning false makes the next turn cancel this recall; each capture
+    // asks again.
+    if (run_continues())
+        return false;
     // A short trip out ends home.
     return passive != bc::passive_type::gem_focus && int(round) - left_spawn < policy::short_trip_rounds;
+}
+
+void Bot::link_clusters() {
+    // Once: which groups are cluster groups (gem or gold clusters only:
+    // nothing strikes back, one or two hits each), none linked yet.
+    if (cluster_group.size() == groups.size())
+        return;
+    cluster_group.assign(groups.size(), 0);
+    link_first.assign(groups.size(), -1);
+    link_count.assign(groups.size(), 0);
+    link_checked.assign(groups.size(), 0);
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        bool cluster = !groups[i].camps.empty();
+        for (const auto &c : groups[i].camps)
+            cluster = cluster && c.stats.base_strength <= 0;
+        cluster_group[i] = cluster;
+    }
+}
+
+std::span<const Bot::ClusterLink> Bot::cluster_links_of(int g) {
+    // The cluster groups whose nearest camp tiles a walk joins in no more
+    // rounds than a capture takes. Walks are never shorter than Chebyshev,
+    // so the groups within capture_time Chebyshev are every candidate: found
+    // on first need (the map fixes them), four camps a step, at their
+    // Chebyshev gap. Each gap becomes the walk once either group's walk
+    // field is built, checked as fields come. Nearest first.
+    bool order = false;
+    if (link_first[g] < 0) {
+        // Each linked group's entry this build, by the build's stamp.
+        static std::vector<std::uint32_t> entry_stamp, entry;
+        static std::uint32_t stamp = 0;
+        entry_stamp.resize(groups.size());
+        entry.resize(groups.size());
+        ++stamp;
+        const std::size_t first = cluster_links.size();
+        const v128_t reach = wasm_i32x4_splat(rules::settings().capture_time);
+        alignas(16) std::int32_t gaps[4];
+        for (const auto &c : groups[g].camps) {
+            const v128_t x = wasm_i32x4_splat(c.position.x), y = wasm_i32x4_splat(c.position.y);
+            for (std::size_t k = 0; k < camp_lanes; k += 4) {
+                const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
+                                                    wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&camp_y[k]))));
+                unsigned hits = wasm_i32x4_bitmask(wasm_i32x4_le(apart, reach));
+                if (hits)
+                    wasm_v128_store(gaps, apart);
+                for (; hits; hits &= hits - 1) {
+                    const unsigned lane = unsigned(__builtin_ctz(hits));
+                    const int other = camp_group[k + lane];
+                    if (other == g || !cluster_group[other])
+                        continue;
+                    // Another camp pair of groups already linked: the nearer
+                    // tiles count.
+                    if (entry_stamp[other] == stamp) {
+                        auto &link = cluster_links[entry[other]];
+                        link.apart = std::min(link.apart, gaps[lane]);
+                    } else {
+                        entry_stamp[other] = stamp;
+                        entry[other] = std::uint32_t(cluster_links.size());
+                        cluster_links.push_back({other, gaps[lane], false});
+                    }
+                }
+            }
+        }
+        link_first[g] = std::int32_t(first);
+        link_count[g] = std::uint16_t(cluster_links.size() - first);
+        link_checked[g] = walk_cursor + 1; // Its walks are checked below.
+        order = true;
+    }
+    ClusterLink *links = cluster_links.data() + link_first[g];
+    const std::size_t count = link_count[g];
+    if (link_checked[g] != walk_cursor) {
+        link_checked[g] = walk_cursor;
+        for (std::size_t e = 0; e < count; ++e)
+            if (!links[e].walked && (walk_of[g] || walk_of[links[e].group])) {
+                links[e].apart = cluster_walk(g, links[e].group);
+                links[e].walked = order = true;
+            }
+    }
+    if (order)
+        for (std::size_t e = 1; e < count; ++e)
+            for (std::size_t f = e; f > 0 && links[f].apart < links[f - 1].apart; --f)
+                std::swap(links[f], links[f - 1]);
+    return {links, count};
+}
+
+int Bot::cluster_walk(int a, int b) const {
+    // A walk field holds the walk from each tile to its group's nearest camp,
+    // so the least over the other group's camps is the walk between them.
+    const bool from_b = walk_of[b] != nullptr;
+    const std::uint16_t *walks = from_b ? walk_of[b] : walk_of[a];
+    int walk = std::numeric_limits<int>::max();
+    for (const auto &c : groups[from_b ? a : b].camps)
+        walk = std::min(walk, int(walks[c.tile]));
+    return walk;
+}
+
+bool Bot::teammate_claims(int group) const {
+    for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
+        if (s != slot && TeamMemory::objective(shared.get(s), unsigned(groups.size())) == group)
+            return true;
+    return false;
+}
+
+bool Bot::enemy_near_lately(int group) const {
+    // Within policy::worker_sighting_memory rounds (worker_track_sightings()).
+    return std::size_t(group) < enemy_seen_near.size() &&
+           int(round) - enemy_seen_near[group] <= policy::worker_sighting_memory;
+}
+
+bool Bot::cluster_open(int group, int arrival, bool claimed) const {
+    const auto &n = groups[group];
+    return !claimed && !enemy_near_lately(group) &&
+           (n.status == CampGroup::alive || (n.status == CampGroup::cooling && n.respawn <= arrival));
+}
+
+bool Bot::run_continues() const {
+    if (cluster_run.empty())
+        return false;
+    const int next = cluster_run.back();
+    int walk = std::numeric_limits<int>::max();
+    if (const std::uint16_t *walks = walk_of[next])
+        walk = walks[tile_index(position)];
+    else
+        for (const auto &c : groups[next].camps)
+            walk = std::min(walk, distance(position, c.position));
+    // A champion with a dash walks the faster (camp choice's travel scale).
+    float scale = 1;
+    for (const auto &s : spells)
+        if (s.kind == bc::ability_kind::dash)
+            scale = policy::dash_travel_scale;
+    return cluster_open(next, int(round) + int(float(walk) * scale), teammate_claims(next));
 }
 
 bool Bot::ally_draws_attacks(const CampGroup &g) const {
