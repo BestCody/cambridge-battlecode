@@ -238,6 +238,13 @@ inline constexpr float dash_travel_scale = 0.8f;
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
 inline constexpr float plan_hazard = 0.02f;
+// Camp choice adds a group's walk to the nearest altar, up to altar_walk_cap
+// tiles, to its duration at 0.25 rounds a tile, and a gem group's at
+// scarce_altar_weight / (altar count) more: with few altars every gem is
+// tributed at the same tiles, where the enemy waits and locks cost the most,
+// so the gems near them are worth the more. 0 disables the scarcity term.
+inline constexpr int altar_walk_cap = 20;
+inline constexpr float scarce_altar_weight = 0.5f;
 // Spread fighting: an enemy champion within peel_range of a teammate (a
 // dive) counts peel_factor times in our victim and target choices,
 // peel_prism_factor when the dived teammate is a Prism (the Prism counts
