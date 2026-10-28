@@ -814,7 +814,6 @@ void Bot::observe() {
     enemies.clear();
     allies.clear();
     camps.clear();
-    nearby_healing = 0;
     // The rosters hold every champion; checking them is far cheaper than the
     // engine's per-team vision list (about 3,700 fuel each).
     // A champion in view is alive: the dead leave the map.
@@ -833,9 +832,6 @@ void Bot::observe() {
             allies.emplace_back(roster[s], *info);
         }
     ++threat_revision; // New units: what incoming() listed from them is stale.
-    for (const auto &a : allies)
-        if (distance(position, a.position) <= 6)
-            nearby_healing += a.healing_rate;
     mark_camps_in_view();
     mark_group_holders();
     threat_count = 0;
@@ -1411,17 +1407,49 @@ bool Bot::visit_affordable(const CampGroup &g) const {
 }
 
 float Bot::clear_loss(const CampGroup &g, float clear_time) const {
-    float loss = g.pressure * clear_time * camp_mitigation * mitigation;
-    if (g.camps.size() > 1)
-        loss *= camp_loss_factor(g); // Sequential kills remove attackers during a clear.
+    // The strikers' work at the rate that clears the group in clear_time.
+    const float strikes = striker_work(g, false) * clear_time / std::max(1.0f, g.health);
+    float loss = strikes * camp_mitigation * mitigation;
     for (const auto &s : spells) {
         if (s.kind == bc::ability_kind::shield)
             loss -= focus * s.modifier * (1 + clear_time / s.cooldown);
         if (s.kind == bc::ability_kind::cc)
-            loss -= g.pressure * clear_time / s.cooldown;
+            loss -= strikes / s.cooldown; // A stun spares a strike only while strikers live.
     }
-    loss -= nearby_healing * clear_time;
+    loss -= group_heal(int(&g - groups.data())) * clear_time;
     return std::max(0.0f, loss);
+}
+
+float Bot::self_heal() const {
+    float rate = 0;
+    for (const auto &s : spells)
+        if (s.kind == bc::ability_kind::heal && s.targets.contains(bc::ability_target_mask::self))
+            rate += focus * s.modifier / float(s.cooldown);
+    return rate;
+}
+
+float Bot::slot_heal(unsigned s) const {
+    for (const auto &a : allies)
+        if (a.champion() == roster[s])
+            return a.healing_rate;
+    float rate = 0;
+    if (s < roster_kits.size())
+        for (const auto &spell : roster_kits[s].spells)
+            if (spell.kind == bc::ability_kind::heal)
+                rate += roster_kits[s].focus * spell.modifier / float(spell.cooldown);
+    return rate;
+}
+
+float Bot::group_heal(int group) const {
+    // Only the healers at the clear: the allies near us now healed every
+    // clear far away (at spawn a Willow beside everyone made every group's
+    // camp damage nothing).
+    float rate = self_heal();
+    const unsigned count = unsigned(std::min<std::size_t>(roster.size(), TeamMemory::slots));
+    for (unsigned s = 0; s < count; ++s)
+        if (s != slot && roster[s].is_alive() && shared.get(s) == unsigned(group) + 1)
+            rate += slot_heal(s);
+    return rate;
 }
 
 float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {

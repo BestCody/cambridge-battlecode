@@ -46,9 +46,14 @@ int Bot::worker_choose_group(int excluded) {
                 break;
             }
     claim_rates.assign(groups.size(), 0.0f);
+    // And the healing each clear gets (group_heal(), in one pass).
+    static std::vector<float> claim_heals;
+    claim_heals.assign(groups.size(), self_heal());
     for (unsigned s = 0; s < kits; ++s)
-        if (s != slot && living(s) && shared.get(s) >= 1 && shared.get(s) <= groups.size())
+        if (s != slot && living(s) && shared.get(s) >= 1 && shared.get(s) <= groups.size()) {
             claim_rates[shared.get(s) - 1] += mate_rate[s];
+            claim_heals[shared.get(s) - 1] += slot_heal(s);
+        }
     const auto standing_on = [&](vec2 p) {
         const int g = group_at(p);
         return g >= 0 && distance(p, groups[g].centre) <= int(groups[g].camps.size()) ? g : -1;
@@ -98,14 +103,15 @@ int Bot::worker_choose_group(int excluded) {
         std::unique_ptr<float[]> floats;
         // Fixed: masks for a gem reward, a group on the enemy's side and a
         // safe gem group (harmless camps only); the gem reward, the gold, the
-        // altar term, the camp loss factor, the camp count, the walk from home
-        // and the camps' longest reach.
+        // altar term, the camp count, the walk from home and the camps'
+        // longest reach.
         std::int32_t *gem, *enemy_side, *safe_gems, *hard;
-        float *gem_reward, *gold, *altar, *loss_factor, *camp_count, *home, *reach;
-        // This choice's state, with the claimants' summed camp rates and, for
-        // a hard group nobody claims, the wait for a partner.
+        float *gem_reward, *gold, *altar, *camp_count, *home, *reach;
+        // This choice's state, with the strikers' work (striker_work()), the
+        // claimants' summed camp rates, the healing a clear gets and, for a
+        // hard group nobody claims, the wait for a partner.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
-        float *remaining, *splash, *pressure, *claims, *claim_rate, *scores, *partner_wait;
+        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait;
         // A hard group's party (its claimants, else the nearest free
         // teammate): its camp rate besides ours; the camp's strikes its stuns
         // take away, per round (ours too); its shields now and per round
@@ -125,7 +131,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[11 * padded]);
-        lanes.floats.reset(new float[24 * padded]);
+        lanes.floats.reset(new float[25 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
@@ -135,8 +141,8 @@ int Bot::worker_choose_group(int excluded) {
         }
         float *next_float = lanes.floats.get();
         for (auto **lane : {&lanes.gem_reward, &lanes.gold, &lanes.altar, &lanes.remaining, &lanes.splash,
-                            &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.loss_factor,
-                            &lanes.claim_rate, &lanes.camp_count, &lanes.home, &lanes.reach,
+                            &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work,
+                            &lanes.claim_rate, &lanes.heal, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
                             &lanes.party_heal, &lanes.run_reward, &lanes.run_time}) {
@@ -148,7 +154,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.respawn, lanes.siege_open, lanes.marks})
                 lane[i] = 0;
             for (auto *lane : {lanes.gem_reward, lanes.gold, lanes.altar, lanes.remaining, lanes.splash,
-                               lanes.pressure, lanes.claims, lanes.loss_factor, lanes.claim_rate,
+                               lanes.pressure, lanes.claims, lanes.striker_work, lanes.claim_rate, lanes.heal,
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
                                lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.run_reward,
@@ -172,7 +178,6 @@ int Bot::worker_choose_group(int excluded) {
             lanes.hard[i] = hard ? -1 : 0;
             lanes.gem_reward[i] = gem_value * gem_weight;
             lanes.gold[i] = float(g.unit.gold_value());
-            lanes.loss_factor[i] = camp_loss_factor(g);
             lanes.camp_count[i] = float(g.camps.size());
             lanes.home[i] = float(g.home_distance);
             float reach = 0;
@@ -234,6 +239,7 @@ int Bot::worker_choose_group(int excluded) {
             siege[i] = range > 1 && g.siege_open > 0 ? -1 : 0;
             mark[i] = marks[i];
             remaining[i] = g.status == CampGroup::cooling ? g.max_health : g.health;
+            lanes.striker_work[i] = striker_work(g, g.status == CampGroup::cooling);
             splash[i] = g.splash;
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
@@ -243,8 +249,10 @@ int Bot::worker_choose_group(int excluded) {
                                        int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory
                                    ? -1
                                    : 0;
-        for (std::size_t i = 0; i < count; ++i)
+        for (std::size_t i = 0; i < count; ++i) {
             lanes.claim_rate[i] = claim_rates[i];
+            lanes.heal[i] = claim_heals[i];
+        }
         // A hard group's party: its claimants, else the nearest free
         // teammate, whose walk beyond ours is the wait (from where it is in
         // view, else from its claimed group, else from home).
@@ -349,8 +357,7 @@ int Bot::worker_choose_group(int excluded) {
     // alias the members themselves, so each would be read again (and the
     // terms made from it worked out again) for every four groups.
     const int our_range = range, now = int(round), current = target;
-    const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,
-                healing = nearby_healing;
+    const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation;
     const std::array<Spell, 2> kit = spells;
     // Cluster runs. A short trip's capture ends in a recall home
     // (home_after_capture()), which every version that kept farming instead
@@ -505,19 +512,18 @@ int Bot::worker_choose_group(int excluded) {
             v128_t clear = wasm_f32x4_div(remaining, speed);
             // Each camp takes at least one hit.
             clear = wasm_f32x4_pmax(clear, wasm_f32x4_div(camps_in_group, wasm_f32x4_add(one, helpers)));
-            // clear_loss(g, clear).
-            v128_t loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, clear),
-                                         splat(camp_scale));
-            loss = wasm_f32x4_mul(loss, wasm_v128_load(&lanes.loss_factor[i]));
+            // clear_loss(g, clear): the strikers' work at the clearing speed,
+            // in rounds of a striker's strength.
+            const v128_t striker_rounds = wasm_f32x4_div(wasm_v128_load(&lanes.striker_work[i]), speed);
+            v128_t loss = wasm_f32x4_mul(striker_rounds, splat(camp_scale));
             // A hard group's party clear: the camps strike the tank, less
             // what the party's stuns take away, and its shields soak some.
             // Struck every round at our own share, a monolith clear came to
             // tens of thousands; the clears watched cost 3,500-4,000.
             {
-                const v128_t strikes =
-                    wasm_f32x4_mul(clear, wasm_f32x4_pmax(zero, wasm_f32x4_sub(one, wasm_v128_load(&lanes.party_stun[i]))));
-                v128_t party_loss = wasm_f32x4_mul(wasm_f32x4_mul(pressure, strikes), wasm_v128_load(&lanes.tank_scale[i]));
-                party_loss = wasm_f32x4_mul(party_loss, wasm_v128_load(&lanes.loss_factor[i]));
+                const v128_t strikes = wasm_f32x4_mul(
+                    striker_rounds, wasm_f32x4_pmax(zero, wasm_f32x4_sub(one, wasm_v128_load(&lanes.party_stun[i]))));
+                v128_t party_loss = wasm_f32x4_mul(strikes, wasm_v128_load(&lanes.tank_scale[i]));
                 party_loss = wasm_f32x4_sub(
                     party_loss, wasm_f32x4_add(wasm_v128_load(&lanes.party_shield[i]),
                                                wasm_f32x4_mul(wasm_v128_load(&lanes.party_shield_rate[i]), clear)));
@@ -540,10 +546,10 @@ int Bot::worker_choose_group(int excluded) {
                         saved, wasm_f32x4_mul(splat(our_focus * spell.modifier),
                                               wasm_f32x4_add(one, wasm_f32x4_div(clear, cooldown))));
                 if (spell.kind == bc::ability_kind::cc)
-                    saved = wasm_f32x4_add(saved, wasm_f32x4_div(wasm_f32x4_mul(pressure, clear), cooldown));
+                    saved = wasm_f32x4_add(saved, wasm_f32x4_div(striker_rounds, cooldown)); // While strikers live.
             }
             loss = wasm_f32x4_sub(loss, pick(zero, saved, hard));
-            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(splat(healing), clear));
+            loss = wasm_f32x4_sub(loss, wasm_f32x4_mul(wasm_v128_load(&lanes.heal[i]), clear));
             loss = wasm_f32x4_pmax(zero, loss);
             v128_t risk = wasm_f32x4_div(wasm_f32x4_pmax(zero, wasm_f32x4_sub(loss, splat(spare))),
                                          splat(health_scale));

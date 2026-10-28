@@ -84,18 +84,31 @@ struct CampGroup {
     mutable std::optional<bc::bitboard> tile_mask;
 };
 
-// The share of strength x clear time a clear costs the champions clearing it
-// (camp choice's risk, the siege decision), by the camps that strike back,
-// fitted to measured clears: one 0.68, two 0.5, three or more 0.35 (they die
-// one by one, and ranged attackers stay within reach of fewer of them). A flat
-// 0.68 for every group of several camps overstated the cost of two- and
-// three-monster camps 1.4-3x; the fit won 16 more of 490 games (46 of 70 head
-// to head) and raised gems by round 300 from 97 to 107.
-inline float camp_loss_factor(const CampGroup &g) {
-    int strikers = 0;
-    for (const auto &c : g.camps)
-        strikers += c.stats.base_strength > 0;
-    return strikers <= 1 ? (g.camps.size() > 1 ? 0.68f : 1.0f) : strikers == 2 ? 0.5f : 0.35f;
+// The camp damage of a clear per unit of clearing rate (camp choice's risk,
+// the siege decision): combat() hits the camps that strike back first, the
+// most strength per health first, so each strikes until the health cleared
+// before it and its own is gone; the sum of strength x that health, divided
+// by the rate, is the clear's camp damage. Harmless camps cost nothing. A
+// fitted share of strength x the whole clear (0.68, 0.5, 0.35 by strikers)
+// stood in while the harmless clusters went first: the elk beside two
+// clusters struck through the whole clear, and one beside twenty would have.
+// Whole: the group as it respawns.
+inline float striker_work(const CampGroup &g, bool whole) {
+    static std::vector<std::pair<float, float>> strikers; // Strength, health.
+    strikers.clear();
+    for (const auto &c : g.camps) {
+        const float health = whole ? float(c.stats.base_health) : c.health;
+        if (c.stats.base_strength > 0 && health > 0)
+            strikers.emplace_back(float(c.stats.base_strength), health);
+    }
+    std::sort(strikers.begin(), strikers.end(),
+              [](const auto &a, const auto &b) { return a.first * b.second > b.first * a.second; });
+    float work = 0, cleared = 0;
+    for (const auto &[strength, health] : strikers) {
+        cleared += health;
+        work += strength * cleared;
+    }
+    return work;
 }
 struct ObservedUnit {
     // The roster's champion or the camp group's camp: those never move.
@@ -354,7 +367,6 @@ class Bot {
     vec2 previous{-1, -1}, position{}, ward{-1, -1}, origin_position{-1, -1};
     float health = 0, max_health = 0, strength = 0, focus = 0, camp_multiplier = 1, camp_mitigation = 1,
           mitigation = 1;
-    float nearby_healing = 0;
     unsigned gems = 0;
     int range = 1;
     bc::champion_type type{};
@@ -754,6 +766,11 @@ class Bot {
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
     float clear_loss(const CampGroup &g, float clear_time) const;
+    // Healing per round a clear gets: our own heal if it can target us, and a
+    // teammate's (observed in view, else its kit's) when it claims the group.
+    float self_heal() const;
+    float slot_heal(unsigned s) const;
+    float group_heal(int group) const;
     // Whether a visit to the group can afford the walk out of its reach
     // under its fire (camp choice's visit_health of 100+).
     bool visit_affordable(const CampGroup &g) const;

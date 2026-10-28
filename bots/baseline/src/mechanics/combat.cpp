@@ -45,13 +45,16 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
                !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
     };
+    // Our rate on the farmed group's camps (camp choice's own).
+    const float camp_rate = !fighting_champions && farm_group >= 0 ? dps(groups[farm_group]) : 1.0f;
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
             return 0.0f;
         float effective = damage * (u.enemy() ? u.mitigation : camp_multiplier);
         float value = std::min(effective, u.health + u.shield);
+        const float useful = value;
         if (effective >= u.health + u.shield) {
-            value += u.enemy() ? kill_value(u) : u.strength * 8 + 20;
+            value += u.enemy() ? kill_value(u) : u.strength * 8;
             if (passive == bc::passive_type::reset_cooldowns_on_kill)
                 value += 60;
         }
@@ -62,7 +65,12 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             if (u.channel && cc && !u.immune)
                 value += 120 + u.gems * 3;
         } else
-            value += u.strength * effective / std::max(1.0f, u.health) * 3;
+            // Strikers first (striker_work()): a hit ends a striker
+            // useful / rate rounds sooner and spares its strength each of
+            // them; a harmless camp spares nothing, as every camp must fall.
+            // A one-hit kill on a harmless cluster outranked a hit on the elk
+            // beside it, which struck through the whole clear.
+            value += u.strength * useful / camp_rate;
         if (cc && !(u.stunned && u.stun_time > 0) && !u.immune)
             value += controls[&u - targets.data()];
         if (u.retaliation() > 0 && effective > 0) {
