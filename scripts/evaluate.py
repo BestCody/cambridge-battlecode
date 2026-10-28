@@ -25,8 +25,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    sys.exit("evaluate.py requires tqdm; install it with: python -m pip install tqdm")
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FUELS = [92000, 96000, 100000, 104000, 108000]
@@ -51,6 +58,27 @@ def cambc(*command, check=True):
     if check and done.returncode:
         raise RuntimeError(f"cambc {' '.join(command[:2])} failed:\n{done.stdout[-1500:]}{done.stderr[-1500:]}")
     return done
+
+
+def cambc_with_progress(command, results, description):
+    """Run cambc while advancing a progress bar as result files arrive."""
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout, \
+            tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stderr:
+        process = subprocess.Popen(["cambc", *command], cwd=ROOT, stdout=stdout, stderr=stderr, **LOW_PRIORITY)
+        completed = 0
+        with tqdm(total=len(results), desc=description, unit="game", dynamic_ncols=True) as progress:
+            while process.poll() is None:
+                current = sum(path.exists() for path in results)
+                if current > completed:
+                    progress.update(current - completed)
+                    completed = current
+                time.sleep(0.2)
+            current = sum(path.exists() for path in results)
+            if current > completed:
+                progress.update(current - completed)
+        stdout.seek(0)
+        stderr.seek(0)
+        return subprocess.CompletedProcess(process.args, process.returncode, stdout.read(), stderr.read())
 
 
 def prepare_bot(name, source, assignments):
@@ -96,16 +124,28 @@ def play(configs, opponents, fuels, args):
                             a, b = (bots[(name, opponent)], opponent) if seat == "A" else (opponent, bots[(name, opponent)])
                             tag = f"{name}-{opponent}-{fuel}-{seat}-{game_map}"
                             stats, replay = out / f"{tag}.json", out / f"{tag}.repl26a"
-                            # run-batch resolves relative paths from the manifest's folder.
-                            bot_a, bot_b = (ROOT / "bots" / a).as_posix(), (ROOT / "bots" / b).as_posix()
-                            map_path = (ROOT / "maps" / f"{game_map}.map26a").as_posix()
-                            rows.append(f"{bot_a} {bot_b} {map_path} {replay.as_posix()} --statistics {stats.as_posix()} --json")
+                            # run-batch resolves relative paths from the manifest's folder. Keep every
+                            # manifest token relative so workspaces whose names contain spaces work.
+                            def relative_to_out(path):
+                                return Path(os.path.relpath(path, start=out)).as_posix()
+
+                            bot_a = relative_to_out(ROOT / "bots" / a)
+                            bot_b = relative_to_out(ROOT / "bots" / b)
+                            map_path = relative_to_out(ROOT / "maps" / f"{game_map}.map26a")
+                            rows.append(f"{bot_a} {bot_b} {map_path} {replay.name} --statistics {stats.name} --json")
                             expected.append((name, opponent, game_map, seat, stats))
             manifest = out / f"manifest-{fuel}.txt"
             manifest.write_text("\n".join(rows) + "\n")
             print(f"  running {len(rows)} matches at fuel {fuel} on {args.jobs} processes...", flush=True)
-            cambc("run-batch", str(manifest), "--jobs", str(args.jobs), "--fuel-quantum", str(fuel), "--release",
-                  "--json", "--color", "never", check=False)
+            done = cambc_with_progress(
+                ["run-batch", str(manifest), "--jobs", str(args.jobs), "--fuel-quantum", str(fuel), "--release",
+                 "--json", "--color", "never"],
+                [stats for _, _, _, _, stats in expected],
+                f"fuel {fuel}",
+            )
+            if done.returncode:
+                print(f"  run-batch failed with exit code {done.returncode}:\n{done.stdout[-1500:]}{done.stderr[-1500:]}",
+                      flush=True)
             for name, opponent, game_map, seat, stats in expected:
                 if not stats.exists():
                     print(f"  missing result: {stats.name}", flush=True)

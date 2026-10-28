@@ -6,6 +6,8 @@ int Bot::worker_choose_group(int excluded) {
     // A group we were walled off from lately is no candidate.
     const int walled = int(round) < stuck_group_until ? stuck_group : -1;
     profiling::Scope scope(profiling::Stage::choose);
+    if (hops.size() != groups.size())
+        build_hops();
     measure_paths(1);
     float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
     float gold_value = policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress;
@@ -64,6 +66,9 @@ int Bot::worker_choose_group(int excluded) {
             marks[g] |= enemy_on;
     const int here = group_at(position);
     const float gem_weight = gem_reward_weight(opening), gem_risk = gem_risk_weight(opening);
+    const float behind = behind_pressure();
+    const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;
+    const float camp_risk = policy::camp_risk_weight * (1.0f - policy::behind_risk_relief * behind);
     const int capture_time = rules::settings().capture_time;
     const float health_scale = std::max(100.0f, health), spare = std::max(0.0f, health - reserve);
     // The Willow keeps to its Prism's group (policy::willow_follow).
@@ -113,12 +118,14 @@ int Bot::worker_choose_group(int excluded) {
         // types' base), what it can spend above the reserve, and its heals
         // per round (a Willow in it heals the tank).
         float *party_health, *party_spare, *party_heal;
+        // Each group's best neighbour as a second leg of one plan (chaining).
+        float *pair_reward, *pair_extra;
     };
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[22 * padded]);
+        lanes.floats.reset(new float[24 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
@@ -132,7 +139,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.claim_rate, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
-                            &lanes.party_heal}) {
+                            &lanes.party_heal, &lanes.pair_reward, &lanes.pair_extra}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -144,7 +151,8 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.pressure, lanes.claims, lanes.loss_factor, lanes.claim_rate,
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
-                               lanes.party_health, lanes.party_spare, lanes.party_heal})
+                               lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.pair_reward,
+                               lanes.pair_extra})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -344,6 +352,37 @@ int Bot::worker_choose_group(int excluded) {
     const float our_focus = focus, our_multiplier = camp_multiplier, camp_scale = camp_mitigation * mitigation,
                 healing = nearby_healing;
     const std::array<Spell, 2> kit = spells;
+    // Each group's best neighbour as a second leg of one plan: the neighbour's
+    // reward, and the time it adds (walk, respawn wait, clear, capture).
+    const float team_dps = std::max(1.0f, flat_dps * our_multiplier);
+    const auto gather_pairs = [&] {
+        for (std::size_t i = 0; i < count; ++i) {
+            float best_rate = 0, best_reward = 0, best_extra = 0;
+            for (const auto &[j, hop] : hops[i]) {
+                const auto &n = groups[j];
+                if (int(j) == excluded || int(j) == walled || lanes.sighted[j])
+                    continue;
+                if (n.status == CampGroup::capture && (claims[j] || (marks[j] & ally_on)))
+                    continue;
+                if (lanes.reach[j] >= 5.0f && !claims[j]) // Monoliths stay team-only.
+                    continue;
+                const float wait =
+                    n.status == CampGroup::cooling ? float(std::max(0, n.respawn - now - hop)) : 0.0f;
+                if (wait > float(policy::hop_max_wait))
+                    continue;
+                const float reward = lanes.gem_reward[j] + gold_weight * lanes.gold[j];
+                const float extra = float(hop) * travel_scale + wait * policy::respawn_wait_weight +
+                                    lanes.remaining[j] / team_dps + float(capture_time) + 1;
+                if (reward / extra > best_rate) {
+                    best_rate = reward / extra;
+                    best_reward = reward;
+                    best_extra = extra;
+                }
+            }
+            lanes.pair_reward[i] = best_reward;
+            lanes.pair_extra[i] = best_extra;
+        }
+    };
     const auto pick = [](v128_t yes, v128_t no, v128_t when) { return wasm_v128_bitselect(yes, no, when); };
     const auto mark_set = [&](v128_t m, std::int32_t bit) {
         return wasm_i32x4_ne(wasm_v128_and(m, splat_int(bit)), no_bits);
@@ -514,7 +553,7 @@ int Bot::worker_choose_group(int excluded) {
             const v128_t risk_weight = pick(splat(gem_risk), one, wasm_v128_load(&lanes.gem[i]));
             // The unshared claims term, (claims - partners) * 0.55, is zero.
             value = wasm_f32x4_div(
-                value, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(policy::camp_risk_weight)),
+                value, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(camp_risk)),
                                                                          risk_weight)),
                                       crowding));
             // Camp damage persists, so a clear longer than our health lasts
@@ -549,7 +588,7 @@ int Bot::worker_choose_group(int excluded) {
             v128_t visits = wasm_f32x4_div(reward, wasm_f32x4_pmax(one, visits_duration));
             visits = wasm_f32x4_div(visits, wasm_f32x4_add(one, wasm_f32x4_mul(visits_duration, splat(policy::plan_hazard))));
             visits = wasm_f32x4_div(
-                visits, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(visit_risk, splat(policy::camp_risk_weight)),
+                visits, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(visit_risk, splat(camp_risk)),
                                                                          risk_weight)),
                                        crowding));
             visits = pick(zero, visits,
@@ -560,9 +599,24 @@ int Bot::worker_choose_group(int excluded) {
             // and a Willow heals it, nobody goes home mid-clear (golem and
             // monolith clears watched), so the trips-home plan is not its plan.
             value = wasm_f32x4_pmax(value, pick(zero, visits, hard));
+            {
+                const v128_t pr = wasm_v128_load(&lanes.pair_reward[i]);
+                const v128_t px = wasm_v128_load(&lanes.pair_extra[i]);
+                const v128_t pair_duration = wasm_f32x4_add(duration, px);
+                v128_t pair = wasm_f32x4_div(wasm_f32x4_add(reward, pr), wasm_f32x4_pmax(one, pair_duration));
+                pair = wasm_f32x4_div(
+                    pair, wasm_f32x4_add(one, wasm_f32x4_mul(pair_duration, splat(policy::plan_hazard))));
+                pair = wasm_f32x4_div(
+                    pair, wasm_f32x4_add(wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_mul(risk, splat(camp_risk)),
+                                                                            risk_weight)),
+                                         crowding));
+                pair = pick(zero, pair, wasm_f32x4_gt(pair_duration, splat(rounds_left)));
+                pair = pick(zero, pair, wasm_f32x4_le(pr, zero)); // No neighbour: no pair.
+                value = wasm_f32x4_pmax(value, wasm_f32x4_mul(pair, splat(policy::chain_discount)));
+            }
             value = wasm_f32x4_div(
                 value, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_add(travel, waiting), splat(travel_hazard))));
-            value = pick(wasm_f32x4_mul(value, splat(policy::enemy_side_factor)), value,
+            value = pick(wasm_f32x4_mul(value, splat(enemy_side_mul)), value,
                          wasm_v128_load(&lanes.enemy_side[i]));
             value = pick(wasm_f32x4_mul(value, splat(safe_gem_factor)), value, wasm_v128_load(&lanes.safe_gems[i]));
             // No visit affords the walk out: no plan at all. The single clear
@@ -597,6 +651,7 @@ int Bot::worker_choose_group(int excluded) {
     float best = -1;
     int choice = -1;
     gather();
+    gather_pairs();
     for (std::size_t i = 0; i < padded; i += 4)
         score_lanes(i);
     for (;;) {
@@ -1008,9 +1063,17 @@ bool Bot::home_after_capture(const CampGroup &g) const {
         for (const auto &e : *list)
             if (distance(position, e.position) <= 8)
                 return false;
-    return health < max_health * policy::home_capture_health ||
-           (passive != bc::passive_type::gem_focus && int(round) - left_spawn < policy::short_trip_rounds) ||
-           bc::self().gold_count() >= policy::home_capture_gold;
+    // Hurt: always home (a little less eagerly when behind).
+    if (health < max_health * policy::home_capture_health * (1.0f - 0.5f * behind_pressure()))
+        return true;
+    // A neighbour worth more than the trip: stay out. Returning false makes
+    // the next turn cancel this recall.
+    if (chain_better_than_home(g))
+        return false;
+    // Otherwise the old fallbacks: a short trip out, or gold for a shard.
+    const bool short_trip =
+        passive != bc::passive_type::gem_focus && int(round) - left_spawn < policy::short_trip_rounds;
+    return short_trip || bc::self().gold_count() >= unsigned(policy::min_shop_gold);
 }
 
 bool Bot::ally_draws_attacks(const CampGroup &g) const {
@@ -1021,4 +1084,90 @@ bool Bot::ally_draws_attacks(const CampGroup &g) const {
             if (c.health > 0 && c.stats.base_strength > 0 && distance(ally.position, c.position) < range)
                 return true;
     return false;
+}
+
+float Bot::behind_pressure() const {
+    const float ours = float(bc::global_submitted_gems(bc::team::ally));
+    const float theirs = float(bc::global_submitted_gems(bc::team::enemy));
+    const float scale = std::max(40.0f, float(rules::settings().winning_gems) * 0.08f);
+    const float ramp = std::min(1.0f, float(round) / float(policy::behind_ramp)); // early gaps are noise
+    return std::clamp((theirs - ours) / scale, 0.0f, 1.0f) * ramp;
+}
+
+void Bot::build_hops() {
+    hops.assign(groups.size(), {});
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        for (std::size_t j = 0; j < groups.size(); ++j) {
+            if (i == j)
+                continue;
+            const int d = distance(groups[i].centre, groups[j].centre);
+            if (d <= policy::hop_radius)
+                hops[i].push_back({int(j), d});
+        }
+        std::sort(hops[i].begin(), hops[i].end(),
+                  [](const auto &a, const auto &b) { return a.second < b.second; });
+        if (hops[i].size() > 3)
+            hops[i].resize(3);
+    }
+}
+
+// decides when to go for another camp instead of just going home
+bool Bot::chain_better_than_home(const CampGroup &g) const {
+    const int gi = int(&g - groups.data());
+    if (gi < 0 || std::size_t(gi) >= hops.size())
+        return false;
+    const float progress = std::min(1.0f, float(round) / float(std::max(1u, rules::settings().max_rounds / 2)));
+    const float gem_w = gem_reward_weight(opening);
+    const float gold_w =
+        (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * gold_bonus;
+    const float behind = behind_pressure();
+    const float spare =
+        std::max(0.0f, health - std::max(max_health * policy::casualty_margin, incoming(position) * 2));
+    const float health_scale = std::max(100.0f, health);
+    const float gold_now = float(bc::self().gold_count());
+
+    float best_margin = 0;
+    for (const auto &[j, hop] : hops[gi]) {
+        const auto &n = groups[j];
+        if (n.status == CampGroup::capture)
+            continue;
+        const float wait =
+            n.status == CampGroup::cooling ? float(std::max(0, n.respawn - int(round) - hop)) : 0.0f;
+        if (wait > float(policy::hop_max_wait))
+            continue;
+        bool monolith = false; // Team-only, as in the scorer.
+        for (const auto &c : n.camps)
+            monolith = monolith || c.stats.base_attack_range >= 5;
+        if (monolith)
+            continue;
+
+        const float clear =
+            std::max(1.0f, (n.status == CampGroup::cooling ? n.max_health : n.health) / dps(n));
+        const float time_n = float(hop) + wait + clear + float(rules::settings().capture_time) + 1;
+        const float reward = n.unit.gem_value() * gem_w + n.unit.gold_value() * gold_w;
+        const float rate = reward / time_n;
+        const float loss = clear_loss(n, clear);
+
+        // Death odds: can we afford its damage, was an enemy seen near it, will
+        // we finish low.
+        float p = 0.02f + 1.2f * std::max(0.0f, loss - spare) / health_scale;
+        if (std::size_t(j) < enemy_seen_near.size() &&
+            int(round) - enemy_seen_near[j] <= 2 * policy::worker_sighting_memory)
+            p += 0.15f;
+        if (health - loss < 0.35f * max_health)
+            p += 0.10f;
+        p = std::clamp(p, 0.0f, 0.9f);
+
+        // A death costs 60 rounds of income, the bag, and the 100-gold bounty.
+        // Banked gold is not lost.
+        const float death_cost =
+            (60.0f * rate + float(gems) * gem_w + 100.0f * gold_w) * (1 - policy::behind_risk_relief * behind);
+        // Unspent gold is delayed power: each affordable shard is worth ~4% income.
+        const float delay = rate * std::min(0.5f, gold_now / 30.0f * policy::shard_income_gain) * time_n;
+        // Chaining also saves the round trip home and back to this neighbour.
+        const float trip = float(recall_turns + 1) + float(n.home_distance);
+        const float margin = (reward + rate * trip) - (p * death_cost + delay);
+        best_margin = std::max(best_margin, margin);
+    }
+    return best_margin > 0;
 }

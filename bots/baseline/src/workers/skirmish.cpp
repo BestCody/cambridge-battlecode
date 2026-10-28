@@ -103,7 +103,8 @@ bool Bot::worker_skirmish() {
     const float holding = mates == 0 && !opening && !dive ? own_power() : ours;
     // Heart of Ruin stays in (policy::hor_fight_factor).
     const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
-    bool favourable = holding * (opening || dive ? policy::aggression : stay) * tank >= theirs;
+    bool favourable = holding * (opening || dive ? policy::aggression : stay) * tank *
+                          (1.0f + policy::behind_fight_bonus * behind_pressure()) >= theirs;
     // Too dangerous to stay, decided every round: our health and shields
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
@@ -488,13 +489,14 @@ bool Bot::worker_pursue() {
     // the last ghost_lifetime rounds below pursue_health of its health, and
     // the only one tracked, is followed to its possible tile nearest us while
     // we are above half health.
-    if (!enemies.empty() || ghosts.size() != 1 || health < max_health * 0.5f)
+    const float behind = behind_pressure();
+    if (!enemies.empty() || ghosts.size() != 1 || health < max_health * 0.5f * (1.0f - 0.3f * behind))
         return false;
     // A holder stays on its capture: leaving the tiles resets it.
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position))
         return false;
     const auto &runner = ghosts.front();
-    if (runner.health > runner.max_health * policy::pursue_health)
+    if (runner.health > runner.max_health * policy::pursue_health * (1.0f + 0.5f * behind))
         return false;
     return advance_attack(runner.position);
 }

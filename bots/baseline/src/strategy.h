@@ -71,11 +71,6 @@ inline constexpr float home_capture_health = 0.80f;
 // keeps its gems, 47% and 2%; ours 2-4% either way), so short trips out to
 // the groups near home end in a recall home and the next one starts there.
 inline constexpr int short_trip_rounds = 25;
-// ... and, healthy or far out, carrying an emblem's gold (five shards) to
-// spend: willow best girl, healthy with 150+ gold after a capture, went home
-// in 27-50% of them (both samples), with 60-150 in 3-9%; ours in 1%, and our
-// champions held ~350 gold at round 300 to its ~130.
-inline constexpr unsigned home_capture_gold = 150;
 // Camp choice divides a group's score by 1 + camp_risk_weight * risk (the camp
 // damage a clear costs past what we can spare): willow best girl swaps
 // wolves for one-elk groups (strike rounds r0-300: wolves 112 vs ours 148,
@@ -293,6 +288,19 @@ inline constexpr float enemy_side_factor = 0.4f;
 // of its new targets when one is up (ours 22%) and keeps its bag for the
 // Focus it gives, so its teammates hold the monster captures.
 inline constexpr float prism_safe_gem_factor = 2.0f;
+// Behind on tributed gems: how fast the pressure ramps in (rounds), how much
+// cheaper a death looks, and how much more willing we are to fight.
+inline constexpr int   behind_ramp = 150;
+inline constexpr float behind_risk_relief = 0.3f;
+inline constexpr float behind_fight_bonus = 0.2f;
+// Chaining camps: neighbour radius (tiles), longest respawn wait worth standing
+// for (rounds), discount on a two-camp plan, and the income a 30-gold shard adds.
+inline constexpr int   hop_radius = 14;
+inline constexpr int   hop_max_wait = 8;
+inline constexpr float chain_discount = 0.9f;
+inline constexpr float shard_income_gain = 0.04f;
+// Gold that sends a holder home when no chain is worth it: one shard.
+inline constexpr int   min_shop_gold = 30;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
