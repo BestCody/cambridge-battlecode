@@ -9,16 +9,21 @@ int Bot::choose_opening(int &until) const {
     // 13-31, in all 11 openings watched; ours spread from round 0). Each
     // champion works it out alike from what all share (the map, the
     // roster's starting kits, the walks from both spawns): a group the
-    // whole team clears with every member above the casualty margin and
-    // captures before the enemy could walk there, at the best reward a
-    // round of walk, clear and capture; ore groups too (an opening limited
-    // to striking camps passed a 343-gem centre the enemy then took).
-    // Groups as near their spawn as ours were met by the enemy mid-clear.
-    float rate = 0, spare = 0;
-    for (const auto &k : roster_kits) {
+    // whole team clears without a trip home, that we reach no later than
+    // the enemy could, at the best reward a round of walk, clear and
+    // capture; ore groups too (an opening limited to striking camps passed
+    // a 343-gem centre the enemy then took). Groups as near their spawn as
+    // ours were met by the enemy mid-clear; but print dont int's 34
+    // openings are all on groups no nearer the enemy (4 exactly halfway,
+    // guardians' elk pair among them), many done well after the enemy
+    // could have walked there, and required done before the enemy could
+    // walk there, ours opened on guardians' only 7-gem cluster with four
+    // champions. Trips home planned in (camp choice's pricing) moved 35 of
+    // 80 openings from wolves to elk groups and golems, first captures from
+    // round 46 to 62 (one lost-world seat took no creature group all game).
+    float rate = 0;
+    for (const auto &k : roster_kits)
         rate += k.camp_rate;
-        spare += k.health * (1 - policy::casualty_margin);
-    }
     const float members = float(std::max<std::size_t>(1, roster_kits.size()));
     const float speed = std::max(1.0f, rate * policy::team_clear_share);
     const float gem_weight = gem_reward_weight(opening);
@@ -27,12 +32,24 @@ int Bot::choose_opening(int &until) const {
     float best_value = 0;
     for (std::size_t i = 0; i < groups.size(); ++i) {
         const auto &g = groups[i];
-        if (g.home_distance == bc::distance_field::unreachable)
+        if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
+            continue;
+        // Without a trip home: what each member spends before it leaves,
+        // above the casualty margin and the walk out of the camps' reach
+        // under their fire from its attack range (the leave rule's,
+        // health_recovery_needed()). Counted down to the margin alone,
+        // harvest's golem passed: the members left at the walk out (about
+        // 480 by a golem) one by one, the golem stood at 1,367 then 506
+        // health for 60 rounds, and our first capture came at round 133.
+        float spare = 0;
+        for (const auto &k : roster_kits) {
+            const float exit = g.max_pressure * float(std::max(0, g.reach - (k.range - 1)));
+            spare += std::max(0.0f, k.health - std::max(k.health * policy::casualty_margin, exit));
+        }
+        if (g.whole_work / speed > spare)
             continue;
         const float clear = std::max(g.max_health / speed, float(g.camps.size()) / members);
         const float done = float(g.home_distance) + clear + float(capture_time + 1);
-        if (g.whole_work / speed > spare || done >= float(g.enemy_distance))
-            continue;
         const float reward = g.unit.gem_value() * gem_weight + policy::early_gold_value * float(g.unit.gold_value());
         const float value = reward / done;
         if (value > best_value) {
