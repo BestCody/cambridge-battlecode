@@ -432,7 +432,8 @@ void Bot::initialise() {
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
                                    design.camp_damage_multiplier,
-                               float(design.base_focus), float(design.base_health)});
+                               float(design.base_focus), float(design.base_health),
+                               int(design.base_attack_range)});
     }
     enemy_roster = bc::champions(bc::team::enemy);
     std::sort(enemy_roster.begin(), enemy_roster.end(),
@@ -613,12 +614,69 @@ void Bot::initialise() {
     }
     camp_count = camp_pool.size(); // Every group's camps.
     camp_tile.load(camp_tiles);
+    {
+        // Each group's reach_share for our attack range: its strikers fall in
+        // striker_work()'s order, and while one is the target we strike it
+        // from the open tile in our range of it that the least strength
+        // reaches (a camp strikes only within its own reach). Striker work
+        // counted every living striker against us: for a ranged champion
+        // the elk groups beside spawn cost 55-86% of that from their best
+        // tiles (boss-battle), a melee one all of it.
+        TileBits open;
+        open.load(open_terrain);
+        const int ours = int(stats.base_attack_range);
+        struct Striker {
+            float strength, health;
+            vec2 position;
+            int reach;
+        };
+        std::vector<Striker> strikers;
+        for (auto &g : groups) {
+            strikers.clear();
+            for (const auto &c : g.camps)
+                if (c.stats.base_strength > 0)
+                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
+                                        int(c.stats.base_attack_range)});
+            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
+                return a.strength * b.health > b.strength * a.health;
+            });
+            float living = 0, whole = 0, reached = 0;
+            for (const auto &s : strikers)
+                living += s.strength;
+            for (std::size_t t = 0; t < strikers.size(); ++t) {
+                const vec2 at = strikers[t].position;
+                float least = living;
+                for (int y = std::max(0, at.y - ours); y <= std::min(map_height - 1, at.y + ours); ++y)
+                    for (int x = std::max(0, at.x - ours); x <= std::min(map_width - 1, at.x + ours); ++x) {
+                        const int index = tile_index({x, y});
+                        if (!open[index] || camp_tile[index])
+                            continue;
+                        float hit = 0;
+                        for (std::size_t k = t; k < strikers.size(); ++k)
+                            if (distance(vec2{x, y}, strikers[k].position) <= strikers[k].reach)
+                                hit += strikers[k].strength;
+                        least = std::min(least, hit);
+                    }
+                whole += living * strikers[t].health;
+                reached += least * strikers[t].health;
+                living -= strikers[t].strength;
+            }
+            g.reach_share = whole > 0 ? reached / whole : 1.0f;
+        }
+    }
     bush_tile.load(bc::map::bushes());
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
     dash_terrain = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
     enemy_spawn_tiles = bc::map::spawn_region(bc::team::enemy).positions();
     shared.set_groups(unsigned(groups.size()));
-    jungle_share = 1 - item_effect(bc::item_type::jungle_emblem_of_strength).magnitude;
+    {
+        // Every group with strikers can be a party plan's (worker_choose_group()).
+        std::vector<int> striking;
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            if (groups[i].whole_work > 0)
+                striking.push_back(int(i));
+        shared.set_camps(striking, unsigned(groups.size()));
+    }
     initialised = true;
     last_plan = bc::round_number();
 }
@@ -1449,20 +1507,21 @@ float Bot::dps(const CampGroup &g) const {
     return std::max(1.0f, value * camp_multiplier);
 }
 
-bool Bot::visit_affordable(const CampGroup &g) const {
-    // The reach camp choice reads (CampGroup's shared facts).
+float Bot::visit_cost(const CampGroup &g) const {
+    // The reach camp choice reads (CampGroup's shared facts): the walk out
+    // of it from our attack range under the living strikers' fire.
     const float reach = float(g.status == CampGroup::alive ? g.live_reach : g.reach);
     const float exit_steps = std::max(0.0f, reach - float(range - 1));
-    const float usable = std::max(100.0f, max_health * (1 - policy::retreat_health));
-    return usable - g.pressure * exit_steps * camp_mitigation * mitigation >= 100.0f;
+    return g.pressure * exit_steps * camp_mitigation * mitigation;
 }
 
-float Bot::self_heal() const {
-    float rate = 0;
-    for (const auto &s : spells)
-        if (s.kind == bc::ability_kind::heal && s.targets.contains(bc::ability_target_mask::self))
-            rate += focus * s.modifier / float(s.cooldown);
-    return rate;
+bool Bot::visit_clears(const CampGroup &g) const {
+    // The clear alone as camp choice prices it: the strikers' work at our
+    // clearing speed, from where the fewest reach us, at our mitigation;
+    // then the walk out.
+    const float damage =
+        g.live_work / (dps(g) * policy::team_clear_share) * g.reach_share * camp_mitigation * mitigation;
+    return damage + visit_cost(g) < health;
 }
 
 int Bot::mate_claim(unsigned s) const {
@@ -1470,32 +1529,9 @@ int Bot::mate_claim(unsigned s) const {
     // is no claim: cluster runs, capture holders and hard groups' partners
     // read them as one where camp choice did not.
     const unsigned code = shared.get(s);
-    return s != slot && s < roster.size() && roster[s].is_alive() && code >= 1 && code <= groups.size()
-               ? int(code) - 1
-               : -1;
-}
-
-float Bot::slot_heal(unsigned s) const {
-    if (s < slot_ally.size() && slot_ally[s] >= 0)
-        return allies[std::size_t(slot_ally[s])].healing_rate;
-    float rate = 0;
-    if (s < roster_kits.size())
-        for (const auto &spell : roster_kits[s].spells)
-            if (spell.kind == bc::ability_kind::heal)
-                rate += roster_kits[s].focus * spell.modifier / float(spell.cooldown);
-    return rate;
-}
-
-float Bot::group_heal(int group) const {
-    // Only the healers at the clear: the allies near us now healed every
-    // clear far away (at spawn a Willow beside everyone made every group's
-    // camp damage nothing).
-    float rate = self_heal();
-    const unsigned count = unsigned(std::min<std::size_t>(roster.size(), TeamMemory::slots));
-    for (unsigned s = 0; s < count; ++s)
-        if (mate_claim(s) == group)
-            rate += slot_heal(s);
-    return rate;
+    if (s == slot || s >= roster.size() || !roster[s].is_alive())
+        return -1;
+    return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
 float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
@@ -1695,7 +1731,7 @@ float Bot::exit_camps(vec2 tile) const {
     // took before round 350; our Prism stood beside one, its nearest
     // champion, for 8 rounds and died, and our Vendetta died walking out
     // past one). Only with an enemy to leave: alone, camp choice prices the
-    // camps (visit_affordable()).
+    // camps (visit_cost()).
     if (!exit_packed().lanes)
         return 0;
     // Each camp that would strike the tile, as incoming() finds them (its
@@ -1795,7 +1831,7 @@ Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, float cam
     // The lanes' bound first, with the camps' part (a few camps, most out
     // of reach of the tile): below the floor, nothing more is computed.
     const auto &packed = exit_packed();
-    const float margin_share = float(carried) / float(policy::prism_bag);
+    const float margin_share = float(carried) / float(policy::exit_bag_gems);
     const float camps = exit_camps(tile) * camp_share; // Its Jungle emblem's, ours or an ally's.
     if ((packed.most + packed.hits * margin_share + camps) * mitigation < floor)
         return {};
@@ -1833,23 +1869,22 @@ bool Bot::ExitCheck::lethal(vec2 tile) {
 }
 
 float Bot::own_power() const {
-    float ready_shield = 0, burst = 0, heal = 0;
+    float ready_shield = 0, burst = 0;
     const auto kit = bc::self().abilities();
     const bool can_cast = bc::self().can_cast();
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
-        if (s.kind == bc::ability_kind::heal)
-            heal += focus * s.modifier / float(s.cooldown); // As ObservedUnit's healing_rate.
         if (ready(kit[i], can_cast)) {
             if (s.kind == bc::ability_kind::shield)
                 ready_shield = focus * s.modifier;
             else if (s.kind == bc::ability_kind::attack_reset)
                 burst = std::max(burst, strength);
-            else if (s.modifier > 0 && s.kind != bc::ability_kind::heal)
+            else if (s.modifier > 0)
                 burst = std::max(burst, focus * s.modifier);
         }
     }
-    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus), burst, heal,
+    // None of our champions heals (our drafts have no healer).
+    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus), burst, 0,
                       mitigation);
 }
 

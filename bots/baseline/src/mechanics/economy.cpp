@@ -3,18 +3,15 @@
 
 namespace {
 using Item = bc::item_type;
-// willow best girl's purchase order on engine 2.0.0 (135 games, 2026-10-26):
-// each emblem in the order of its median first shard, kept when at least
-// about two in five of the games that last that long buy it (comments: median
-// rounds of the first and fifth shard, share of those games). Treasure is
-// gone (10% gold since 2.0.0); Hunter or Prospector opens instead. Where it
-// opens with Hunter we take Prospector of the same stat: our Vendetta and
-// Heart of Ruin kill about twice a game after it, about 100 gold, while
-// Prospector adds a quarter of every cluster capture's gold and gems. The first
-// emblem is its Health version for a champion enemy champions have hurt
-// (policy::health_treasure_damage). Whole emblems, since only a finished
-// emblem gives its passive. Every shard adds one growth of its stat; five
-// identical shards combine into an emblem automatically.
+// print dont int's purchase order (16 ranked games, engine 2.0.0,
+// 2026-10-29): each emblem in the order of its median first shard, kept
+// when about two in five of the games finish it (comments: median rounds of
+// the first and fifth shard, games finished), and the shard bought most
+// repeated after. The first emblem is its Health version for a champion
+// enemy champions have hurt (policy::health_treasure_damage). Whole
+// emblems, since only a finished emblem gives its passive. Every shard adds
+// one growth of its stat; five identical shards combine into an emblem
+// automatically.
 struct BuildStep {
     Item item;
     unsigned count;
@@ -26,62 +23,48 @@ struct Build {
 };
 Build build_for(bc::champion_type type, bool hurt) {
     switch (type) {
-        case bc::champion_type::vendetta:
-            return {{{{Item::prospector_shard_of_health, 5},  // r79-190, 82% (Hunter)
-                      {Item::monster_shard_of_strength, 5},   // r251-334, 82%
-                      {Item::jungle_shard_of_strength, 5},    // r289-328, 82%
-                      {Item::power_shard_of_strength, 5},     // r422-458, 50%
-                      {Item::durability_shard_of_health, 5},  // r478-526, 83%
-                      {Item::bruiser_shard_of_strength, 5},   // r516-556, 72%; 13.5 a game
-                      {Item::bruiser_shard_of_health, 5}}},   // r628-650, 50%
-                    7,
-                    Item::bruiser_shard_of_strength};
         case bc::champion_type::vesper_vale:
-            // Engine 1.x build: willow best girl drafts Vendetta in its place
-            // since 2.0.0.
-            return {{{{Item::treasure_shard_of_strength, 5},  // r82-128, 85%
-                      {Item::power_shard_of_strength, 5},     // r194-293, 65%
-                      {Item::jungle_shard_of_strength, 5},    // r237-286, 98%
-                      {Item::durability_shard_of_health, 5},  // r338-408, 82%
-                      {Item::bruiser_shard_of_strength, 10},  // r374-418, 85%; 31 a game
-                      {Item::bruiser_shard_of_health, 5}}},   // r564-608, 57%
-                    6,
-                    Item::bruiser_shard_of_strength};
+            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_strength, 5}, // r114-129, 15/15
+                      {Item::power_shard_of_strength, 5},       // r129-283, 15/15
+                      {Item::durability_shard_of_health, 5},    // r301-283, 13/15
+                      {Item::prospector_shard_of_strength, 5},  // r333-430, 9/15
+                      {Item::monster_shard_of_strength, 5},     // r378-378, 13/15
+                      {Item::jungle_shard_of_health, 5},        // r430-416, 12/15
+                      {Item::skirmish_shard_of_strength, 5}}},  // r438-498, 10/15
+                    7,
+                    Item::bruiser_shard_of_strength};           // 38 a game
         case bc::champion_type::heart_of_ruin:
-            // Its Hunter: Focus in 38 of 47 games under 250 champion damage,
-            // Health in 47 of 65 after 500 or more.
-            return {{{{hurt ? Item::prospector_shard_of_health : Item::prospector_shard_of_focus, 5}, // r88-281, 79%
-                      {Item::jungle_shard_of_focus, 5},       // r308-429, 49%
-                      {Item::bruiser_shard_of_health, 5},     // r461-509, 65%
-                      {Item::bruiser_shard_of_focus, 5},      // r470-561, 56%; 9.9 a game
-                      {Item::durability_shard_of_health, 5}}}, // r476-501, 44%
+            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_focus, 5}, // r159-318, 15/15
+                      {Item::power_shard_of_focus, 5},          // r379-532, 14/15
+                      {Item::home_shard_of_health, 5},          // r527-570, 10/15
+                      {Item::durability_shard_of_health, 5},    // r629-710, 8/15
+                      {Item::prospector_shard_of_focus, 5},     // r710-890, 6/15
+                      {Item::monster_shard_of_focus, 5}}},      // r890-972, 7/15
+                    6,
+                    Item::bruiser_shard_of_focus};              // 3.7 a game
+        case bc::champion_type::vendetta:
+            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_strength, 5}, // r140-402, 12/14
+                      {Item::durability_shard_of_health, 5},    // r468-648, 10/14
+                      {Item::jungle_shard_of_health, 5},        // r682-796, 8/14
+                      {Item::monster_shard_of_strength, 5},     // r716-753, 6/14
+                      {Item::capture_shard_of_strength, 5}}},   // r826-826, 6/14
                     5,
-                    Item::bruiser_shard_of_focus};
+                    Item::bruiser_shard_of_strength};           // 5.2 a game
         case bc::champion_type::marcella:
-            // Prospector: Focus (or Strength) under 250 champion damage, Health
-            // in 31 of 47 games after 500 or more.
-            return {{{{hurt ? Item::prospector_shard_of_health : Item::prospector_shard_of_focus, 5}, // r127-260, 87%
-                      {Item::jungle_shard_of_focus, 5},       // r302-349, 55% (Strength 22%)
-                      {Item::bruiser_shard_of_focus, 5},      // r365-422, 53%; 16.5 a game
-                      {Item::bruiser_shard_of_health, 5},     // r420-480, 79%
-                      {Item::durability_shard_of_health, 5}}}, // r612-631, 67%
-                    5,
-                    Item::bruiser_shard_of_focus};
-        case bc::champion_type::prism:
-            // Hurt, a Health emblem first: 27 of 29 games after 250 champion
-            // damage or more (Prospector most often). We keep Monster's camp
-            // damage either way: opening with Prospector cost us 7 of 80 wins
-            // and 0.46 deaths a game, its cluster bonus short of slower clears.
-            return {{{{hurt ? Item::monster_shard_of_health : Item::monster_shard_of_focus, 5}, // r90-204, 55%
-                      {Item::jungle_shard_of_health, 5},      // r383-416, 66%
-                      {Item::bruiser_shard_of_focus, 5},      // r377-421, 57%; 12.3 a game
-                      {Item::durability_shard_of_health, 5}}}, // r628-733, 44% (Home 31%)
-                    4,
-                    Item::bruiser_shard_of_focus};
-        case bc::champion_type::willow:
-            return {{{{Item::jungle_shard_of_strength, 5}}},  // r240-452, 62%
-                    1,
-                    Item::power_shard_of_strength};           // 44%; 4.3 a game
+            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_focus, 5}, // r95-182, 16/16
+                      {Item::durability_shard_of_health, 5},    // r190-276, 16/16
+                      {Item::prospector_shard_of_focus, 5},     // r280-408, 12/16
+                      {Item::monster_shard_of_focus, 5},        // r345-421, 14/16
+                      {Item::jungle_shard_of_health, 5},        // r426-459, 12/16
+                      {Item::capture_shard_of_focus, 5},        // r459-528, 12/16
+                      {Item::skirmish_shard_of_focus, 5}}},     // r528-533, 11/16
+                    7,
+                    Item::bruiser_shard_of_focus};              // 27.8 a game
+        case bc::champion_type::ryth:
+            return {{{{Item::treasure_shard_of_health, 5},      // r140-366, 6/8
+                      {Item::durability_shard_of_health, 5}}},  // r506-789, 4/8
+                    2,
+                    Item::monster_shard_of_strength};           // 1.9 a game
         default: // Not drafted.
             return {{}, 0, Item::power_shard_of_strength};
     }
@@ -161,6 +144,14 @@ void Bot::buy_equipment() {
     // Shopping neither kills nor revives: life is read once.
     const bool alive = me.is_alive();
     const bool can_shop = !alive || own_spawn.is_set(me.position());
+    // Income (hop_threshold()): what the gold and the gems carried grew by
+    // since our last turn's shopping (only shopping and banking spend them).
+    {
+        const unsigned gold = me.gold_count(), carried = me.gem_count();
+        earned_gold += float(gold > gold_seen ? gold - gold_seen : 0);
+        earned_gems += float(carried > gems_seen ? carried - gems_seen : 0);
+        gems_seen = carried;
+    }
     if (can_shop && alive) {
         carrying_lock = me.consumables()[bc::consumable_type::altar_lock].count() > 0;
         bool wanted = false;
@@ -191,11 +182,20 @@ void Bot::buy_equipment() {
         bought[static_cast<unsigned>(item)] += count;
         equipment_dirty = true;
     }
+    // A teleport crystal from what the shards leave, on a map where a hop
+    // from spawn saves walking (prepare_hops(); whether to hop is decided on
+    // each way, move_to()): bought before the shards, it took the first
+    // shard's gold at rounds 18-38 and delayed it a trip; bought on every
+    // map, its 10 gold split games from the crystal-free ones where no hop
+    // ever paid.
+    if (can_shop && alive && hops_useful && !carrying_crystal() && me.gold_count() >= bc::consumable_type::tp_crystal.cost())
+        bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[0]);
     // Item stats change only when items do.
     if (equipment_dirty) {
         refresh_equipment();
         equipment_dirty = false;
     }
+    gold_seen = me.gold_count();
     if (alive)
         refresh_self();
 }

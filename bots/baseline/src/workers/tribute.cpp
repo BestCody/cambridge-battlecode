@@ -30,30 +30,27 @@ bool Bot::worker_tribute() {
     }
     // Every trip banks, as willow best girl's champions do: whatever we carry
     // on the way out from spawn (the altar nearest it, from there), and at
-    // once when an altar is a few steps away. Prism, whose focus grows with
-    // the gems it carries, keeps them and banks a big bag (theirs: 0.7 banks
-    // a game, median 198 gems, the first around round 500).
+    // once when an altar is a few steps away.
     const auto &spawn = own_spawn;
-    const bool keeps = passive == bc::passive_type::gem_focus;
     // The altar we were walled off from lately is no nearby altar.
     const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&
                         std::size_t(stuck_altar) < altar_routes.size() &&
                         int(altar_routes[stuck_altar].get(position)) <= closest;
-    const bool trip =
-        !keeps && (spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled));
-    // A holder banks its share or full bag once its capture has paid.
-    const bool full = keeps && gems >= policy::prism_bag && !holding;
-    // The Prism banks only a full bag, a win or at the deadline: willow best
-    // girl's banks 0.1-0.2 times a game and carries 82-114 gems from round
-    // 400 (same maps); ours, banking its share near victory and with
-    // captures beside altars, banked 0.8 times and carried 35-68.
-    if (!banking && !win && !deadline && !trip && !full && (keeps || (!capture_combo && !(share && !holding))))
+    const bool trip = spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled);
+    // A holder banks its share once its capture has paid.
+    if (!banking && !win && !deadline && !trip && !capture_combo && !(share && !holding))
         return false;
     if (!banking)
         bank_stalls = 0;
     banking = true;
     publish(TeamMemory::bank);
     float best_value = 1e20f;
+    // With a crystal, an altar's walk is its hop's where that saves more
+    // rounds than the crystal's price: from spawn its route from there, on
+    // the way the plan's rounds left.
+    const bool hopping = carrying_crystal();
+    const bool on_spawn = hopping && hops_ready && home_field.get(position) == 0;
+    const float threshold = hopping ? hop_threshold() : 0.0f;
     vec2 selected{-1, -1};
     int selected_index = -1;
     for (std::size_t index = 0; index < altars.size(); ++index) {
@@ -62,6 +59,11 @@ bool Bot::worker_tribute() {
             continue;
         auto altar = altars[index];
         float d = index < altar_routes.size() ? altar_routes[index].get(position) : distance(position, altar);
+        if (hopping) {
+            if (on_spawn && d - float(altar_hops[index]) > threshold)
+                d = float(altar_hops[index]);
+            d = std::min(d, float(hop_rounds(altar)));
+        }
         if (d == bc::distance_field::unreachable)
             continue;
         float risk = 0;
@@ -106,7 +108,9 @@ bool Bot::worker_tribute() {
         }
         // Damage cannot cancel this channel. Stuns and a lethal burst can.
         float hazard = incoming(position);
-        if (health > hazard * (channel_duration(gems) + 1) || win || hazard == 0) {
+        // At the start, the damage our last turn took, for the whole channel
+        // (the turns of it then measure what comes).
+        if (health > taken_last * float(channel_duration(gems) + 1) || win || hazard == 0) {
             if constexpr (policy::diagnostic)
                 if (capture_combo)
                     std::printf("CAPTURE_TRIBUTE r=%u gems=%u group=%d\n", round, gems, target);

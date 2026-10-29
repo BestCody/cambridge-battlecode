@@ -159,9 +159,10 @@ bool Bot::worker_reinforce() {
                 committed += !TeamMemory::requested_force(claim, groups.size()) || shared.attacked(s);
                 continue;
             }
-            if (!claim || claim > groups.size())
+            const int claimed = claim >= 1 && claim <= groups.size() ? int(claim) - 1 : shared.camp_claim(claim);
+            if (claimed < 0)
                 continue;
-            vec2 where = groups[claim - 1].centre;
+            vec2 where = groups[std::size_t(claimed)].centre;
             if (seen_slots >> s & 1)
                 for (std::size_t i = 0; i < allies.size(); ++i)
                     if (ally_slot[i] == s) {

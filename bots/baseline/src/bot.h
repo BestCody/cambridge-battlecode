@@ -84,6 +84,10 @@ struct CampGroup {
     bool hard = false, live_hard = false;
     int reach = 0, live_reach = 0;
     float whole_work = 0, live_work = 0;
+    // The share of the strikers' work that reaches us when we clear the
+    // group alone from our attack range (Bot::initialise()): only camps whose
+    // reach covers the tile we strike from hit us.
+    float reach_share = 1;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -390,6 +394,18 @@ class Bot {
     // The group camp choice planned a spell-range siege of (-1: none), for
     // worker_farm() to stand as planned.
     int siege_group = -1;
+    // The group camp choice planned as a party (-1: none): worker_farm()
+    // asks teammates to come.
+    int request_group = -1;
+    // The team's opening group (choose_opening(); -2 until chosen, -1:
+    // none), and whether the opening is over.
+    int opening_group = -2, opening_until = 0;
+    bool opening_done = false;
+    int choose_opening(int &until) const;
+    // Damage taken while tributing, and the turns of the tribute so far;
+    // the damage taken over our last turn.
+    float tribute_taken = 0, taken_last = 0;
+    int tribute_turns = 0;
     // Walled off (camp bodies sealing the only route): turns of a walk that
     // made no step, and the group or altar left out until a round.
     int farm_stalls = 0, stuck_group = -1, stuck_group_until = -1;
@@ -571,6 +587,7 @@ class Bot {
     struct RosterKit {
         std::array<Spell, 2> spells;
         float camp_multiplier = 1, camp_rate = 0, focus = 0, health = 0;
+        int range = 1;
     };
     std::vector<RosterKit> roster_kits;
     // Camp choice's workspace, per group its claimants' summed camp rates.
@@ -593,9 +610,6 @@ class Bot {
     std::vector<std::size_t> link_checked;
     std::vector<ClusterLink> cluster_links;
     std::vector<int> cluster_run;
-    // The camp damage share a Jungle emblem leaves (a teammate's, from its
-    // team memory flag).
-    float jungle_share = 1;
     // behind_pressure() is worked out once a round.
     mutable int behind_round = -1;
     mutable float behind_value = 0;
@@ -778,7 +792,7 @@ class Bot {
     ExitDamage exit_damage(vec2 tile, bool immune, vec2 without, float camps) const;
     // exit_lanes, made again when stale.
     const ExitLanes &exit_packed() const;
-    // Exit damage and the bag margin (a round of those hits per prism_bag
+    // Exit damage and the bag margin (a round of those hits per exit_bag_gems
     // gems carried), after `mitigation`; both 0 when the most the enemies
     // could deal with that margin stays under `floor` (a lower bound of
     // what they are weighed against: the answer is the same).
@@ -804,18 +818,51 @@ class Bot {
     float enemy_power(vec2 at) const;
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
-    // Healing per round a clear gets: our own heal if it can target us, and a
-    // teammate's (observed in view, else its kit's) when it claims the group.
-    float self_heal() const;
-    float slot_heal(unsigned s) const;
-    float group_heal(int group) const;
-    // Whether a visit to the group can afford the walk out of its reach
-    // under its fire (camp choice's visit_health of 100+).
-    bool visit_affordable(const CampGroup &g) const;
+    // The walk out of the group's reach under its fire (camp choice's), and
+    // whether the health we have clears it alone and pays that walk.
+    float visit_cost(const CampGroup &g) const;
+    bool visit_clears(const CampGroup &g) const;
     // navigation.cpp
     // Of equally short steps, the one nearest `toward` in a straight line.
     bool move_to(const bc::bitboard &goals, vec2 toward, bool urgent = false, bool use_dash = true,
-                 int engaged_group = -1, bool allow_teleport = false);
+                 int engaged_group = -1);
+    // Teleport crystals. From our spawn, each group's and altar's walk with
+    // one hop (unreachable when a hop saves nothing), built once from
+    // terrain (prepare_hops()) for the choices made there.
+    std::vector<int> group_hops, altar_hops;
+    // Built, and whether any group or altar has a shorter hop route from
+    // spawn (crystals are bought only then).
+    bool hops_ready = false, hops_useful = false;
+    // The hop on the way to `toward` (as move_to() is given it), planned
+    // once per goal by plan_hop() at `round`: where it lands (none: x -1),
+    // the walk to its take-off and the whole way's rounds.
+    struct HopPlan {
+        vec2 toward{-1, -1}, landing{-1, -1};
+        int round = 0, takeoff_walk = 0, rounds = bc::distance_field::unreachable;
+    } hop_plan;
+    bool walking_to_hop = false;
+    // Our income so far (buy_equipment() adds what each turn brought): gold
+    // and gems gained, and what we held after the last turn's shopping.
+    float earned_gold = 0, earned_gems = 0;
+    unsigned gold_seen = 0, gems_seen = 0;
+    // A gold's value in gems now (policy::early_gold_value to late_gold_value).
+    float gold_value_now() const;
+    // The rounds a hop must save to pay for its crystal (infinite before any
+    // income).
+    float hop_threshold() const;
+    // Field buffers for plan_hop(), rows padded for SIMD.
+    std::unique_ptr<std::uint16_t[]> hop_goal, hop_from, hop_rows, hop_near;
+    bc::distance_field hop_goal_field, hop_from_field;
+    void prepare_hops();
+    bool carrying_crystal() const;
+    // The rounds to `toward` the plan has left (unreachable without one).
+    int hop_rounds(vec2 toward) const;
+    // The best hop from here to `goals` against walking there.
+    void plan_hop(const bc::bitboard &goals, float threshold);
+    // move_to()'s part: -1 to walk on, else whether it acted (walked to the
+    // take-off or started the hop).
+    int follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_dash, int engaged_group);
+    bool take_hop(int engaged_group);
     // step_tiles' tiles in reading order, listed into storage kept between
     // calls (positions() allocates a list on each): step_tiles must hold
     // tiles within our move speed on both axes, as a step's reach does.
@@ -856,7 +903,7 @@ class Bot {
     void worker_farm();
     bool capture_outranked(const CampGroup &g) const;
     // Whether an ally holds a capture before us (capture_outranked()).
-    bool outranks(const ObservedUnit &ally, bool arriving) const;
+    bool outranks(const ObservedUnit &ally, bool arriving, const CampGroup &g) const;
     // An ally whose published code asks for help in a fight.
     bool reports_fight(const ObservedUnit &ally) const;
     // The round a capture we hold pays (its reward's capture phase).

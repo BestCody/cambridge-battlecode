@@ -62,9 +62,16 @@ void Bot::take_turn() {
             const auto now = turn_work();
             search_job_cost = std::max(search_job_cost, now > start ? now - start : 0);
         }
+        // The crystal hops from spawn once, kept out of search_job_cost: a
+        // pass over every tile in our code, far dearer than an engine search,
+        // it raised the cost so no search fitted again and the groups' own
+        // walk fields were never built.
         if (turn_work() < policy::background_step_work) {
             profiling::Scope job(profiling::Stage::sieges);
-            prepare_sieges();
+            if (!hops_ready)
+                prepare_hops();
+            else
+                prepare_sieges();
         }
     }
 }

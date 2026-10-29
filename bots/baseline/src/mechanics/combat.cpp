@@ -176,24 +176,6 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 best_slot = slot_index;
                 best_target = -1;
             }
-        } else if (s.kind == bc::ability_kind::heal) {
-            for (std::size_t i = 0; i < allies.size(); ++i) {
-                const auto &u = allies[i];
-                if (distance(position, u.position) > s.range)
-                    continue;
-                const auto &ally = u.champion();
-                if (!ally.is_visible() || !ally.is_alive() ||
-                    u.max_health - u.health < policy::heal_trigger * focus * s.modifier)
-                    continue;
-                float score = a.heal_amount(ally) * 0.9f;
-                if (u.health < u.max_health * 0.5f)
-                    score *= 2;
-                if (score > best_score) {
-                    best_score = score;
-                    best_slot = slot_index;
-                    best_target = i;
-                }
-            }
         } else if (s.kind == bc::ability_kind::aoe_damage) {
             // Evaluate each unit's surrounding centres, not only occupied tiles:
             // radius-one spells can hit targets five tiles from the caster.
@@ -293,19 +275,15 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         bool success = false;
         if (s.kind == bc::ability_kind::attack_reset || s.kind == bc::ability_kind::shield)
             success = a.use();
-        else if (s.kind == bc::ability_kind::heal) {
-            // The engine's tile of the target, as for basic attacks.
-            if (distance(position, vec2(allies[best_target].champion().position())) <= s.range)
-                success = a.use(allies[best_target].champion());
-        } else if (s.kind == bc::ability_kind::aoe_damage)
+        else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
         else if (!targets[best_target].enemy() ||
                  distance(position, vec2(targets[best_target].unit().position())) <= s.range)
             success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
-            // Only a cast that strikes the group wakes it: a heal or shield
-            // cast on the way woke sleeping camps in our records (and let a
+            // Only a cast that strikes the group wakes it: a shield cast on
+            // the way woke sleeping camps in our records (and let a
             // hard group's party go in without its partner). A reset's
             // attack marks the group as any attack does.
             if (farm_group >= 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
@@ -343,16 +321,11 @@ float Bot::basic_damage() const {
 }
 
 float Bot::peel_factor(const ObservedUnit &enemy) const {
-    // A dive: the enemy within peel_range of a living teammate in view (of
-    // us too, for a Prism).
-    float factor = type == bc::champion_type::prism && distance(position, enemy.position) <= policy::peel_range
-                       ? policy::peel_prism_factor
-                       : 1.0f;
+    // A dive: the enemy within peel_range of a living teammate in view.
     for (const auto &a : allies)
         if (a.health > 0 && distance(a.position, enemy.position) <= policy::peel_range)
-            factor = std::max(factor, a.type == bc::champion_type::prism ? policy::peel_prism_factor
-                                                                          : policy::peel_factor);
-    return factor;
+            return policy::peel_factor;
+    return 1.0f;
 }
 
 float Bot::kill_value(const ObservedUnit &enemy) const {

@@ -20,15 +20,15 @@ struct Entry {
     Mask picks;
     constexpr unsigned size() const { return std::popcount(picks); }
 };
-// One roster per pick count: willow best girl's on engine 2.0.0 (400 games,
-// 2026-10-26; all 55 ranked): Heart of Ruin, Marcella and Vendetta at 3
-// picks, Prism joins at 4 and Willow at 5. Vendetta took Vesper's place when
-// Vesper's strength fell from 55 to 45.
-inline constexpr Mask core_picks = roster(Pick::heart_of_ruin, Pick::marcella, Pick::vendetta);
+// One roster per pick count: print dont int's (ladder #6, 80 ranked games,
+// 2026-10-29): Heart of Ruin, Marcella and Vesper at 3 picks, Vendetta joins
+// at 4 and Ryth at 5. Mite (#3) and print both draft Vesper, Vendetta, Heart
+// of Ruin and Marcella; neither drafts Prism or Willow.
+inline constexpr Mask core_picks = roster(Pick::heart_of_ruin, Pick::marcella, Pick::vesper_vale);
 inline constexpr std::array rosters{
-    Entry{"HeartOfRuin/Marcella/Vendetta", core_picks},
-    Entry{"HeartOfRuin/Marcella/Vendetta/Prism", Mask(core_picks | bit(Pick::prism))},
-    Entry{"HeartOfRuin/Marcella/Vendetta/Prism/Willow", Mask(core_picks | roster(Pick::prism, Pick::willow))}};
+    Entry{"HeartOfRuin/Marcella/Vesper", core_picks},
+    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta", Mask(core_picks | bit(Pick::vendetta))},
+    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta/Ryth", Mask(core_picks | roster(Pick::vendetta, Pick::ryth))}};
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 
 // The roster for this pick count, or the largest one for an unsupported count.

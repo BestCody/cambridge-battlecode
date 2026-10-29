@@ -97,7 +97,7 @@ bool Bot::worker_skirmish() {
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
     // full and their cooldowns read) plus a margin for our bag (a round of
-    // their hits per prism_bag gems). The power test counts burst at a fifth
+    // their hits per exit_bag_gems gems). The power test counts burst at a fifth
     // and the fixed retreat at 35% health came after it landed: one enemy
     // Marcella's spell took ours from 1226 to 307 in a round, 22 of our 72
     // deaths against one ladder team went from near-full health to dead in
@@ -191,58 +191,16 @@ bool Bot::worker_skirmish() {
         return false;
     auto &me = bc::self();
     bool moved = false;
-    // Prism and Willow fight from their spells' reach (Prism's stun and area
-    // hit, Willow's heal), outside the basic attacks' reach of 3: their basic
-    // attacks are weak and their spells are the damage. willow best girl's
-    // stand 4-6 tiles from the nearest enemy in their teammates' fights
-    // (within 2 in 5-8% of those rounds; ours, walking in to shoot, 18-19%).
-    // An enemy within 2 makes them step back unless a Prism spell is ready to
-    // cast (Willow heals as it walks); at 3 they shoot, as willow's do in a
-    // quarter to a third of their rounds in contact. willow's Prism, above 35%
-    // health within 2, shoots in 44-75% of rounds; ours standing there too
-    // (stepping back only below 35% health) died more and Willow
-    // healed less: ours reaches 2 tiles 18 rounds a game to willow's 7-13.
-    const bool backline = type == bc::champion_type::prism || type == bc::champion_type::willow;
-    // A teammate within 3 covers us: alone, the back line keeps a melee
+    // A teammate within 3 covers us: alone, a ranged attacker keeps a melee
     // enemy from walking in and striking (below).
     bool covered = false;
     for (const auto &a : allies)
         covered = covered || (a.health > 0 && distance(position, a.position) <= 3);
-    if (backline && d < range && me.can_move() && !kill) {
-        bool spell_ready = false;
-        for (unsigned i = 0; i < spells.size(); ++i)
-            spell_ready = spell_ready || (is_ready[i] && spells[i].modifier > 0 &&
-                                          (spells[i].kind == bc::ability_kind::damage ||
-                                           spells[i].kind == bc::ability_kind::cc ||
-                                           spells[i].kind == bc::ability_kind::aoe_damage));
-        int support = 0;
-        for (const auto &a : allies)
-            support += a.health > 0 && distance(position, a.position) <= policy::peel_support;
-        const bool shoot_back =
-            type == bc::champion_type::prism && support > 0 && health >= max_health * 0.5f;
-        // Alone, the Prism steps out of reach the turn after its stun:
-        // willow best girl's does in 67% of those rounds (20-26% with a
-        // teammate within 3, where it shoots in 60-63%); ours shot back in
-        // 73-83%, alone or not.
-        bool stunned_last = false;
-        for (unsigned i = 0; i < spells.size(); ++i)
-            stunned_last = stunned_last || (spells[i].kind == bc::ability_kind::cc &&
-                                            abilities[i].cooldown() >= spells[i].cooldown - 1);
-        const bool slip = type == bc::champion_type::prism && stunned_last && !covered;
-        if (((!spell_ready || type == bc::champion_type::willow) && !shoot_back) || slip) {
-            const vec2 step = step_away_tile();
-            if (step != position && move_step(step)) {
-                observe_fight();
-                combat(true, -1, true);
-                return true;
-            }
-        }
-    }
     // Below half health, a ranged attacker with an enemy beside it steps away
     // rather than shoot: willow best girl's Vesper does in 59-74% of those
     // rounds (3-15% at full health), ours in 33-57%, and ours stood beside
     // enemies 21 rounds a game to willow's 5-11.
-    if (!backline && range > 1 && health < max_health * 0.5f && me.can_move() && !kill &&
+    if (range > 1 && health < max_health * 0.5f && me.can_move() && !kill &&
         std::any_of(enemies.begin(), enemies.end(), [&](const auto &e) {
             return e.health > 0 && distance(position, e.position) <= 1;
         })) {
@@ -258,7 +216,7 @@ bool Bot::worker_skirmish() {
     // beside it: willow best girl's Vesper steps away at 2 tiles in 47-55%
     // of those rounds (17-21% when the enemy is below half health; at 1
     // tile 15-24%); ours in 30%.
-    if (!backline && range > 1 && !covered && me.can_move() && !kill) {
+    if (range > 1 && !covered && me.can_move() && !kill) {
         const ObservedUnit *closest = nullptr;
         int nearest = std::numeric_limits<int>::max();
         for (const auto &e : enemies)
@@ -289,29 +247,14 @@ bool Bot::worker_skirmish() {
     } else if (range > 1 && d > range) {
         if (d <= ready_reach && combat(true))
             return true;
-        // Hold at spell reach while a heal or spell is cast there; with
-        // nothing to cast, farm on: ours stood there doing nothing (Prism 17.9
-        // rounds a game with an enemy within 4, Willow 10.3; willow best girl's
-        // 6.5-6.8 and 2.7-3.9, a third of them striking camps).
-        if (backline && d <= policy::backline_reach && !kill)
-            return combat(true);
-        // The Prism walks in on a fight its teammates are in or on a hurt
-        // enemy: willow best girl's, an enemy 5-7 tiles away, steps closer
-        // in 20-24% of rounds when it is healthy and no teammate is on it
-        // (ours, walking in to 4 tiles, 30%), 34% otherwise (ours 48%).
-        if (type == bc::champion_type::prism && !kill && victim.health >= victim.max_health * 0.5f &&
-            std::none_of(allies.begin(), allies.end(), [&](const auto &a) {
-                return a.health > 0 && distance(a.position, victim.position) <= 3;
-            }))
-            return false;
         // No walk in on a healthy victim: willow best girl's Vesper, 4 tiles
         // from an enemy, steps closer in 35% of rounds (ours 52%): to a
         // healthy one 27-36% (ours 39-56%), to a hurt one 50-63%.
-        if (!backline && !kill && victim.health >= victim.max_health * 0.5f)
+        if (!kill && victim.health >= victim.max_health * 0.5f)
             return false;
         if (!on_capture) {
             moved = attack_dash(victim.position);
-            moved = advance_attack(victim.position, backline && !kill ? policy::backline_reach : 0) || moved;
+            moved = advance_attack(victim.position) || moved;
         }
         if (moved)
             observe_fight();
