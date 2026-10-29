@@ -968,16 +968,19 @@ void Bot::worker_farm() {
     // leaves captures to the teammates on them, does not take it from us.
     const bool taking = target >= 0 && groups[target].status == CampGroup::capture &&
                         distance(position, groups[target].centre) <= range + 2 && !capture_outranked(groups[target]);
-    // A hard group's clear, once under way (its camps damaged) with us at it,
-    // is seen through: re-planning every few rounds pulled champions off
-    // monoliths mid-clear (48 of 371 re-plans in four monolith games, one at
-    // 3,829 health of 20,000), and a clear of 50+ active rounds meets ten
-    // re-plans. Going home hurt and fights still come first (the turn's
+    // A clear once under way (its camps damaged) with us at it is seen
+    // through: re-planning every few rounds pulled champions off monoliths
+    // mid-clear (48 of 371 re-plans in four monolith games, one at 3,829
+    // health of 20,000), and off home wolf packs to captures and groups
+    // elsewhere (split, quarry, gemfight: a pack left at 520 of 1,350, one
+    // at 910 by a Vendetta at 1,937 health); nobody came back for the cheap
+    // rest, half-cleared packs standing 31 rounds each to r600 (print dont
+    // int's none). Going home hurt and fights still come first (the turn's
     // order).
     bool engaged = false;
     if (target >= 0 && groups[target].status == CampGroup::alive && groups[target].health < groups[target].max_health) {
         const auto &h = groups[target];
-        engaged = h.live_hard && distance(position, h.centre) <= h.live_reach + 3;
+        engaged = distance(position, h.centre) <= h.live_reach + 3;
     }
     // At most one choice per turn: one made earlier this turn stands.
     if (last_plan != int(round) &&
