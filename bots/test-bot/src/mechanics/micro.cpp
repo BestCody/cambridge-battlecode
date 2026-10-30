@@ -25,20 +25,24 @@ bool Bot::attack_combo(bool escaping) {
         return false;
     auto &me = bc::self();
     const auto abilities = me.abilities();
-    // Nothing acts before the search ends, so readiness is read once.
+    // Nothing acts before the search ends, so readiness and the state are
+    // read once.
+    const auto state = me.state();
     std::array<bool, 2> is_ready{};
     {
-        const bool can_cast = me.can_cast();
+        const bool can_cast = state.contains(bc::champion_state::can_cast);
         for (unsigned i = 0; i < is_ready.size(); ++i)
             is_ready[i] = ready(abilities[i], can_cast);
     }
-    const bool attack_available = me.can_attack();
+    const bool attack_available = state.contains(bc::champion_state::can_attack);
     const bool can_attack = attack_available && (!escaping || range <= 1);
-    const bool can_step = !escaping && !walked && me.can_move() && range <= 1;
+    const bool can_step = !escaping && !walked && state.contains(bc::champion_state::can_move) && range <= 1;
     int reach = can_attack ? range : 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
-        if (!is_ready[i] || ((walked || escaping) && s.exclusive))
+        // Melee standing to fight (escaping) does not walk after: its
+        // walk-excluding spells stay.
+        if (!is_ready[i] || ((walked || (escaping && range > 1)) && s.exclusive))
             continue;
         if (s.kind == bc::ability_kind::attack_reset && !attack_available)
             reach = std::max(reach, range);
@@ -130,6 +134,7 @@ bool Bot::attack_combo(bool escaping) {
                 steps.resize(side * side);
             listed = step_tiles.positions_into(steps);
         }
+        Bot::ExitCheck exits{*this};
         for (const vec2 tile : std::span(steps.data(), std::min<std::size_t>(listed, steps.size()))) {
             if (tile == position || origins.size() >= std::numeric_limits<std::uint64_t>::digits)
                 continue;
@@ -142,7 +147,9 @@ bool Bot::attack_combo(bool escaping) {
                 new_attack = wasm_v128_any_true(
                     wasm_f32x4_le(wasm_f32x4_convert_i32x4(apart), wasm_v128_load(&target_reach[k])));
             }
-            if (!new_attack)
+            // No standing tile we could not leave alive (exit damage), unless
+            // no worse than here.
+            if (!new_attack || exits.lethal(tile))
                 continue;
             origins.push_back(tile);
             if (sight.size() < origins.size())
@@ -197,6 +204,7 @@ bool Bot::attack_combo(bool escaping) {
         const float density =
             (e.damage_rate + e.burst * 0.5f) / std::max(1.0f, e.health + e.shield + e.ready_shield);
         weight *= std::sqrt(density / std::max(0.001f, typical_density));
+        weight *= peel_factor(e);
         weights[i] = weight;
         // Ready assistance excludes allies who have finished this round: an
         // enemy turn may interleave before they act, so it cannot be promised.
@@ -205,9 +213,9 @@ bool Bot::attack_combo(bool escaping) {
         const int reach = std::max(e.range, e.spell_reach) + e.move_speed;
         const float blow = e.strength + e.burst;
         for (const auto &ally : allies) {
-            threatens_kill |= !e.stunned && distance(ally.position, e.position) <= reach &&
+            threatens_kill |= !(e.stunned && e.stun_time > 0) && distance(ally.position, e.position) <= reach &&
                               blow * ally.mitigation >= ally.health;
-            if (ally.stunned || ally.channel)
+            if ((ally.stunned && ally.stun_time > 0) || ally.channel)
                 continue;
             float damage = 0;
             const int d = distance(ally.position, e.position);
@@ -219,7 +227,8 @@ bool Bot::attack_combo(bool escaping) {
             if (!ally.completed)
                 ready_assistance += damage;
         }
-        threatens_kill |= !e.stunned && distance(position, e.position) <= reach && blow * mitigation >= health;
+        threatens_kill |= !(e.stunned && e.stun_time > 0) && distance(position, e.position) <= reach &&
+                          blow * mitigation >= health;
         follow_up[i] = assistance * e.mitigation;
         ready_follow_up[i] = ready_assistance * e.mitigation;
         if (threatens_kill)
@@ -253,7 +262,7 @@ bool Bot::attack_combo(bool escaping) {
         const auto &spell = spells[slot_index];
         const auto &ability = abilities[slot_index];
         // Escaping, a cast that stops the walk would hold us in the fight.
-        if (!is_ready[slot_index] || ((walked || escaping) && spell.exclusive))
+        if (!is_ready[slot_index] || ((walked || (escaping && range > 1)) && spell.exclusive))
             continue;
         Strike a;
         a.slot = slot_index;
@@ -365,7 +374,8 @@ bool Bot::attack_combo(bool escaping) {
         } else if (spell.kind == bc::ability_kind::heal) {
             a.heal = true;
             for (std::size_t i = 0; i < allies.size(); ++i)
-                if ((a.origins = in_range(allies[i].position, spell.range, spell.exclusive))) {
+                if (allies[i].max_health - allies[i].health >= policy::heal_trigger * focus * spell.modifier &&
+                    (a.origins = in_range(allies[i].position, spell.range, spell.exclusive))) {
                     a.target = i;
                     a.support = ability.heal_amount(allies[i].champion()) * 0.9f;
                     if (allies[i].health < allies[i].max_health * 0.5f)
@@ -482,7 +492,7 @@ bool Bot::attack_combo(bool escaping) {
         s.own_health -= recoil - absorbed;
         s.score -= recoil * (1 + std::min(2.0f, gems / 100.0f));
         if (s.own_health <= 0)
-            s.score -= 200 + gems * 7 + strength * 3;
+            s.score -= death_cost();
     };
     // The states after a first action, per standing tile and action, made on
     // first use in this search (marked with its serial), and the last state
@@ -666,7 +676,7 @@ bool Bot::attack_combo(bool escaping) {
         b.own_shield = wasm_f32x4_sub(b.own_shield, absorbed);
         b.own_health = wasm_f32x4_sub(b.own_health, wasm_f32x4_sub(recoil, absorbed));
         b.score = wasm_f32x4_sub(b.score, wasm_f32x4_mul(recoil, wasm_f32x4_splat(1 + std::min(2.0f, gems / 100.0f))));
-        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(200 + gems * 7 + strength * 3)), b.score,
+        b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(death_cost())), b.score,
                          wasm_f32x4_le(b.own_health, zero));
     };
     // The credits evaluate() adds after the actions, standing on our own tile.
@@ -960,15 +970,33 @@ bool Bot::attack_dash(vec2 victim) {
         dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(unsigned(design.range)),
                                           step_tiles);
         subtract_into(search_goals, step_tiles, blocked);
+        if (design.modifier > 0 && design.radius > 0)
+            drop_waking_landings(search_goals, int(design.range + design.radius), design.radius, -1);
+        // Landings within the dash's range on both axes, listed into storage
+        // kept between turns.
+        const std::size_t span = 2 * std::size_t(static_cast<std::uint16_t>(unsigned(design.range))) + 1;
+        if (dash_landings.size() < span * span)
+            dash_landings.resize(span * span);
+        const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best = position;
         float best_score = std::numeric_limits<float>::infinity();
-        for (auto tile : search_goals.positions()) {
+        Bot::ExitCheck exits{*this};
+        for (std::uint32_t k = 0; k < count; ++k) {
+            const vec2 tile = dash_landings[k];
             if (tile == position || distance(tile, victim) > range)
                 continue;
             if (!(float(distance(tile, victim)) < best_score))
                 continue; // The incoming estimate only adds: this tile cannot win.
-            float score = incoming(tile) * 0.14f + float(distance(tile, victim));
-            if (score < best_score) {
+            // A landing we would not survive is no attack (impact_dash()
+            // refuses the same).
+            const float danger = incoming(tile);
+            // Lethal and worse than standing here, this round or before we
+            // could leave: no attack.
+            if (danger >= health && danger > incoming(position))
+                continue;
+            float score = danger * 0.14f + float(distance(tile, victim));
+            // Checked only on a tile that would be chosen: the same choice.
+            if (score < best_score && !exits.lethal(tile)) {
                 best_score = score;
                 best = tile;
             }
@@ -986,14 +1014,30 @@ bool Bot::attack_dash(vec2 victim) {
 bool Bot::follow_through() {
     // Melee attacks leave a move available. Use it to line up the next attack
     // or reach the next victim immediately after a kill.
+    bool gone = false;
     for (auto &e : enemies) {
         const auto info = sighting(e.champion());
         e.health = info ? info->health : 0;
         if (e.health > 0)
             e.shield = live_shield(e);
+        gone = gone || e.health <= 0;
     }
+    // An enemy killed (or out of view) leaves incoming()'s estimate: its
+    // packed enemies and nearest units are made again.
+    if (gone)
+        ++threat_revision;
     refresh_blocked();
     const float hit = basic_damage();
+    // A kill this turn needs an attack or a reset left; else the step
+    // only sets up the next turn, after the enemy moves.
+    const auto state = bc::self().state();
+    bool again = state.contains(bc::champion_state::can_attack);
+    {
+        const auto kit = bc::self().abilities();
+        const bool can_cast = state.contains(bc::champion_state::can_cast);
+        for (unsigned i = 0; i < spells.size(); ++i)
+            again = again || (spells[i].kind == bc::ability_kind::attack_reset && ready(kit[i], can_cast));
+    }
     auto value = [&](vec2 tile) {
         float best = 0;
         for (const auto &e : enemies) {
@@ -1001,20 +1045,26 @@ bool Bot::follow_through() {
                 continue;
             const int arrival = std::max(0, distance(tile, e.position) - range);
             float damage = std::min(hit * e.mitigation, e.health + e.shield);
-            if (e.health + e.shield <= hit * e.mitigation)
-                damage += 200 + e.gems * 7;
+            if (again && e.health + e.shield <= hit * e.mitigation)
+                damage += kill_value(e);
             best = std::max(best, damage / (1 + arrival));
         }
         return best;
     };
     vec2 best = position;
     float best_score = value(position);
+    const float here = incoming(position);
+    Bot::ExitCheck exits{*this};
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-    for (auto tile : step_tiles.positions()) {
-        if (incoming(tile) >= health)
-            continue; // Not onto a tile the attack search would refuse as lethal.
-        const float score = value(tile);
-        if (score > best_score + 0.01f) {
+    for (const vec2 tile : step_positions()) {
+        const float danger = incoming(tile);
+        // Not onto a tile the attack search refuses as lethal: one as deadly
+        // as standing here is no worse (attack_dash(), impact_dash()).
+        if (danger >= health && danger > here)
+            continue;
+        // The step pays the damage it adds, as the combo's steps do.
+        const float score = value(tile) - std::max(0.0f, danger - here);
+        if (score > best_score + 0.01f && !exits.lethal(tile)) {
             best = tile;
             best_score = score;
         }
@@ -1022,14 +1072,17 @@ bool Bot::follow_through() {
     return best != position && move_step(best);
 }
 
-bool Bot::advance_attack(vec2 victim) {
+bool Bot::advance_attack(vec2 victim, int stand) {
+    // Up to `stand` tiles from the victim (0: our attack range).
     auto &me = bc::self();
-    if (!me.can_move() || distance(position, victim) <= range)
+    if (stand <= 0)
+        stand = range;
+    if (!me.can_move() || distance(position, victim) <= stand)
         return false;
     // A visible fight needs a local approach, not a route across the whole map.
     // Reserve the remaining turn for the attack and reset after this move.
     const auto local_blocked = blocked | ~around(position, stats.vision_radius);
-    const auto goals = around(victim, range) & ~local_blocked;
+    const auto goals = around(victim, float(stand)) & ~local_blocked;
     if (goals.is_empty())
         return false;
     auto &field = move_field;
@@ -1039,12 +1092,12 @@ bool Bot::advance_attack(vec2 victim) {
     const bool moved = cast_mobility(field, false, -1);
     if (moved)
         refresh_blocked();
-    if (!me.can_move() || distance(position, victim) <= range)
+    if (!me.can_move() || distance(position, victim) <= stand)
         return moved;
     vec2 best = position;
     float best_score = std::numeric_limits<float>::infinity();
     blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-    for (auto tile : step_tiles.positions()) {
+    for (const vec2 tile : step_positions()) {
         if (field.get(tile) >= field.get(position))
             continue;
         const float score = float(field.get(tile)) * 10 + incoming(tile) * 0.14f;
@@ -1070,18 +1123,11 @@ void Bot::observe_fight() {
         if (!info)
             continue; // A champion in view is alive.
         enemy_slot[current.size()] = std::uint8_t(i);
-        const auto found =
-            std::find_if(enemies.begin(), enemies.end(), [&](const auto &e) { return e.champion() == c; });
-        if (found == enemies.end())
-            current.emplace_back(c, *info);
-        else {
-            current.push_back(*found);
-            auto &e = current.back();
-            e.position = {info->x, info->y};
-            e.health = info->health;
-            e.shield = 0;
-            read_buffs(e);
-        }
+        // Made as observe() makes it, recall test included: one first seen
+        // now is judged like any sighting, and one we struck has its channel
+        // read again (a hit ends a recall). A record costs about what copying
+        // the last one did.
+        judge_recall(current.emplace_back(c, *info), i);
     }
     enemies.swap(current);
     ++threat_revision; // Their nearest units moved.
@@ -1139,6 +1185,10 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         occupied_into(dash_blocked, dash_terrain);
         dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(steps), step_tiles);
         subtract_into(search_goals, step_tiles, blocked);
+        // The landing strikes every camp around it, of any group: farming or
+        // fighting, ours woke camps it then left 2.9 times a game with no
+        // enemy near (willow best girl's 1.3).
+        drop_waking_landings(search_goals, steps + int(spell.radius), spell.radius, farm_group);
         // Landings within the dash's range on both axes, listed into storage
         // kept between turns.
         const std::size_t span = 2 * std::size_t(steps) + 1;
@@ -1147,6 +1197,7 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best{-1, -1};
         float best_score = 0;
+        Bot::ExitCheck exits{*this};
         for (std::uint32_t k = 0; k < count; ++k) {
             const vec2 tile = dash_landings[k];
             if (tile == position || enemy_spawn_tile[tile_index(tile)])
@@ -1166,12 +1217,12 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
             if (!hits || !(score > best_score))
                 continue; // Danger only lowers the score: this landing cannot win.
             // A bruiser wants to be in the fight; only refuse a landing it
-            // would not survive.
+            // would not survive, this round or before it could leave.
             const float danger = incoming(tile, farm_group);
-            if (danger >= health)
+            if (danger >= health && danger > incoming(position, farm_group))
                 continue;
             score -= danger * 0.2f;
-            if (score > best_score) {
+            if (score > best_score && !exits.lethal(tile)) {
                 best_score = score;
                 best = tile;
             }

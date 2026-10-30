@@ -45,30 +45,39 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         return (fighting_champions || u.group == farm_group) && u.health > 0 &&
                !(fighting_champions && enemy_spawn_tile[tile_index(u.position)]);
     };
+    // Our rate on the farmed group's camps (camp choice's own).
+    const float camp_rate = !fighting_champions && farm_group >= 0 ? dps(groups[farm_group]) : 1.0f;
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
             return 0.0f;
         float effective = damage * (u.enemy() ? u.mitigation : camp_multiplier);
         float value = std::min(effective, u.health + u.shield);
+        const float useful = value;
         if (effective >= u.health + u.shield) {
-            value += u.enemy() ? kill_value(u) : u.strength * 8 + 20;
+            value += u.enemy() ? kill_value(u) : u.strength * 8;
             if (passive == bc::passive_type::reset_cooldowns_on_kill)
                 value += 60;
         }
         if (u.enemy()) {
+            value *= peel_factor(u);
             value *= 1 + std::min(2.0f, u.gems / 100.0f);
             value *= 1 + 0.6f * (1 - u.health / u.max_health);
             if (u.channel && cc && !u.immune)
                 value += 120 + u.gems * 3;
         } else
-            value += u.strength * effective / std::max(1.0f, u.health) * 3;
-        if (cc && !u.stunned && !u.immune)
+            // Strikers first (striker_work()): a hit ends a striker
+            // useful / rate rounds sooner and spares its strength each of
+            // them; a harmless camp spares nothing, as every camp must fall.
+            // A one-hit kill on a harmless cluster outranked a hit on the elk
+            // beside it, which struck through the whole clear.
+            value += u.strength * useful / camp_rate;
+        if (cc && !(u.stunned && u.stun_time > 0) && !u.immune)
             value += controls[&u - targets.data()];
         if (u.retaliation() > 0 && effective > 0) {
             const float recoil = u.retaliation() * mitigation;
             value -= recoil * (1 + std::min(2.0f, gems / 100.0f));
             if (recoil >= health + own_shield)
-                value -= 200 + gems * 7 + strength * 3;
+                value -= death_cost();
         }
         return value;
     };
@@ -97,6 +106,14 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         if (index < 0)
             return false;
         auto &u = targets[index];
+        // An enemy only a teammate sees stands, for the engine, where we
+        // last saw it: attacking it there threw ("attack target is out of
+        // range") and lost the rest of the turn. Out of reach, it is out of
+        // this turn's choices.
+        if (u.enemy() && !attack_area.is_set(u.unit().position())) {
+            u.health = 0;
+            return false;
+        }
         const vec2 struck = u.position;
         me.attack(u.unit());
         acted = true;
@@ -104,9 +121,16 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             groups[u.group].attacked = round;
         // Refresh health before the reset selection so a dead or overkilled
         // unit cannot consume actions, and ours after any retaliation.
+        bool gone = false;
         for (auto &t : targets)
-            if (eligible(t) && t.position == struck)
+            if (eligible(t) && t.position == struck) {
                 t.health = live_health(t);
+                gone = gone || t.health <= 0;
+            }
+        // A champion killed leaves incoming()'s estimate: its packed enemies
+        // and nearest units are made again.
+        if (fighting_champions && gone)
+            ++threat_revision;
         refresh_self();
         own_shield = read_shield();
         return true;
@@ -158,7 +182,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 if (distance(position, u.position) > s.range)
                     continue;
                 const auto &ally = u.champion();
-                if (!ally.is_visible() || !ally.is_alive())
+                if (!ally.is_visible() || !ally.is_alive() ||
+                    u.max_health - u.health < policy::heal_trigger * focus * s.modifier)
                     continue;
                 float score = a.heal_amount(ally) * 0.9f;
                 if (u.health < u.max_health * 0.5f)
@@ -268,24 +293,38 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         bool success = false;
         if (s.kind == bc::ability_kind::attack_reset || s.kind == bc::ability_kind::shield)
             success = a.use();
-        else if (s.kind == bc::ability_kind::heal)
-            success = a.use(allies[best_target].champion());
-        else if (s.kind == bc::ability_kind::aoe_damage)
+        else if (s.kind == bc::ability_kind::heal) {
+            // The engine's tile of the target, as for basic attacks.
+            if (distance(position, vec2(allies[best_target].champion().position())) <= s.range)
+                success = a.use(allies[best_target].champion());
+        } else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
-        else
+        else if (!targets[best_target].enemy() ||
+                 distance(position, vec2(targets[best_target].unit().position())) <= s.range)
             success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
-            if (farm_group >= 0)
+            // Only a cast that strikes the group wakes it: a heal or shield
+            // cast on the way woke sleeping camps in our records (and let a
+            // hard group's party go in without its partner). A reset's
+            // attack marks the group as any attack does.
+            if (farm_group >= 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
+                                    s.kind == bc::ability_kind::aoe_damage))
                 groups[farm_group].attacked = round;
+            bool gone = false;
             for (std::size_t i = 0; i < targets.size(); ++i) {
                 auto &u = targets[i];
                 if (eligible(u) && ((s.kind == bc::ability_kind::aoe_damage &&
                                      distance(u.position, best_tile) <= s.radius) ||
                                     ((s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc) &&
-                                     int(i) == best_target)))
+                                     int(i) == best_target))) {
                     u.health = live_health(u);
+                    gone = gone || u.health <= 0;
+                }
             }
+            // As after an attack: a champion killed leaves incoming().
+            if (fighting_champions && gone)
+                ++threat_revision;
             refresh_self();
             own_shield = read_shield();
             do_attack();
@@ -300,8 +339,20 @@ float Bot::basic_damage() const {
     // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
     if (passive != bc::passive_type::missing_health_damage)
         return strength;
-    return strength * (1 + bc::constants::passive_abilities::heart_of_ruin_missing_health_damage_max_bonus *
-                               (1 - health / std::max(1.0f, max_health)));
+    return strength * hor_bonus(health, max_health);
+}
+
+float Bot::peel_factor(const ObservedUnit &enemy) const {
+    // A dive: the enemy within peel_range of a living teammate in view (of
+    // us too, for a Prism).
+    float factor = type == bc::champion_type::prism && distance(position, enemy.position) <= policy::peel_range
+                       ? policy::peel_prism_factor
+                       : 1.0f;
+    for (const auto &a : allies)
+        if (a.health > 0 && distance(a.position, enemy.position) <= policy::peel_range)
+            factor = std::max(factor, a.type == bc::champion_type::prism ? policy::peel_prism_factor
+                                                                          : policy::peel_factor);
+    return factor;
 }
 
 float Bot::kill_value(const ObservedUnit &enemy) const {

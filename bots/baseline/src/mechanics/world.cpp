@@ -432,7 +432,8 @@ void Bot::initialise() {
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
                                    design.camp_damage_multiplier,
-                               float(design.base_focus), float(design.base_health)});
+                               float(design.base_focus), float(design.base_health),
+                               int(design.base_attack_range)});
     }
     enemy_roster = bc::champions(bc::team::enemy);
     std::sort(enemy_roster.begin(), enemy_roster.end(),
@@ -529,16 +530,19 @@ void Bot::initialise() {
     // the fields are built here (as the draft would) and exported once rather
     // than read per tile; exports write every entry, so the buffers are never
     // filled first (memory fills cost about a fuel per byte).
-    const bool measured = opening.magic == DraftPlan::tag && opening.group_count == groups.size();
+    const bool measured = draft_measured();
     for (std::size_t i = 0; i < groups.size(); ++i)
         groups[i].set_splash(measured ? float(opening.group_splash[i]) : groups[i].count_splash());
-    if (measured)
+    if (measured) {
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const auto &distance = opening.group_distance[i];
             groups[i].home_distance = distance[DraftPlan::home];
             groups[i].enemy_distance = distance[DraftPlan::enemy];
             groups[i].altar_distance = distance[DraftPlan::altar];
         }
+        // The hops too (else the background builds them).
+        prepare_hops();
+    }
     if (!measured) {
         bc::distance_field enemy_field;
         enemy_field.compute(neutral_terrain, bc::map::spawn_region(bc::team::enemy), search_visited);
@@ -613,12 +617,69 @@ void Bot::initialise() {
     }
     camp_count = camp_pool.size(); // Every group's camps.
     camp_tile.load(camp_tiles);
+    {
+        // Each group's reach_share for our attack range: its strikers fall in
+        // striker_work()'s order, and while one is the target we strike it
+        // from the open tile in our range of it that the least strength
+        // reaches (a camp strikes only within its own reach). Striker work
+        // counted every living striker against us: for a ranged champion
+        // the elk groups beside spawn cost 55-86% of that from their best
+        // tiles (boss-battle), a melee one all of it.
+        TileBits open;
+        open.load(open_terrain);
+        const int ours = int(stats.base_attack_range);
+        struct Striker {
+            float strength, health;
+            vec2 position;
+            int reach;
+        };
+        std::vector<Striker> strikers;
+        for (auto &g : groups) {
+            strikers.clear();
+            for (const auto &c : g.camps)
+                if (c.stats.base_strength > 0)
+                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
+                                        int(c.stats.base_attack_range)});
+            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
+                return a.strength * b.health > b.strength * a.health;
+            });
+            float living = 0, whole = 0, reached = 0;
+            for (const auto &s : strikers)
+                living += s.strength;
+            for (std::size_t t = 0; t < strikers.size(); ++t) {
+                const vec2 at = strikers[t].position;
+                float least = living;
+                for (int y = std::max(0, at.y - ours); y <= std::min(map_height - 1, at.y + ours); ++y)
+                    for (int x = std::max(0, at.x - ours); x <= std::min(map_width - 1, at.x + ours); ++x) {
+                        const int index = tile_index({x, y});
+                        if (!open[index] || camp_tile[index])
+                            continue;
+                        float hit = 0;
+                        for (std::size_t k = t; k < strikers.size(); ++k)
+                            if (distance(vec2{x, y}, strikers[k].position) <= strikers[k].reach)
+                                hit += strikers[k].strength;
+                        least = std::min(least, hit);
+                    }
+                whole += living * strikers[t].health;
+                reached += least * strikers[t].health;
+                living -= strikers[t].strength;
+            }
+            g.reach_share = whole > 0 ? reached / whole : 1.0f;
+        }
+    }
     bush_tile.load(bc::map::bushes());
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
     dash_terrain = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
     enemy_spawn_tiles = bc::map::spawn_region(bc::team::enemy).positions();
     shared.set_groups(unsigned(groups.size()));
-    jungle_share = 1 - item_effect(bc::item_type::jungle_emblem_of_strength).magnitude;
+    {
+        // Every group with strikers can be a party plan's (worker_choose_group()).
+        std::vector<int> striking;
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            if (groups[i].whole_work > 0)
+                striking.push_back(int(i));
+        shared.set_camps(striking, unsigned(groups.size()));
+    }
     initialised = true;
     last_plan = bc::round_number();
 }
@@ -1449,20 +1510,21 @@ float Bot::dps(const CampGroup &g) const {
     return std::max(1.0f, value * camp_multiplier);
 }
 
-bool Bot::visit_affordable(const CampGroup &g) const {
-    // The reach camp choice reads (CampGroup's shared facts).
+float Bot::visit_cost(const CampGroup &g) const {
+    // The reach camp choice reads (CampGroup's shared facts): the walk out
+    // of it from our attack range under the living strikers' fire.
     const float reach = float(g.status == CampGroup::alive ? g.live_reach : g.reach);
     const float exit_steps = std::max(0.0f, reach - float(range - 1));
-    const float usable = std::max(100.0f, max_health * (1 - policy::retreat_health));
-    return usable - g.pressure * exit_steps * camp_mitigation * mitigation >= 100.0f;
+    return g.pressure * exit_steps * camp_mitigation * mitigation;
 }
 
-float Bot::self_heal() const {
-    float rate = 0;
-    for (const auto &s : spells)
-        if (s.kind == bc::ability_kind::heal && s.targets.contains(bc::ability_target_mask::self))
-            rate += focus * s.modifier / float(s.cooldown);
-    return rate;
+bool Bot::visit_clears(const CampGroup &g) const {
+    // The clear alone as camp choice prices it: the strikers' work at our
+    // clearing speed, from where the fewest reach us, at our mitigation;
+    // then the walk out.
+    const float damage =
+        g.live_work / (dps(g) * policy::team_clear_share) * g.reach_share * camp_mitigation * mitigation;
+    return damage + visit_cost(g) < health;
 }
 
 int Bot::mate_claim(unsigned s) const {
@@ -1470,98 +1532,76 @@ int Bot::mate_claim(unsigned s) const {
     // is no claim: cluster runs, capture holders and hard groups' partners
     // read them as one where camp choice did not.
     const unsigned code = shared.get(s);
-    return s != slot && s < roster.size() && roster[s].is_alive() && code >= 1 && code <= groups.size()
-               ? int(code) - 1
-               : -1;
+    if (s == slot || s >= roster.size() || !roster[s].is_alive())
+        return -1;
+    return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
-float Bot::slot_heal(unsigned s) const {
-    if (s < slot_ally.size() && slot_ally[s] >= 0)
-        return allies[std::size_t(slot_ally[s])].healing_rate;
-    float rate = 0;
-    if (s < roster_kits.size())
-        for (const auto &spell : roster_kits[s].spells)
-            if (spell.kind == bc::ability_kind::heal)
-                rate += roster_kits[s].focus * spell.modifier / float(spell.cooldown);
-    return rate;
-}
-
-float Bot::group_heal(int group) const {
-    // Only the healers at the clear: the allies near us now healed every
-    // clear far away (at spawn a Willow beside everyone made every group's
-    // camp damage nothing).
-    float rate = self_heal();
-    const unsigned count = unsigned(std::min<std::size_t>(roster.size(), TeamMemory::slots));
-    for (unsigned s = 0; s < count; ++s)
-        if (mate_claim(s) == group)
-            rate += slot_heal(s);
-    return rate;
-}
-
-float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
+float Bot::incoming(vec2 tile, bool include_camps) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
         const std::size_t room = (enemies.size() + 3) & ~std::size_t{3};
         if (packed.x.size() < room) {
-            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.spell})
+            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.melee, &packed.spell})
                 lanes->resize(room);
-            for (auto *lanes : {&packed.strength, &packed.lunge_strength, &packed.half_burst})
+            for (auto *lanes : {&packed.hit, &packed.reset, &packed.burst})
                 lanes->resize(room);
         }
         std::size_t n = 0;
         for (const auto &e : enemies) {
-            // A stun whose timer has run out ends before the enemy acts.
-            if (e.health <= 0 || (e.stunned && e.stun_time > 0) || e.channel)
+            // A stun whose timer has run out ends before the enemy acts; a
+            // recall or tribute can be cancelled to strike, a teleport not.
+            const bool teleporting = e.channel && !e.recalling && !e.tributing;
+            if (e.health <= 0 || (e.stunned && e.stun_time > 0) || teleporting)
                 continue;
-            // A ready attack reset is a second hit where the first lands; a
-            // ranged champion may walk and still shoot once with it (the
-            // reset gives back the attack the walk took).
-            const float hits = e.reset_ready ? 2.0f : 1.0f;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
             packed.reach[n] = e.range;
             packed.lunge[n] = e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1;
+            packed.melee[n] = e.range <= 1 ? -1 : 0;
             packed.spell[n] = e.spell_reach;
-            packed.strength[n] = e.strength * hits;
-            packed.lunge_strength[n] = e.strength * (e.range <= 1 ? hits : 1.0f) * 0.85f;
-            packed.half_burst[n++] = e.spell_burst * 0.5f;
+            packed.hit[n] = e.strength;
+            packed.reset[n] = e.reset_ready ? e.strength : 0.0f;
+            packed.burst[n++] = e.spell_burst;
         }
         packed.lanes = (n + 3) & ~std::size_t{3};
         for (; n < packed.lanes; ++n) {
-            packed.x[n] = packed.y[n] = 0;
+            packed.x[n] = packed.y[n] = packed.melee[n] = 0;
             packed.reach[n] = packed.lunge[n] = packed.spell[n] = -1;
-            packed.strength[n] = packed.lunge_strength[n] = packed.half_burst[n] = 0;
+            packed.hit[n] = packed.reset[n] = packed.burst[n] = 0;
         }
     }
-    // Four enemies a step: what each adds by its reach (a hit, else a melee
-    // lunge; and a spell), then added one by one in their order, as a loop
-    // over them adds. One out of reach adds zero, which leaves the total as it
-    // is (never below zero).
+    // The most the tile can take from them next turn, as XSquare's micro
+    // counts it: every enemy that can hit it does, on us. One ability a
+    // turn, so on top of its hit an enemy adds a ready reset's second hit or
+    // its ready burst, whichever is more; a melee enemy steps in and does all
+    // of it; a ranged one steps in only on a ready reset, which the walk then
+    // spends (one hit, or its burst); out of reach, its burst where the spell
+    // reaches. It replaced a reset's two hits plus half a burst, and a 0.85
+    // step-in: the micro's own count had taken this rule. Four enemies a
+    // step, then added one by one in their order, as a loop over them adds;
+    // one out of reach adds zero (never below zero).
     float damage = 0;
-    {
-        const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y), none = wasm_f32x4_splat(0);
-        for (std::size_t k = 0; k < packed.lanes; k += 4) {
-            const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&packed.x[k]))),
-                                            wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&packed.y[k]))));
-            const v128_t hit = wasm_i32x4_le(d, wasm_v128_load(&packed.reach[k]));
-            const v128_t lunge = wasm_v128_andnot(wasm_i32x4_le(d, wasm_v128_load(&packed.lunge[k])), hit);
-            const v128_t spell = wasm_i32x4_le(d, wasm_v128_load(&packed.spell[k]));
-            if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(hit, lunge), spell)))
-                continue;
-            const v128_t strike = wasm_v128_bitselect(
-                wasm_v128_load(&packed.strength[k]),
-                wasm_v128_bitselect(wasm_v128_load(&packed.lunge_strength[k]), none, lunge), hit);
-            const v128_t cast = wasm_v128_bitselect(wasm_v128_load(&packed.half_burst[k]), none, spell);
-            damage += wasm_f32x4_extract_lane(strike, 0);
-            damage += wasm_f32x4_extract_lane(cast, 0);
-            damage += wasm_f32x4_extract_lane(strike, 1);
-            damage += wasm_f32x4_extract_lane(cast, 1);
-            damage += wasm_f32x4_extract_lane(strike, 2);
-            damage += wasm_f32x4_extract_lane(cast, 2);
-            damage += wasm_f32x4_extract_lane(strike, 3);
-            damage += wasm_f32x4_extract_lane(cast, 3);
-        }
+    const v128_t tx = wasm_i32x4_splat(tile.x), ty = wasm_i32x4_splat(tile.y), none = wasm_f32x4_splat(0);
+    for (std::size_t k = 0; k < packed.lanes; k += 4) {
+        const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(tx, wasm_v128_load(&packed.x[k]))),
+                                        wasm_i32x4_abs(wasm_i32x4_sub(ty, wasm_v128_load(&packed.y[k]))));
+        const v128_t near = wasm_i32x4_le(d, wasm_v128_load(&packed.lunge[k]));
+        const v128_t full = wasm_v128_or(wasm_i32x4_le(d, wasm_v128_load(&packed.reach[k])),
+                                         wasm_v128_and(near, wasm_v128_load(&packed.melee[k])));
+        const v128_t cast = wasm_i32x4_le(d, wasm_v128_load(&packed.spell[k]));
+        if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(full, near), cast)))
+            continue;
+        const v128_t hit = wasm_v128_load(&packed.hit[k]);
+        const v128_t spell = wasm_v128_bitselect(wasm_v128_load(&packed.burst[k]), none, cast);
+        const v128_t taken = wasm_v128_bitselect(
+            wasm_f32x4_add(hit, wasm_f32x4_max(wasm_v128_load(&packed.reset[k]), spell)),
+            wasm_v128_bitselect(wasm_f32x4_max(hit, spell), spell, near), full);
+        damage += wasm_f32x4_extract_lane(taken, 0);
+        damage += wasm_f32x4_extract_lane(taken, 1);
+        damage += wasm_f32x4_extract_lane(taken, 2);
+        damage += wasm_f32x4_extract_lane(taken, 3);
     }
     if (!include_camps)
         return damage * mitigation;
@@ -1615,7 +1655,7 @@ const Bot::ExitLanes &Bot::exit_packed() const {
         }
         packed.most = packed.hits = 0;
         std::size_t n = 0;
-        // Ghosts, as enemy_power() counts them; an unseen enemy's cooldowns
+        // Ghosts, as sides_at() counts them; an unseen enemy's cooldowns
         // are unknown, so its slots and dash count as ready. One on its spawn
         // strikes from there.
         for (const auto *list : {&enemies, &ghosts})
@@ -1695,7 +1735,7 @@ float Bot::exit_camps(vec2 tile) const {
     // took before round 350; our Prism stood beside one, its nearest
     // champion, for 8 rounds and died, and our Vendetta died walking out
     // past one). Only with an enemy to leave: alone, camp choice prices the
-    // camps (visit_affordable()).
+    // camps (visit_cost()).
     if (!exit_packed().lanes)
         return 0;
     // Each camp that would strike the tile, as incoming() finds them (its
@@ -1795,7 +1835,7 @@ Bot::ExitRisk Bot::exit_risk(vec2 tile, float floor, float mitigation, float cam
     // The lanes' bound first, with the camps' part (a few camps, most out
     // of reach of the tile): below the floor, nothing more is computed.
     const auto &packed = exit_packed();
-    const float margin_share = float(carried) / float(policy::prism_bag);
+    const float margin_share = float(carried) / float(policy::exit_bag_gems);
     const float camps = exit_camps(tile) * camp_share; // Its Jungle emblem's, ours or an ally's.
     if ((packed.most + packed.hits * margin_share + camps) * mitigation < floor)
         return {};
@@ -1821,71 +1861,43 @@ float Bot::exit_pool() const {
 }
 
 bool Bot::ExitCheck::lethal(vec2 tile) {
+    // With our bag's margin, as the stay test weighs a tile
+    // (worker_skirmish()): a step taken now is not one that test leaves at
+    // the next turn.
     const bool immune = bot.passive == bc::passive_type::stun_immunity;
-    const float damage = bot.exit_risk(tile, bot.health, bot.mitigation, bot.camp_mitigation, 0, immune).damage;
-    if (damage <= 0)
+    const auto risk = bot.exit_risk(tile, bot.health, bot.mitigation, bot.camp_mitigation, bot.gems, immune);
+    if (risk.damage <= 0)
         return false;
+    const float damage = risk.damage + risk.margin;
     if (pool < 0) {
         pool = bot.exit_pool();
-        here = bot.exit_damage(bot.position, immune).damage * bot.mitigation;
+        const auto stay = bot.exit_risk(bot.position, 0, bot.mitigation, bot.camp_mitigation, bot.gems, immune);
+        here = stay.damage + stay.margin;
     }
     return damage >= pool && damage > here;
 }
 
 float Bot::own_power() const {
-    float ready_shield = 0, burst = 0, heal = 0;
+    float ready_shield = 0, burst = 0;
     const auto kit = bc::self().abilities();
     const bool can_cast = bc::self().can_cast();
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
-        if (s.kind == bc::ability_kind::heal)
-            heal += focus * s.modifier / float(s.cooldown); // As ObservedUnit's healing_rate.
         if (ready(kit[i], can_cast)) {
             if (s.kind == bc::ability_kind::shield)
                 ready_shield = focus * s.modifier;
             else if (s.kind == bc::ability_kind::attack_reset)
                 burst = std::max(burst, strength);
-            else if (s.modifier > 0 && s.kind != bc::ability_kind::heal)
+            else if (s.modifier > 0)
                 burst = std::max(burst, focus * s.modifier);
         }
     }
-    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus), burst, heal,
-                      mitigation);
-}
-
-float Bot::friendly_power(vec2 at) const {
-    float p = own_power();
-    // Allies count if they can join before we fall (our health over the
-    // damage we take), and not while their reports put them in another fight.
-    const float taking = incoming(position);
-    const float lasting = taking > 0 ? health / taking : std::numeric_limits<float>::max();
-    for (std::size_t i = 0; i < allies.size(); ++i) {
-        const auto &a = allies[i];
-        int arrival = std::max(0, distance(at, a.position) - std::max(a.range, a.spell_reach));
-        // A stunned ally still counts (a stun costs it one action), without
-        // its burst while the stun has time left.
-        if (float(arrival) > lasting || a.channel)
-            continue;
-        const int fight = TeamMemory::fight_group(shared.get(ally_slot[i]), groups.size());
-        if (fight >= 0 && !same_fight(fight, at))
-            continue;
-        const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
-        p += unit_power(a.health + a.shield + a.ready_shield, a.damage_rate, ally_burst, a.healing_rate,
-                        a.mitigation) *
-             0.9f / (1 + arrival * 0.4f);
-    }
-    // Teammates out of our sight under attack in this fight are in it, at
-    // their starting kit.
-    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
-    for (unsigned s = 0; s < count; ++s) {
-        if (s == slot || (seen_slots >> s & 1) || !shared.attacked(s))
-            continue;
-        const unsigned code = shared.get(s);
-        if (TeamMemory::requested_force(code, groups.size()) &&
-            same_fight(TeamMemory::fight_group(code, groups.size()), at) && roster[s].is_alive())
-            p += roster_power[s] * 0.9f;
-    }
-    return p;
+    // Heart of Ruin's passive on our damage, as on an enemy's or a
+    // teammate's (ObservedUnit). None of our champions heals (our drafts
+    // have no healer).
+    const float bonus = damage_bonus();
+    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus) * bonus,
+                      burst * bonus, 0, mitigation);
 }
 
 void Bot::track_enemy_respawns() {
@@ -1939,40 +1951,26 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
            (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)]));
 }
 
-float Bot::enemy_power(vec2 at) const {
-    // Only enemies that can fight: not channelling, as friendly_power leaves
-    // out channelling allies. A stunned one counts without its burst (a stun
-    // costs it one action). Enemies out of sight count from their possible
-    // tile nearest us. One on its spawn fights from there and heals to full
-    // at the end of each of its turns there (docs/GameRules.md): it counts at
-    // full health, and as we do not strike it there, it reflects nothing.
-    // Left out, fights at their spawn's edge looked winnable: on
-    // 02treasure_box against DICTATOR_Sahur 9 of our 11 deaths began within 2
-    // tiles of their spawn, and 36% of their damage to our champions came
-    // from spawn tiles.
-    float p = 0;
+bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
+    const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
+    return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
+}
+
+float Bot::unit_power_of(const ObservedUnit &u, bool full) const {
+    return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
+                      u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
+}
+
+std::pair<float, float> Bot::sides_at(vec2 tile) const {
+    std::pair<float, float> s{0.0f, own_power()};
     for (const auto *list : {&enemies, &ghosts})
-        for (const auto &e : *list) {
-            if (e.channel)
-                continue;
-            int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
-            if (arrival > 6)
-                continue;
-            const bool on_spawn = enemy_spawn_tile[tile_index(e.position)];
-            // Focus fire also multiplies a retaliator's damage: each attacker
-            // pays for its own hit, including the hit that kills the target.
-            float reflected = on_spawn ? 0.0f : e.retaliation();
-            if (reflected > 0)
-                for (const auto &a : allies)
-                    if (!a.stunned && !a.channel &&
-                        distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
-                        reflected += e.retaliation();
-            p += unit_power((on_spawn ? e.max_health : e.health) + e.shield + e.ready_shield,
-                            e.damage_rate + reflected, e.stunned && e.stun_time > 0 ? 0.0f : e.burst,
-                            e.healing_rate, e.mitigation) /
-                 (1 + arrival * 0.3f);
-        }
-    return p;
+        for (const auto &e : *list)
+            if (e.health > 0 && !e.channel && acts_on(e, tile))
+                s.first += unit_power_of(e, enemy_spawn_tile[tile_index(e.position)]);
+    for (const auto &a : allies)
+        if (a.health > 0 && !a.channel && acts_on(a, tile))
+            s.second += unit_power_of(a, false);
+    return s;
 }
 
 float Bot::respawn_threat(vec2 at) const {

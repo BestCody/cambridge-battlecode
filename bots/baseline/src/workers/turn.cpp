@@ -70,10 +70,6 @@ void Bot::play_worker_turn() {
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
-        // A dead Prism's bag went to its killer: it published its last bag
-        // for the whole respawn, and teammates counted those gems as ours.
-        if (passive == bc::passive_type::gem_focus)
-            shared.set_prism_bag(0);
         chase.mode = Chase::none;
         hidden.reset();
         buy_equipment();
@@ -92,7 +88,7 @@ void Bot::play_worker_turn() {
         // teammates leave the capture to it, and says it is leaving.
         if (capture_recall)
             shared.set_leaving(slot, true);
-        else
+        else if (!state.contains(bc::champion_state::teleporting)) // A hop keeps its claim.
             publish(TeamMemory::recall);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
@@ -103,10 +99,8 @@ void Bot::play_worker_turn() {
     // only when struck.
     camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
-    shared.set_jungle(slot, camp_mitigation < 1); // For teammates' hard-camp parties.
-    if (passive == bc::passive_type::gem_focus)
-        shared.set_prism_bag(gems); // For teammates' gem race (behind_pressure()).
     hit = health < before;
+    taken_last = std::max(0.0f, before - health);
     // A chase ends once no enemy can reach us, and a stun means deciding it
     // again; a turn spent on anything else keeps it.
     if (chase.mode != Chase::none && (!worker_danger(position).first || me.buffs().has_stun()))
@@ -130,13 +124,22 @@ void Bot::play_worker_turn() {
         // Protect a valuable bag only when the remaining channel is lethal; a
         // winning deposit stands unless we die before our next turn.
         const bool wins = gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems;
-        if (health < incoming(position) * (wins ? 1 : me.remaining_channel_time() + 1)) {
+        // The damage we have taken a turn since the tribute began, for the
+        // turns left: what reaches us, not every enemy in reach each round
+        // (that read 2.2 times what came, while the threat lasted the whole
+        // channel rather than until teammates beat it).
+        tribute_taken += taken_last;
+        ++tribute_turns;
+        const float rate = tribute_taken / float(tribute_turns);
+        if (health < rate * (wins ? 1.0f : float(me.remaining_channel_time() + 1))) {
             me.cancel_submit_gems();
             retreating = true;
             worker_escape();
         }
         return;
     }
+    tribute_taken = 0;
+    tribute_turns = 0;
     const bool at_spawn = own_spawn_tile[tile_index(position)];
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
@@ -189,6 +192,7 @@ void Bot::play_worker_turn() {
         note_activity(Activity::fight);
         return;
     }
+    skirmish_declined = int(round); // A pursuit declined acts on nothing.
     if (worker_tribute()) {
         note_activity(Activity::bank);
         return;
@@ -272,7 +276,7 @@ void Bot::worker_priority() {
         int best = 0;
         for (const auto &e : enemies) {
             const float hp = live_health(e);
-            if (hp <= 0)
+            if (hp <= 0 || enemy_spawn_tile[tile_index(e.position)])
                 continue;
             const int d = distance(position, e.position);
             const float basic = d <= range ? basic_damage() : 0;
@@ -294,9 +298,10 @@ void Bot::worker_priority() {
             if (burst <= 0)
                 continue;
             const bool lethal = burst >= hp + e.shield;
+            // The tier says a kill; within it the bigger burst goes first (a
+            // kill's value on top had every finisher at the cap).
             const int tier = lethal ? priority_tier::finish : priority_tier::damage;
-            const float value = lethal ? burst + kill_value(e) : burst;
-            best = std::max(best, tier + std::min(int(value), priority_tier::span));
+            best = std::max(best, tier + std::min(int(burst), priority_tier::span));
         }
         if (best > 0)
             priority = best;

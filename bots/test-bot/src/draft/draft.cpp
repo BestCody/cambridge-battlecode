@@ -102,9 +102,12 @@ void play_draft() {
     const auto *selected = &compositions::roster_for(bc::draft::team_size());
     auto pick = compositions::next_pick(*selected, committed);
     if (!(selected->picks & compositions::bit(pick))) {
-        // Roster exhausted (more picks than it holds): take any unpicked champion.
+        // Roster exhausted (more picks than it holds): take any unpicked
+        // champion but the twin pick, whose second body would outgrow the
+        // per-body arrays (TeamMemory's slots, the plan's roster).
         for (unsigned p = 0; p < compositions::physical.size(); ++p)
-            if (!(committed & compositions::bit(compositions::Pick(p)))) {
+            if (compositions::Pick(p) != compositions::Pick::cassi_and_issac &&
+                !(committed & compositions::bit(compositions::Pick(p)))) {
                 pick = compositions::Pick(p);
                 break;
             }

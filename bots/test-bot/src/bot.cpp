@@ -57,12 +57,10 @@ void Bot::take_turn() {
             const auto start = turn_work();
             if (!background_search())
                 break;
-            // Searches differ (an altar's covers less), so keep the dearest.
-            search_job_cost = std::max(search_job_cost, turn_work() - start);
-        }
-        if (turn_work() < policy::background_step_work) {
-            profiling::Scope job(profiling::Stage::hops);
-            prepare_hops();
+            // Searches differ (an altar's covers less), so keep the dearest. A
+            // fuel overrun that suspended the search restarted turn_work().
+            const auto now = turn_work();
+            search_job_cost = std::max(search_job_cost, now > start ? now - start : 0);
         }
         if (turn_work() < policy::background_step_work) {
             profiling::Scope job(profiling::Stage::sieges);

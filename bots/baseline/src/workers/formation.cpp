@@ -59,7 +59,7 @@ float Bot::reported_power(vec2 at) const {
         if (asked > force && same_fight(TeamMemory::fight_group(code, groups.size()), at))
             force = asked;
     }
-    return force ? float(force) * policy::aggression * team_average_power() : 0.0f;
+    return force ? float(force) * team_average_power() : 0.0f;
 }
 
 bool Bot::worker_update_formation() {
@@ -92,10 +92,10 @@ bool Bot::worker_update_formation() {
                     reported_group = int(i);
                 }
             }
-            // The squad that beats what we see by the fight rule: its power
-            // times aggression reaches theirs.
+            // The squad that matches what we see: its power reaches theirs
+            // (their side on its tile, as the micro weighs one: sides_at()).
             const unsigned bodies = std::max(1u, unsigned(roster.size()));
-            const float squad = enemy_power(at) / (policy::aggression * std::max(1.0f, team_average_power()));
+            const float squad = sides_at(at).first / std::max(1.0f, team_average_power());
             reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
         }
     }
@@ -159,9 +159,10 @@ bool Bot::worker_reinforce() {
                 committed += !TeamMemory::requested_force(claim, groups.size()) || shared.attacked(s);
                 continue;
             }
-            if (!claim || claim > groups.size())
+            const int claimed = claim >= 1 && claim <= groups.size() ? int(claim) - 1 : shared.camp_claim(claim);
+            if (claimed < 0)
                 continue;
-            vec2 where = groups[claim - 1].centre;
+            vec2 where = groups[std::size_t(claimed)].centre;
             if (seen_slots >> s & 1)
                 for (std::size_t i = 0; i < allies.size(); ++i)
                     if (ally_slot[i] == s) {

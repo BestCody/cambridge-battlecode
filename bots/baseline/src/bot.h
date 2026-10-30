@@ -84,6 +84,10 @@ struct CampGroup {
     bool hard = false, live_hard = false;
     int reach = 0, live_reach = 0;
     float whole_work = 0, live_work = 0;
+    // The share of the strikers' work that reaches us when we clear the
+    // group alone from our attack range (Bot::initialise()): only camps whose
+    // reach covers the tile we strike from hit us.
+    float reach_share = 1;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -372,12 +376,12 @@ struct ChampionGone {};
 
 class Bot {
     bool initialised = false, walked = false, retreating = false, banking = false;
+    // The micro placed us this turn (worker_skirmish()): its tile is final.
+    bool placed = false;
     // Hit since our last turn, by anything, seen or not (a camp out of view,
     // an enemy in a bush), and where our last recall started.
     bool hit = false;
     vec2 recall_tile{-1, -1};
-    // This contact's first round and the last round with an enemy in view (worker_skirmish).
-    int contact_start = -100, contact_last = -100;
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.
@@ -390,6 +394,22 @@ class Bot {
     // The group camp choice planned a spell-range siege of (-1: none), for
     // worker_farm() to stand as planned.
     int siege_group = -1;
+    // The group camp choice planned as a party (-1: none): worker_farm()
+    // asks teammates to come.
+    int request_group = -1;
+    // The team's opening group (choose_opening(); -2 until chosen, -1:
+    // none), and whether the opening is over.
+    int opening_group = -2, opening_until = 0;
+    bool opening_done = false;
+    int choose_opening(int &until) const;
+    // Damage taken while tributing, and the turns of the tribute so far;
+    // the damage taken over our last turn.
+    float tribute_taken = 0, taken_last = 0;
+    int tribute_turns = 0;
+    // The round worker_skirmish() last declined the fight in
+    // play_worker_turn(): nothing acts between that and the tribute's ask
+    // (worker_tribute()), so the answer stands without a second run.
+    int skirmish_declined = -1;
     // Walled off (camp bodies sealing the only route): turns of a walk that
     // made no step, and the group or altar left out until a round.
     int farm_stalls = 0, stuck_group = -1, stuck_group_until = -1;
@@ -477,10 +497,6 @@ class Bot {
     // operation): each is written in full or cleared before it is read.
     bc::bitboard ghost_keep{bc::uninitialized}, ghost_spread{bc::uninitialized};
     std::vector<vec2> ghost_tiles;
-    // The round avoid_reach() kept this turn's moves out of a stronger
-    // group's reach, and those tiles.
-    int avoid_round = -1;
-    bc::bitboard avoid_zone{bc::uninitialized};
     bc::bitboard camp_zone{bc::uninitialized};
     // Tiles a dash landing would strike a camp from (drop_waking_landings()).
     bc::bitboard dash_wake{bc::uninitialized};
@@ -495,9 +511,9 @@ class Bot {
     struct Chase {
         enum Mode { none, run, fight };
         Mode mode = none;
-        int decided = -1, kept = -1, mate = -1;
+        int decided = -1, kept = -1;
         std::uint32_t chasers = 0;
-        bool dash = false, dash_ready = false;
+        bool dash_ready = false;
         float pool = 0;
         std::vector<float> foreseen;
     } chase;
@@ -524,13 +540,15 @@ class Bot {
     // nearest unit to a camp.
     mutable std::vector<std::int32_t> unit_x, unit_y;
     mutable std::uint32_t unit_revision = 0;
-    // The enemies that can strike (not stunned), in order, packed for
-    // incoming() in lanes of four: tile, reach for a hit, for a melee lunge
-    // (one more; none for ranged) and for a spell, and what each adds. Padding
-    // reaches no tile.
+    // The enemies that can strike (not stunned through their turn, not
+    // teleporting), in order, packed for incoming() in lanes of four: tile,
+    // reach for a hit, for a step and a hit (a melee one, or a ranged one
+    // with a ready reset; -1 none), whether it is melee (-1) and for a
+    // spell; its hit, a ready reset's second hit and its ready burst.
+    // Padding reaches no tile.
     struct EnemyLanes {
-        std::vector<std::int32_t> x, y, reach, lunge, spell;
-        std::vector<float> strength, lunge_strength, half_burst;
+        std::vector<std::int32_t> x, y, reach, lunge, melee, spell;
+        std::vector<float> hit, reset, burst;
         std::size_t lanes = 0;
         std::uint32_t revision = 0;
     };
@@ -565,12 +583,17 @@ class Bot {
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;
+    // Whether the draft's plan holds this map's group and altar measures.
+    bool draft_measured() const {
+        return opening.magic == DraftPlan::tag && opening.group_count == groups.size();
+    }
     std::vector<float> roster_power;
     // Each roster slot's kit, camp damage multiplier and base damage per
     // round on camps.
     struct RosterKit {
         std::array<Spell, 2> spells;
         float camp_multiplier = 1, camp_rate = 0, focus = 0, health = 0;
+        int range = 1;
     };
     std::vector<RosterKit> roster_kits;
     // Camp choice's workspace, per group its claimants' summed camp rates.
@@ -593,9 +616,6 @@ class Bot {
     std::vector<std::size_t> link_checked;
     std::vector<ClusterLink> cluster_links;
     std::vector<int> cluster_run;
-    // The camp damage share a Jungle emblem leaves (a teammate's, from its
-    // team memory flag).
-    float jungle_share = 1;
     // behind_pressure() is worked out once a round.
     mutable int behind_round = -1;
     mutable float behind_value = 0;
@@ -702,8 +722,6 @@ class Bot {
     void occupied_into(bc::bitboard &out, const bc::bitboard &terrain);
     void refresh_blocked() {
         occupied_into(blocked, static_blocked);
-        if (avoid_round == int(round))
-            blocked |= avoid_zone;
         if (camp_zone_round == int(round))
             blocked |= camp_zone;
     }
@@ -754,7 +772,7 @@ class Bot {
     int threat_target(std::size_t k) const;
     void observe_fight();
     void publish(unsigned claim);
-    float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
+    float incoming(vec2 tile, bool include_camps = true) const;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -778,7 +796,7 @@ class Bot {
     ExitDamage exit_damage(vec2 tile, bool immune, vec2 without, float camps) const;
     // exit_lanes, made again when stale.
     const ExitLanes &exit_packed() const;
-    // Exit damage and the bag margin (a round of those hits per prism_bag
+    // Exit damage and the bag margin (a round of those hits per exit_bag_gems
     // gems carried), after `mitigation`; both 0 when the most the enemies
     // could deal with that margin stays under `floor` (a lower bound of
     // what they are weighed against: the answer is the same).
@@ -790,32 +808,77 @@ class Bot {
     // our shield and slot readiness, or read here.
     float exit_pool(float shield, const std::array<bool, 2> &is_ready) const;
     float exit_pool() const;
-    // A step or landing onto a tile whose exit damage reaches our pool and
-    // is worse than here's: the micro refuses it. The pool and the damage
-    // here are read on first need.
+    // A step or landing onto a tile whose exit damage and bag margin reach
+    // our pool and are worse than here's: the micro refuses it. The pool and
+    // the damage here are read on first need.
     struct ExitCheck {
         const Bot &bot;
         float pool = -1, here = 0;
         bool lethal(vec2 tile);
     };
-    float friendly_power(vec2 at) const;
-    // Our own power alone (friendly_power without teammates).
+    // The sides on a tile, as XSquare's micro weighs them: each unit that
+    // can act on it by next turn (its attack or spell reach and a move; none
+    // while a stun holds it), undiscounted, at its power (unit_power(): full
+    // health on its spawn, where it heals; no burst while stunned). Theirs:
+    // enemies in view and out of sight (from their possible tile nearest
+    // us), not channelling; ours: we wherever we stand and allies in view,
+    // not channelling. It replaced friendly_power() and enemy_power(), which
+    // discounted units by their distance (0.9 / (1 + 0.4 arrival), / (1 +
+    // 0.3 arrival), none past 6).
+    bool acts_on(const ObservedUnit &u, vec2 tile) const;
+    float unit_power_of(const ObservedUnit &u, bool full) const;
+    std::pair<float, float> sides_at(vec2 tile) const;
+    // Our own power alone.
     float own_power() const;
-    float enemy_power(vec2 at) const;
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
-    // Healing per round a clear gets: our own heal if it can target us, and a
-    // teammate's (observed in view, else its kit's) when it claims the group.
-    float self_heal() const;
-    float slot_heal(unsigned s) const;
-    float group_heal(int group) const;
-    // Whether a visit to the group can afford the walk out of its reach
-    // under its fire (camp choice's visit_health of 100+).
-    bool visit_affordable(const CampGroup &g) const;
+    // The walk out of the group's reach under its fire (camp choice's), and
+    // whether the health we have clears it alone and pays that walk.
+    float visit_cost(const CampGroup &g) const;
+    bool visit_clears(const CampGroup &g) const;
     // navigation.cpp
     // Of equally short steps, the one nearest `toward` in a straight line.
     bool move_to(const bc::bitboard &goals, vec2 toward, bool urgent = false, bool use_dash = true,
-                 int engaged_group = -1, bool allow_teleport = false);
+                 int engaged_group = -1);
+    // Teleport crystals. From our spawn, each group's and altar's walk with
+    // one hop (unreachable when a hop saves nothing), built once from
+    // terrain (prepare_hops()) for the choices made there.
+    std::vector<int> group_hops, altar_hops;
+    // Built, and whether any group or altar has a shorter hop route from
+    // spawn (crystals are bought only then).
+    bool hops_ready = false, hops_useful = false;
+    // The hop on the way to `toward` (as move_to() is given it), planned
+    // once per goal by plan_hop() at `round`: where it lands (none: x -1),
+    // the walk to its take-off and the whole way's rounds.
+    struct HopPlan {
+        vec2 toward{-1, -1}, landing{-1, -1};
+        int round = 0, takeoff_walk = 0, rounds = bc::distance_field::unreachable;
+    } hop_plan;
+    bool walking_to_hop = false;
+    // Our income so far (buy_equipment() adds what each turn brought): gold
+    // and gems gained, and what we held after the last turn's shopping.
+    float earned_gold = 0, earned_gems = 0;
+    unsigned gold_seen = 0, gems_seen = 0;
+    // A gold's value in gems now (policy::early_gold_value to late_gold_value).
+    float gold_value_now() const;
+    // The rounds a hop must save to pay for its crystal (infinite before any
+    // income).
+    float hop_threshold() const;
+    // Field buffers for plan_hop() and prepare_hops(), rows padded for SIMD
+    // (allocated by hop_buffers()).
+    std::unique_ptr<std::uint16_t[]> hop_goal, hop_from, hop_rows, hop_near;
+    void hop_buffers();
+    bc::distance_field hop_goal_field, hop_from_field;
+    void prepare_hops();
+    bool carrying_crystal() const;
+    // The rounds to `toward` the plan has left (unreachable without one).
+    int hop_rounds(vec2 toward) const;
+    // The best hop from here to `goals` against walking there.
+    void plan_hop(const bc::bitboard &goals, float threshold);
+    // move_to()'s part: -1 to walk on, else whether it acted (walked to the
+    // take-off or started the hop).
+    int follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_dash, int engaged_group);
+    bool take_hop();
     // step_tiles' tiles in reading order, listed into storage kept between
     // calls (positions() allocates a list on each): step_tiles must hold
     // tiles within our move speed on both axes, as a step's reach does.
@@ -830,16 +893,31 @@ class Bot {
     void retreat_to_spawn();
     // combat.cpp, micro.cpp
     bool combat(bool fighting_champions, int farm_group = -1, bool escaping = false);
-    float kill_value(const ObservedUnit &enemy) const;
-    // What our own death costs, as a kill of us is worth to them.
-    float death_cost() const { return 200 + float(gems) * 7 + strength * 3; }
-    // How much an enemy diving a teammate counts in our choices (1: no dive).
-    float peel_factor(const ObservedUnit &enemy) const;
+    // A kill, as XSquare's sage counts one: more than any damage this turn
+    // (all the health of the enemies in view), so the most kills come
+    // first and the most damage second.
+    float kill_value() const;
+    // A stun's worth (one round, the enemy's next turn skipped): the damage
+    // that turn would have dealt one of ours it reaches at most (capped at
+    // that one's health), and the window, our teammates still to act this
+    // round hitting it where it stands. stun_value() adds the two for an
+    // enemy left with `left` health: a kill when the window covers it.
+    float stun_prevented(const ObservedUnit &enemy) const;
+    float stun_follow_up(const ObservedUnit &enemy) const;
+    float stun_value(const ObservedUnit &enemy, float left) const;
+    // A shield's worth on the same scale: the damage it absorbs over its
+    // turns (`danger` a turn) beyond what the shield we hold (`held`)
+    // absorbs, as a new one replaces it; and our death when it turns a
+    // lethal next turn survivable. It replaced the absorbed damage x 0.85,
+    // x 2 below four turns of danger, x 0.2 while shielded.
+    float shield_value(float shield, float danger, int turns, float held) const;
+    // Our own death, the same: one kill, theirs; carrying gems, more than any
+    // kill of ours, as the killer takes the bag (a trade of our death for a
+    // kill, against Ren's retaliation, is even only with nothing carried).
+    float death_cost() const { return kill_value() * (gems > 0 ? 2.0f : 1.0f); }
     bool attack_combo(bool escaping);
-    bool attack_dash(vec2 victim);
     bool impact_dash(bool fighting_champions, int farm_group);
     bool advance_attack(vec2 victim, int stand = 0);
-    bool follow_through();
     // economy.cpp
     void buy_equipment();
     void refresh_equipment();
@@ -856,7 +934,7 @@ class Bot {
     void worker_farm();
     bool capture_outranked(const CampGroup &g) const;
     // Whether an ally holds a capture before us (capture_outranked()).
-    bool outranks(const ObservedUnit &ally, bool arriving) const;
+    bool outranks(const ObservedUnit &ally, bool arriving, const CampGroup &g) const;
     // An ally whose published code asks for help in a fight.
     bool reports_fight(const ObservedUnit &ally) const;
     // The round a capture we hold pays (its reward's capture phase).
@@ -890,6 +968,9 @@ class Bot {
     // The run's next member is open by the time we walk there from here.
     bool run_continues() const;
     float basic_damage() const;
+    // Our damage's factor from Heart of Ruin's passive (1 without it), as
+    // ObservedUnit applies it to theirs.
+    float damage_bonus() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
     int claimed_by(const ObservedUnit &ally) const;
@@ -902,10 +983,6 @@ class Bot {
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).
     bool confront_hidden();
-    // The fight rule: our power (ours: with the teammates that arrive) at the
-    // weight of who is near, against theirs (worker_skirmish(),
-    // confront_hidden()).
-    bool fight_favourable(float ours, float theirs, bool opening, bool dive) const;
     // Out of a fight too dangerous to stay in (worker_skirmish()).
     bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.
@@ -939,13 +1016,11 @@ class Bot {
     vec2 step_away_tile();
     // A melee champion's strike, from where it stands, before a step away.
     void strike_before_step();
-    // Run or fight while breaking contact with a stronger group.
-    Chase::Mode chase_mode(bool retreat);
+    // Run or fight while retreating home under fire.
+    Chase::Mode chase_mode();
     std::uint32_t threat_bits() const;
     bool duel_won(std::uint32_t threats, float pool);
     bool race(vec2 goal, int arrive, bool use_dash, float pool);
-    bool run_to_safety();
-    void avoid_reach();
 
     void take_turn();
 
