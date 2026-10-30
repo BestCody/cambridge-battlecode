@@ -778,6 +778,11 @@ int Bot::worker_choose_group(int excluded) {
             if (s != slot && living(s) && mates[s].free)
                 least_asked = std::min(least_asked, mate_rate[s]);
         const float least_given_up = party_best * least_asked / our_rate;
+        // And the fastest a party can clear: every free teammate striking.
+        float all_mates_speed = 0;
+        for (unsigned s = 0; s < kits; ++s)
+            if (s != slot && living(s) && mates[s].free)
+                all_mates_speed += mate_rate[s] * policy::team_clear_share;
         for (std::size_t i = 0; i < count && least_asked != std::numeric_limits<float>::infinity(); ++i) {
             const auto &g = groups[i];
             // Groups whose walk is measured, with a request code to ask with.
@@ -796,19 +801,23 @@ int Bot::worker_choose_group(int excluded) {
             const auto plan_value = [&](float time) {
                 return reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
             };
+            const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             // No plan here ends its clear before `start` and a round a camp
-            // shared by everyone who could come, nor settles sooner; a
-            // plan's value only falls with its time and what it asks: a
-            // group whose value then, less the least a plan gives up, cannot
-            // beat the best is passed before the teammates' walks (they were
-            // 24k of a choice's 41k fuel, the turns past 100k freezing
-            // champions a round each).
-            const float soonest_clear = start + lanes.camp_count[i] / (lanes.claims[i] + 1 + float(kits));
+            // shared by everyone who could come, nor before its health at
+            // all of them striking (less a rounding margin), nor settles
+            // sooner; a plan's value only falls with its time and what it
+            // asks: a group whose value then, less the least a plan gives
+            // up, cannot beat the best is passed before the teammates' walks
+            // (they were 24k of a choice's 41k fuel, the turns past 100k
+            // freezing champions a round each; 24-32k still on lanes and
+            // boss-battle with the camp count alone).
+            const float soonest_clear =
+                start + std::max(lanes.camp_count[i] / (lanes.claims[i] + 1 + float(kits)),
+                                 0.999f * lanes.remaining[i] / (speed + claim_speed + all_mates_speed) - 0.01f);
             if (lanes.factor[i] >= 0 &&
                 plan_value(soonest_clear + settle) * lanes.factor[i] - least_given_up <= best)
                 continue;
             const float ours_at = std::max(float(std::max(0, lanes.path[i] - our_range)) * travel_scale, start);
-            const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             const float claim_at = std::max(lanes.claim_eta[i], start);
             // The walk out of the camps' reach from a member's attack range,
             // under the living strikers' fire (ours at our mitigation).
@@ -868,6 +877,12 @@ int Bot::worker_choose_group(int excluded) {
                     const auto &m = mates[soon[k - 1].second];
                     party_speed += mate_rate[soon[k - 1].second] * policy::team_clear_share;
                     rate_asked += mate_rate[soon[k - 1].second];
+                    // A bigger party gives up more: once this one's best
+                    // possible value (the bound above) less what it asks
+                    // cannot beat the best, no bigger one can.
+                    if (lanes.factor[i] >= 0 &&
+                        plan_value(soonest_clear + settle) * lanes.factor[i] - party_best * rate_asked / our_rate <= best)
+                        break;
                     join(m.range, policy::camp_visit_health(m.health, m.max_health), m.max_health, exit_cost(m.range));
                 }
                 // The clear: each party strikes from its arrival, the asked
@@ -1177,21 +1192,41 @@ void Bot::worker_farm() {
     // alone, the tiles the fewest camps reach (CampGroup::reach_share, as
     // camp choice plans it).
     if (range > 1 && !siege && unseen_group != target) {
-        int least = std::numeric_limits<int>::max();
-        static std::vector<vec2> best_tiles;
-        best_tiles.clear();
-        for (const vec2 p : goals.positions()) {
-            int hit = 0;
-            for (const auto &c : g.camps) {
-                const int d = distance(p, c.position);
-                if (c.health <= 0 || d > int(c.stats.base_attack_range))
-                    continue;
-                bool covered = false;
-                for (const auto &a : allies)
-                    covered = covered || (a.health > 0 && distance(a.position, c.position) < d);
-                if (!covered)
-                    hit += int(c.stats.base_strength);
+        // Each camp that strikes (clusters strike for nothing) reaches the
+        // tiles within its attack range that no living ally is nearer it
+        // than: within the lesser of the two. It adds its strength to them,
+        // and each tile in our range reads its sum. Tile by tile against
+        // every camp and ally, this cost 94k fuel a turn on big maps and
+        // 244k on the-pack's 48-wolf group.
+        static std::vector<vec2> tiles, best_tiles;
+        static std::vector<std::uint32_t> hits;
+        const std::size_t map_tiles = std::size_t(map_width) * std::size_t(map_height);
+        tiles.resize(map_tiles);
+        hits.resize(map_tiles);
+        const std::uint32_t count = goals.positions_into(tiles);
+        // Only these are read: the sums elsewhere are left as they come.
+        for (std::uint32_t t = 0; t < count; ++t)
+            hits[std::size_t(tiles[t].y * map_width + tiles[t].x)] = 0;
+        for (const auto &c : g.camps) {
+            if (c.health <= 0 || c.stats.base_strength <= 0)
+                continue;
+            int reach = int(c.stats.base_attack_range);
+            for (const auto &a : allies)
+                if (a.health > 0)
+                    reach = std::min(reach, distance(a.position, c.position));
+            const auto strength = std::uint32_t(c.stats.base_strength);
+            const int x0 = std::max(0, c.position.x - reach), x1 = std::min(map_width - 1, c.position.x + reach);
+            for (int y = std::max(0, c.position.y - reach); y <= std::min(map_height - 1, c.position.y + reach); ++y) {
+                std::uint32_t *row = hits.data() + std::size_t(y) * std::size_t(map_width);
+                for (int x = x0; x <= x1; ++x)
+                    row[x] += strength;
             }
+        }
+        std::uint32_t least = std::numeric_limits<std::uint32_t>::max();
+        best_tiles.clear();
+        for (std::uint32_t t = 0; t < count; ++t) {
+            const vec2 p = tiles[t];
+            const std::uint32_t hit = hits[std::size_t(p.y * map_width + p.x)];
             if (hit < least) {
                 least = hit;
                 best_tiles.clear();
@@ -1199,7 +1234,8 @@ void Bot::worker_farm() {
             if (hit == least)
                 best_tiles.push_back(p);
         }
-        if (!best_tiles.empty()) {
+        // Every tile tied: the goals stand as they are.
+        if (!best_tiles.empty() && best_tiles.size() != count) {
             goals.clear();
             for (const vec2 p : best_tiles)
                 goals.set(p);

@@ -752,13 +752,27 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     const v128_t far8 = wasm_u16x8_splat(far), channel8 = wasm_u16x8_splat(std::uint16_t(channel)),
                  lane = wasm_u16x8_make(0, 1, 2, 3, 4, 5, 6, 7);
     v128_t least_sum = far8;
+    // A sum is at least its take-off's walk plus the channel: a step whose
+    // every tile already costs more than that lane's least so far, or than
+    // any hop that could pay (the walk less the threshold), is passed
+    // without its window (strictly more: ties stay, and the first tile in
+    // row order with the least is still found). Over long maze walks the
+    // windows were 240k fuel a plan on tangle.
+    const v128_t pays = wasm_u16x8_splat(std::uint16_t(
+        std::clamp(std::floor(float(walk) - threshold) + 1.0f, 0.0f, float(far))));
     for (int y = first_row; y <= last_row; ++y) {
         const int top = std::max(0, y - reach), bottom = std::min(h - 1, y + reach);
         for (int x = first_column; x < end_column; x += 8) {
+            const v128_t from =
+                wasm_v128_load(hop_from.get() + std::size_t(y) * std::size_t(w) + std::size_t(x));
+            if (wasm_i16x8_all_true(
+                    wasm_u16x8_gt(wasm_u16x8_add_sat(from, channel8), wasm_u16x8_min(least_sum, pays)))) {
+                wasm_v128_store(sums + std::size_t(y) * std::size_t(wide) + std::size_t(x), far8);
+                continue;
+            }
             v128_t least = wasm_v128_load(near + std::size_t(top) * std::size_t(wide) + std::size_t(x));
             for (int k = top + 1; k <= bottom; ++k)
                 least = wasm_u16x8_min(least, wasm_v128_load(near + std::size_t(k) * std::size_t(wide) + std::size_t(x)));
-            const v128_t from = wasm_v128_load(hop_from.get() + std::size_t(y) * std::size_t(w) + std::size_t(x));
             const v128_t valid = wasm_v128_and(
                 wasm_u16x8_lt(lane, wasm_u16x8_splat(std::uint16_t(w - x))),
                 wasm_v128_and(wasm_i16x8_ne(least, far8), wasm_i16x8_ne(from, far8)));
