@@ -1853,6 +1853,28 @@ float Bot::own_power() const {
                       mitigation);
 }
 
+bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
+    const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
+    return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
+}
+
+float Bot::unit_power_of(const ObservedUnit &u, bool full) const {
+    return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
+                      u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
+}
+
+std::pair<float, float> Bot::sides_at(vec2 tile) const {
+    std::pair<float, float> s{0.0f, own_power()};
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &e : *list)
+            if (e.health > 0 && !e.channel && acts_on(e, tile))
+                s.first += unit_power_of(e, enemy_spawn_tile[tile_index(e.position)]);
+    for (const auto &a : allies)
+        if (a.health > 0 && !a.channel && acts_on(a, tile))
+            s.second += unit_power_of(a, false);
+    return s;
+}
+
 float Bot::friendly_power(vec2 at) const {
     float p = own_power();
     // Allies count if they can join before we fall (our health over the

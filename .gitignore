@@ -10,3 +10,8 @@ notes
 # print dont int: full replays, extracted data and 600-round checkpoints (4.4 GB unpacked)
 /print_dont_int*.zip
 playground.txt
+
+# Local match replays and detailed statistics from the 80-game micro evaluation.
+/analysis/baseline-vs-test-80-new-micro*/*.repl26a
+/analysis/baseline-vs-test-80-new-micro*/current-*.json
+/analysis/baseline-vs-test-80-new-micro*/manifest-*.txt

@@ -8,7 +8,7 @@ struct Strike {
     vec2 tile{};
     std::uint64_t hits = 0, origins = 1;
     float damage = 0, shield = 0, support = 0;
-    bool stun = false, reset = false, enhanced = false, heal = false;
+    bool stun = false, reset = false, enhanced = false;
 };
 struct Sequence {
     std::array<int, 3> actions{-1, -1, -1};
@@ -36,7 +36,11 @@ bool Bot::attack_combo(bool escaping) {
     }
     const bool attack_available = state.contains(bc::champion_state::can_attack);
     const bool can_attack = attack_available && (!escaping || range <= 1);
-    const bool can_step = !escaping && !walked && state.contains(bc::champion_state::can_move) && range <= 1;
+    // A step of its own only outside the micro's fights: there the micro's
+    // tile, safety class first, is final (the search stepped onto tiles the
+    // micro had found lethal or outnumbered, for a hit).
+    const bool can_step = !escaping && !walked && !placed && state.contains(bc::champion_state::can_move) &&
+                          range <= 1;
     int reach = can_attack ? range : 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
@@ -65,7 +69,7 @@ bool Bot::attack_combo(bool escaping) {
     // Working storage kept between searches: a vector allocated afresh costs
     // about 200 fuel, and growing one costs that again each time it doubles.
     static std::vector<vec2> origins;
-    static std::vector<float> pressure, original, remaining, weights, follow_up, ready_follow_up, control;
+    static std::vector<float> pressure, original, remaining;
     static std::vector<std::int8_t> sees;
     static std::vector<Strike> actions;
     static std::vector<int> basics, casts;
@@ -182,58 +186,9 @@ bool Bot::attack_combo(bool escaping) {
     std::uint64_t eligible = 0;
     // Each written by index for every enemy below.
     original.resize(enemies.size());
-    weights.resize(enemies.size());
-    follow_up.resize(enemies.size());
-    ready_follow_up.resize(enemies.size());
-    control.resize(enemies.size());
-    std::uint64_t threatening = 0; // The enemies threatening a kill, a bit each.
-    // Concentrate the volley where it removes the most offensive power per
-    // health point. Normalize within the visible fight so ordinary damage,
-    // control and healing remain on comparable scales across army sizes.
-    float total_threat = 0, total_health = 0;
-    for (const auto &e : enemies)
-        if (useful >> (&e - enemies.data()) & 1) {
-            total_threat += e.damage_rate + e.burst * 0.5f;
-            total_health += e.health + e.shield + e.ready_shield;
-        }
-    const float typical_density = total_threat / std::max(1.0f, total_health);
     for (std::size_t i = 0; i < enemies.size(); ++i) {
         const auto &e = enemies[i];
         original[i] = e.health + e.shield;
-        float weight = (1 + std::min(2.0f, e.gems / 100.0f)) * (1 + 0.6f * (1 - e.health / e.max_health));
-        const float density =
-            (e.damage_rate + e.burst * 0.5f) / std::max(1.0f, e.health + e.shield + e.ready_shield);
-        weight *= std::sqrt(density / std::max(0.001f, typical_density));
-        weight *= peel_factor(e);
-        weights[i] = weight;
-        // Ready assistance excludes allies who have finished this round: an
-        // enemy turn may interleave before they act, so it cannot be promised.
-        float assistance = 0, ready_assistance = 0;
-        bool threatens_kill = false;
-        const int reach = std::max(e.range, e.spell_reach) + e.move_speed;
-        const float blow = e.strength + e.burst;
-        for (const auto &ally : allies) {
-            threatens_kill |= !(e.stunned && e.stun_time > 0) && distance(ally.position, e.position) <= reach &&
-                              blow * ally.mitigation >= ally.health;
-            if ((ally.stunned && ally.stun_time > 0) || ally.channel)
-                continue;
-            float damage = 0;
-            const int d = distance(ally.position, e.position);
-            if (d <= ally.range)
-                damage += ally.strength;
-            if (d <= std::max(ally.range, ally.spell_reach))
-                damage += ally.burst;
-            assistance += damage;
-            if (!ally.completed)
-                ready_assistance += damage;
-        }
-        threatens_kill |= !(e.stunned && e.stun_time > 0) && distance(position, e.position) <= reach &&
-                          blow * mitigation >= health;
-        follow_up[i] = assistance * e.mitigation;
-        ready_follow_up[i] = ready_assistance * e.mitigation;
-        if (threatens_kill)
-            threatening |= std::uint64_t{1} << i;
-        control[i] = blow * (escaping ? 3 : 1);
         if (useful >> i & 1)
             eligible |= std::uint64_t{1} << i;
     }
@@ -364,46 +319,32 @@ bool Bot::attack_combo(bool escaping) {
             }
         } else if (spell.kind == bc::ability_kind::shield) {
             a.shield = ability.shield_amount();
-            float danger = incoming(position);
-            a.support = std::min(a.shield, danger * std::max(1, spell.duration)) * 0.85f;
-            if (health < danger * 4)
-                a.support *= 2;
-            if (initial_shield > 0)
-                a.support *= 0.2f;
+            a.support = shield_value(a.shield, incoming(position), spell.duration, initial_shield);
             add(a);
-        } else if (spell.kind == bc::ability_kind::heal) {
-            a.heal = true;
-            for (std::size_t i = 0; i < allies.size(); ++i)
-                if (allies[i].max_health - allies[i].health >= policy::heal_trigger * focus * spell.modifier &&
-                    (a.origins = in_range(allies[i].position, spell.range, spell.exclusive))) {
-                    a.target = i;
-                    a.support = ability.heal_amount(allies[i].champion()) * 0.9f;
-                    if (allies[i].health < allies[i].max_health * 0.5f)
-                        a.support *= 2;
-                    add(a);
-                }
         }
     }
     Sequence best;
     // Per enemy, what the evaluator reads, computed once as it would compute
     // it: plain arrays rather than the observed units.
     struct Foe {
-        float mitigation, recoil, kill_score, finish_score, credit, channel_score;
+        float mitigation, recoil, kill_score;
+        // A stun on it: the damage it cannot deal, and the window's damage
+        // (stun_value()).
+        float prevented, window;
         std::uint64_t siblings; // Twins whose death this one's death causes.
-        bool stun_ok, channel;
+        bool stun_ok;
     };
     static std::vector<Foe> foes;
     foes.resize(enemies.size());
     for (std::size_t i = 0; i < enemies.size(); ++i) {
         const auto &e = enemies[i];
         auto &foe = foes[i];
-        const float kill = kill_value(e);
         foe.mitigation = e.mitigation;
         foe.recoil = e.retaliation() * mitigation;
-        foe.kill_score = kill * weights[i];
-        foe.finish_score = kill * weights[i] * policy::assist_finish_credit;
-        foe.credit = control[i] + follow_up[i] * policy::stun_followup_credit;
-        foe.channel_score = float(120 + e.gems * 3);
+        foe.kill_score = kill_value();
+        foe.stun_ok = (!e.stunned || e.stun_time <= 0) && !e.immune;
+        foe.prevented = stun_prevented(e);
+        foe.window = stun_follow_up(e);
         foe.siblings = 0;
         if (e.type == bc::champion_type::cassi || e.type == bc::champion_type::issac) {
             const auto sibling =
@@ -412,8 +353,6 @@ bool Bot::attack_combo(bool escaping) {
                 if (enemies[j].type == sibling)
                     foe.siblings |= std::uint64_t{1} << j;
         }
-        foe.stun_ok = (!e.stunned || e.stun_time <= 0) && !e.immune;
-        foe.channel = e.channel;
     }
     // Every sequence is scored: the search always completes. A combo is
     // scored action by action from its standing tile, so the state after its
@@ -422,7 +361,7 @@ bool Bot::attack_combo(bool escaping) {
     // from the same operations in the same order as scoring it from scratch.
     struct ComboState {
         float score = 0, own_health = 0, own_shield = 0;
-        std::uint64_t stunned = 0, touched = 0;
+        std::uint64_t stunned = 0;
         bool enhanced = false, alive = false; // alive: false once the combo cannot go on.
     };
     const std::size_t foe_count = enemies.size();
@@ -441,7 +380,7 @@ bool Bot::attack_combo(bool escaping) {
     // One more action of the combo.
     const auto apply = [&](ComboState &s, float *left, int index, int origin) {
         const auto &a = actions[index];
-        if (s.own_health <= 0 || (a.target >= 0 && !a.heal && left[a.target] <= 0)) {
+        if (s.own_health <= 0 || (a.target >= 0 && left[a.target] <= 0)) {
             // A unit-targeted action cannot follow its target's death.
             s.alive = false;
             return;
@@ -451,20 +390,14 @@ bool Bot::attack_combo(bool escaping) {
             s.score -= policy::unused_cast_cost;
             return;
         }
-        if (a.shield > 0 && origin) {
-            float support = std::min(a.shield, pressure[origin] * std::max(1, spells[a.slot].duration)) * 0.85f;
-            if (health < pressure[origin] * 4)
-                support *= 2;
-            if (initial_shield > 0)
-                support *= 0.2f;
-            s.score += support;
-        } else
+        if (a.shield > 0 && origin)
+            s.score += shield_value(a.shield, pressure[origin], spells[a.slot].duration, initial_shield);
+        else
             s.score += a.support;
         if (a.slot >= 0)
             s.score -= policy::unused_cast_cost; // Prefer saving a cast if it adds no value.
         s.own_shield = std::max(s.own_shield, a.shield);
         float recoil = 0;
-        s.touched |= a.hits;
         // Only the enemies this action hits, in index order.
         for (auto hits = a.hits; hits; hits &= hits - 1) {
             const std::size_t i = std::countr_zero(hits);
@@ -472,7 +405,7 @@ bool Bot::attack_combo(bool escaping) {
                 continue;
             const auto &foe = foes[i];
             const float damage = a.damage * foe.mitigation;
-            s.score += std::min(damage, left[i]) * weights[i];
+            s.score += std::min(damage, left[i]);
             left[i] -= damage;
             if (damage > 0)
                 recoil += foe.recoil;
@@ -480,8 +413,6 @@ bool Bot::attack_combo(bool escaping) {
                 s.score += foe.kill_score;
                 for (auto linked = foe.siblings; linked; linked &= linked - 1)
                     left[std::countr_zero(linked)] = 0; // Linked death is not a second kill reward.
-                if (passive == bc::passive_type::reset_cooldowns_on_kill)
-                    s.score += 60;
             } else if ((a.stun || (a.slot < 0 && s.enhanced && int(i) == a.target)) && foe.stun_ok)
                 s.stunned |= std::uint64_t{1} << i;
         }
@@ -490,7 +421,7 @@ bool Bot::attack_combo(bool escaping) {
         const float absorbed = std::min(s.own_shield, recoil);
         s.own_shield -= absorbed;
         s.own_health -= recoil - absorbed;
-        s.score -= recoil * (1 + std::min(2.0f, gems / 100.0f));
+        s.score -= recoil;
         if (s.own_health <= 0)
             s.score -= death_cost();
     };
@@ -581,26 +512,14 @@ bool Bot::attack_combo(bool escaping) {
         }
         if (!s.alive)
             return;
+        // A stunned enemy that lives through the combo: stun_value().
         float score = s.score;
-        const std::uint64_t stunned = s.stunned;
-        // Stun only earns credit if the opponent survives the whole combo and
-        // the stun opens a window someone uses: an interruption, a member it
-        // saves, or follow-up damage from an ally who can still act. Enemies
-        // no action hit are neither stunned nor damaged, so they are skipped.
-        for (auto unscored = s.touched; unscored; unscored &= unscored - 1) {
-            const std::size_t i = std::countr_zero(unscored);
-            const auto &foe = foes[i];
-            if ((stunned & (std::uint64_t{1} << i)) && left[i] > 0) {
-                // Walking to stun spends the movement allowance, so it needs
-                // a concrete payoff before the enemy's next turn.
-                const bool walked_for_it = origin && !foe.channel && !(threatening >> i & 1) && ready_follow_up[i] <= 0;
-                if (!walked_for_it)
-                    score += foe.credit;
-                if (foe.channel)
-                    score += foe.channel_score;
-            }
-            if (left[i] > 0 && left[i] < original[i] && left[i] <= follow_up[i])
-                score += foe.finish_score;
+        for (auto held = s.stunned; held; held &= held - 1) {
+            const std::size_t i = std::countr_zero(held);
+            if (left[i] <= 0)
+                continue;
+            score += foes[i].prevented;
+            score += left[i] <= foes[i].window ? foes[i].kill_score : foes[i].window;
         }
         if (score > best.score)
             best = {sequence, score, origin};
@@ -615,7 +534,7 @@ bool Bot::attack_combo(bool escaping) {
     const bool batchable = foe_count <= batch_foes;
     struct Batch {
         v128_t score, own_health, own_shield;
-        v128_t left[batch_foes], touched[batch_foes], stunned[batch_foes];
+        v128_t left[batch_foes], stunned[batch_foes];
     };
     const v128_t zero = wasm_f32x4_splat(0.0f), every_lane = wasm_i32x4_splat(-1), no_lane = wasm_i32x4_splat(0);
     // The lanes whose bit is set in `bits`, from a table.
@@ -646,13 +565,10 @@ bool Bot::attack_combo(bool escaping) {
             const std::size_t i = std::countr_zero(unhit);
             const auto &foe = foes[i];
             const v128_t hit = hit_lanes(i);
-            b.touched[i] = wasm_v128_or(b.touched[i], hit);
             const v128_t left = b.left[i];
             const v128_t active = wasm_v128_andnot(wasm_v128_and(hit, live), wasm_f32x4_le(left, zero));
             const v128_t dealt = wasm_f32x4_mul(damage, wasm_f32x4_splat(foe.mitigation));
-            b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_mul(wasm_f32x4_pmin(dealt, left),
-                                                                     wasm_f32x4_splat(weights[i]))),
-                             b.score, active);
+            b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_pmin(dealt, left)), b.score, active);
             const v128_t after = wasm_f32x4_sub(left, dealt);
             b.left[i] = choose(after, left, active);
             recoil = choose(wasm_f32x4_add(recoil, wasm_f32x4_splat(foe.recoil)), recoil,
@@ -663,38 +579,32 @@ bool Bot::attack_combo(bool escaping) {
                 const std::size_t twin = std::countr_zero(linked);
                 b.left[twin] = choose(zero, b.left[twin], killed); // Linked death is not a second kill reward.
             }
-            if (passive == bc::passive_type::reset_cooldowns_on_kill)
-                b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_splat(60.0f)), b.score, killed);
             if (foe.stun_ok)
                 b.stunned[i] = wasm_v128_or(b.stunned[i], wasm_v128_andnot(wasm_v128_and(active, stun_lanes(i)), killed));
         }
     };
-    // What apply() does after the hit loop (the action is not an attack's,
-    // or `enhanced` is not read again).
+    // What apply() does after the hit loop.
     const auto settle = [&](Batch &b, v128_t recoil) {
         const v128_t absorbed = wasm_f32x4_pmin(b.own_shield, recoil);
         b.own_shield = wasm_f32x4_sub(b.own_shield, absorbed);
         b.own_health = wasm_f32x4_sub(b.own_health, wasm_f32x4_sub(recoil, absorbed));
-        b.score = wasm_f32x4_sub(b.score, wasm_f32x4_mul(recoil, wasm_f32x4_splat(1 + std::min(2.0f, gems / 100.0f))));
+        b.score = wasm_f32x4_sub(b.score, recoil);
         b.score = choose(wasm_f32x4_sub(b.score, wasm_f32x4_splat(death_cost())), b.score,
                          wasm_f32x4_le(b.own_health, zero));
     };
-    // The credits evaluate() adds after the actions, standing on our own tile.
-    const auto credit = [&](Batch &b) {
+    // The stun's worth evaluate() adds after the actions, in its order.
+    const auto stun_worth = [&](Batch &b) {
         for (std::size_t i = 0; i < foe_count; ++i) {
-            if (!wasm_v128_any_true(b.touched[i]))
+            if (!wasm_v128_any_true(b.stunned[i]))
                 continue;
             const auto &foe = foes[i];
             const v128_t left = b.left[i];
-            const v128_t standing = wasm_v128_and(b.touched[i], wasm_f32x4_gt(left, zero));
-            const v128_t stunned = wasm_v128_and(b.stunned[i], standing);
-            b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_splat(foe.credit)), b.score, stunned);
-            if (foe.channel)
-                b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_splat(foe.channel_score)), b.score, stunned);
-            const v128_t finishing =
-                wasm_v128_and(wasm_v128_and(standing, wasm_f32x4_lt(left, wasm_f32x4_splat(original[i]))),
-                              wasm_f32x4_le(left, wasm_f32x4_splat(follow_up[i])));
-            b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_splat(foe.finish_score)), b.score, finishing);
+            const v128_t held = wasm_v128_and(b.stunned[i], wasm_f32x4_gt(left, zero));
+            b.score = choose(wasm_f32x4_add(b.score, wasm_f32x4_splat(foe.prevented)), b.score, held);
+            const v128_t window = wasm_f32x4_splat(foe.window);
+            const v128_t worth =
+                choose(wasm_f32x4_splat(foe.kill_score), window, wasm_f32x4_le(left, window));
+            b.score = choose(wasm_f32x4_add(b.score, worth), b.score, held);
         }
     };
     // Copies a batch's state for the enemies there are.
@@ -704,7 +614,6 @@ bool Bot::attack_combo(bool escaping) {
         to.own_shield = from.own_shield;
         for (std::size_t i = 0; i < foe_count; ++i) {
             to.left[i] = from.left[i];
-            to.touched[i] = from.touched[i];
             to.stunned[i] = from.stunned[i];
         }
     };
@@ -744,7 +653,7 @@ bool Bot::attack_combo(bool escaping) {
         std::uint32_t live = 0;
         for (int j = 0; j < run.used; ++j) {
             const auto &a = actions[run.cast[j]];
-            if (alive && !(own <= 0) && !(a.target >= 0 && !a.heal && left[a.target] <= 0))
+            if (alive && !(own <= 0) && !(a.target >= 0 && left[a.target] <= 0))
                 live |= 1u << j;
         }
         return live;
@@ -789,7 +698,7 @@ bool Bot::attack_combo(bool escaping) {
             b.own_shield = wasm_f32x4_splat(initial_shield);
             for (std::size_t i = 0; i < foe_count; ++i) {
                 b.left[i] = wasm_f32x4_splat(original[i]);
-                b.touched[i] = b.stunned[i] = no_lane;
+                b.stunned[i] = no_lane;
             }
             run.alone_live = casts_go_on(run, true, health, original.data());
             cast_lanes(b, run, run.alone_live);
@@ -849,7 +758,7 @@ bool Bot::attack_combo(bool escaping) {
                 cast_scored = run.alone_live & legal;
                 if (cast_scored) {
                     copy_batch(b, run.alone);
-                    credit(b);
+                    stun_worth(b);
                     wasm_v128_store(then_cast, b.score);
                 }
             } else {
@@ -864,11 +773,10 @@ bool Bot::attack_combo(bool escaping) {
                     b.own_shield = wasm_f32x4_splat(s.own_shield);
                     for (std::size_t i = 0; i < foe_count; ++i) {
                         b.left[i] = wasm_f32x4_splat(left[i]);
-                        b.touched[i] = s.touched >> i & 1 ? every_lane : no_lane;
                         b.stunned[i] = s.stunned >> i & 1 ? every_lane : no_lane;
                     }
                     cast_lanes(b, run, cast_scored);
-                    credit(b);
+                    stun_worth(b);
                     wasm_v128_store(then_cast, b.score);
                 }
                 // Each lane's cast, then the attack.
@@ -876,7 +784,7 @@ bool Bot::attack_combo(bool escaping) {
                 if (run.alone_live & legal) {
                     copy_batch(b, run.alone);
                     v128_t going_on = wasm_v128_andnot(lane_mask(run.alone_live & legal), wasm_f32x4_le(b.own_health, zero));
-                    if (a.target >= 0 && !a.heal)
+                    if (a.target >= 0)
                         going_on = wasm_v128_andnot(going_on, wasm_f32x4_le(b.left[a.target], zero));
                     attack_scored = std::uint32_t(wasm_i32x4_bitmask(going_on));
                     if (attack_scored) {
@@ -890,7 +798,7 @@ bool Bot::attack_combo(bool escaping) {
                             b, going_on, wasm_f32x4_splat(a.damage), a.hits, [&](std::size_t) { return every_lane; },
                             [&](std::size_t i) { return a.stun || int(i) == a.target ? stunning : no_lane; }, recoil);
                         settle(b, recoil);
-                        credit(b);
+                        stun_worth(b);
                         wasm_v128_store(cast_first, b.score);
                     }
                 }
@@ -936,8 +844,6 @@ bool Bot::attack_combo(bool escaping) {
                 continue;
             if (a.reset || a.shield > 0)
                 used = abilities[a.slot].use();
-            else if (a.heal)
-                used = abilities[a.slot].use(allies[a.target].champion());
             else if (spells[a.slot].kind == bc::ability_kind::aoe_damage)
                 used = abilities[a.slot].use(a.tile);
             else {
@@ -950,126 +856,6 @@ bool Bot::attack_combo(bool escaping) {
     }
     refresh_self();
     return acted;
-}
-
-bool Bot::attack_dash(vec2 victim) {
-    auto &me = bc::self();
-    if (!me.can_attack())
-        return false;
-    const int gap = distance(position, victim) - range;
-    if (gap <= 0 || (range <= 1 && gap <= int(stats.base_move_speed)))
-        return false; // Walking into melee preserves the cast for an attack reset.
-    const bool can_cast = me.can_cast();
-    for (const auto &ability : me.abilities()) {
-        if (!ability.is_dash() || !ready(ability, can_cast))
-            continue;
-        const auto design = describe(ability);
-        if (gap > design.range || (walked && design.exclusive))
-            continue;
-        occupied_into(dash_blocked, dash_terrain);
-        dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(unsigned(design.range)),
-                                          step_tiles);
-        subtract_into(search_goals, step_tiles, blocked);
-        if (design.modifier > 0 && design.radius > 0)
-            drop_waking_landings(search_goals, int(design.range + design.radius), design.radius, -1);
-        // Landings within the dash's range on both axes, listed into storage
-        // kept between turns.
-        const std::size_t span = 2 * std::size_t(static_cast<std::uint16_t>(unsigned(design.range))) + 1;
-        if (dash_landings.size() < span * span)
-            dash_landings.resize(span * span);
-        const std::uint32_t count = search_goals.positions_into(dash_landings);
-        vec2 best = position;
-        float best_score = std::numeric_limits<float>::infinity();
-        Bot::ExitCheck exits{*this};
-        for (std::uint32_t k = 0; k < count; ++k) {
-            const vec2 tile = dash_landings[k];
-            if (tile == position || distance(tile, victim) > range)
-                continue;
-            if (!(float(distance(tile, victim)) < best_score))
-                continue; // The incoming estimate only adds: this tile cannot win.
-            // A landing we would not survive is no attack (impact_dash()
-            // refuses the same).
-            const float danger = incoming(tile);
-            // Lethal and worse than standing here, this round or before we
-            // could leave: no attack.
-            if (danger >= health && danger > incoming(position))
-                continue;
-            float score = danger * 0.14f + float(distance(tile, victim));
-            // Checked only on a tile that would be chosen: the same choice.
-            if (score < best_score && !exits.lethal(tile)) {
-                best_score = score;
-                best = tile;
-            }
-        }
-        if (best != position && ability.use(best)) {
-            refresh_self();
-            walked |= design.exclusive;
-            refresh_blocked();
-            return true;
-        }
-    }
-    return false;
-}
-
-bool Bot::follow_through() {
-    // Melee attacks leave a move available. Use it to line up the next attack
-    // or reach the next victim immediately after a kill.
-    bool gone = false;
-    for (auto &e : enemies) {
-        const auto info = sighting(e.champion());
-        e.health = info ? info->health : 0;
-        if (e.health > 0)
-            e.shield = live_shield(e);
-        gone = gone || e.health <= 0;
-    }
-    // An enemy killed (or out of view) leaves incoming()'s estimate: its
-    // packed enemies and nearest units are made again.
-    if (gone)
-        ++threat_revision;
-    refresh_blocked();
-    const float hit = basic_damage();
-    // A kill this turn needs an attack or a reset left; else the step
-    // only sets up the next turn, after the enemy moves.
-    const auto state = bc::self().state();
-    bool again = state.contains(bc::champion_state::can_attack);
-    {
-        const auto kit = bc::self().abilities();
-        const bool can_cast = state.contains(bc::champion_state::can_cast);
-        for (unsigned i = 0; i < spells.size(); ++i)
-            again = again || (spells[i].kind == bc::ability_kind::attack_reset && ready(kit[i], can_cast));
-    }
-    auto value = [&](vec2 tile) {
-        float best = 0;
-        for (const auto &e : enemies) {
-            if (e.health <= 0 || enemy_spawn_tile[tile_index(e.position)])
-                continue;
-            const int arrival = std::max(0, distance(tile, e.position) - range);
-            float damage = std::min(hit * e.mitigation, e.health + e.shield);
-            if (again && e.health + e.shield <= hit * e.mitigation)
-                damage += kill_value(e);
-            best = std::max(best, damage / (1 + arrival));
-        }
-        return best;
-    };
-    vec2 best = position;
-    float best_score = value(position);
-    const float here = incoming(position);
-    Bot::ExitCheck exits{*this};
-    blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-    for (const vec2 tile : step_positions()) {
-        const float danger = incoming(tile);
-        // Not onto a tile the attack search refuses as lethal: one as deadly
-        // as standing here is no worse (attack_dash(), impact_dash()).
-        if (danger >= health && danger > here)
-            continue;
-        // The step pays the damage it adds, as the combo's steps do.
-        const float score = value(tile) - std::max(0.0f, danger - here);
-        if (score > best_score + 0.01f && !exits.lethal(tile)) {
-            best = tile;
-            best_score = score;
-        }
-    }
-    return best != position && move_step(best);
 }
 
 bool Bot::advance_attack(vec2 victim, int stand) {
@@ -1139,6 +925,9 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
     auto &me = bc::self();
     if (!me.can_cast())
         return false;
+    // A capture's holder stays on its tiles: the landing would reset it.
+    if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position))
+        return false;
     auto abilities = me.abilities();
     for (unsigned slot_index = 0; slot_index < spells.size(); ++slot_index) {
         const auto &spell = spells[slot_index];
@@ -1172,9 +961,9 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 float extra = 0;
                 if (fighting_champions) {
                     if (dealt >= unit.health + unit.shield)
-                        extra = kill_value(unit);
+                        extra = kill_value();
                     else if (!unit.immune && !(unit.stunned && unit.stun_time > 0))
-                        extra = unit.strength + unit.burst + (unit.channel ? 120 + unit.gems * 3 : 0);
+                        extra = stun_value(unit, unit.health + unit.shield - dealt);
                 }
                 const bool twin = fighting_champions && dealt >= unit.health + unit.shield &&
                                   (unit.type == bc::champion_type::cassi || unit.type == bc::champion_type::issac);
@@ -1218,8 +1007,8 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 continue; // Danger only lowers the score: this landing cannot win.
             // A bruiser wants to be in the fight; only refuse a landing it
             // would not survive, this round or before it could leave.
-            const float danger = incoming(tile, farm_group);
-            if (danger >= health && danger > incoming(position, farm_group))
+            const float danger = incoming(tile);
+            if (danger >= health && danger > incoming(position))
                 continue;
             score -= danger * 0.2f;
             if (score > best_score && !exits.lethal(tile)) {
