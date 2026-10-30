@@ -173,11 +173,6 @@ inline constexpr float plan_hazard = 0.02f;
 // so the gems near them are worth the more. 0 disables the scarcity term.
 inline constexpr int altar_walk_cap = 20;
 inline constexpr float scarce_altar_weight = 0.5f;
-// A hit from an enemy out of sight (note_hidden_hit()) is stepped in on only
-// by a melee champion at hidden_step_health of its health or more: the step
-// onto the bush shows the whole bush, and a hit from one can be bait for a
-// group's burst.
-inline constexpr float hidden_step_health = 0.8f;
 // Camp choice also divides a group's score by 1 + travel_hazard * (travel +
 // waiting) (the walk there and the wait for its respawn, in rounds; with the
 // walk alone ours stood beside dead groups 140 rounds a game in rounds

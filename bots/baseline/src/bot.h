@@ -625,7 +625,9 @@ class Bot {
     int recall_turns = 5;
     std::vector<bc::champion> enemy_roster;
     std::vector<int> enemy_respawn;
-    float enemy_average_power = 0;
+    // Each enemy's power at its design's full health (enemy_roster's order):
+    // a body that respawns.
+    std::vector<float> enemy_design_power;
     LifeSnapshot last_life;
     // Shards this champion has bought, by item type, for its build order.
     std::array<unsigned, static_cast<unsigned>(bc::item_type::count)> bought{};

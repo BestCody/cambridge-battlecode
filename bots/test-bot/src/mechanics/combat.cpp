@@ -169,6 +169,24 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 best_slot = slot_index;
                 best_target = -1;
             }
+        } else if (s.kind == bc::ability_kind::heal) {
+            for (std::size_t i = 0; i < allies.size(); ++i) {
+                const auto &u = allies[i];
+                if (distance(position, u.position) > s.range)
+                    continue;
+                const auto &ally = u.champion();
+                if (!ally.is_visible() || !ally.is_alive() ||
+                    u.max_health - u.health < policy::heal_trigger * focus * s.modifier)
+                    continue;
+                float score = a.heal_amount(ally) * 0.9f;
+                if (u.health < u.max_health * 0.5f)
+                    score *= 2;
+                if (score > best_score) {
+                    best_score = score;
+                    best_slot = slot_index;
+                    best_target = int(i);
+                }
+            }
         } else if (s.kind == bc::ability_kind::aoe_damage) {
             // Evaluate each unit's surrounding centres, not only occupied tiles:
             // radius-one spells can hit targets five tiles from the caster.
@@ -274,7 +292,11 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             success = !me.can_attack() && a.use();
         else if (s.kind == bc::ability_kind::shield)
             success = a.use();
-        else if (s.kind == bc::ability_kind::aoe_damage)
+        else if (s.kind == bc::ability_kind::heal) {
+            const auto &ally = allies[best_target].champion();
+            if (ally.is_visible() && ally.is_alive() && distance(position, vec2(ally.position())) <= s.range)
+                success = a.use(ally);
+        } else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
         else if (!targets[best_target].enemy() ||
                  distance(position, vec2(targets[best_target].unit().position())) <= s.range)

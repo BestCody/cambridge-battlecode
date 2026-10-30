@@ -185,6 +185,8 @@ void Bot::play_worker_turn() {
         return;
     }
     worker_update_formation();
+    // Try the fight once before banking; an unsafe tribute can then retreat
+    // without running the skirmish micro a second time.
     if (worker_skirmish() || worker_pursue()) {
         note_activity(Activity::fight);
         return;

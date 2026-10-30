@@ -22,23 +22,9 @@ namespace policy {
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
 inline constexpr float early_gold_value = 0.15f;
 inline constexpr float late_gold_value = 0.30f;
-// A fight is taken when our power times aggression reaches theirs; the squad a
-// reported fight takes is sized by the same ratio. willow best girl attacks
-// first in 76/60/55% of contacts where it is ahead/even/behind in numbers
-// (80/77/71% against v46). Ours at 1.8: 85/75/72%. 1.6 brought the rates
-// closer but moved kills per attack, Heart of Ruin's damage, Willow's
-// healing and its distance from enemies away from willow's, so 1.8 stays.
+// A reported fight's squad size divides the enemy power by aggression times
+// our average champion power (worker_update_formation()).
 inline constexpr float aggression = 1.8f;
-// A contact starts after this many rounds without an enemy champion in view;
-// a lone champion fights its first lone_opening rounds at aggression, then
-// at 1.0 (worker_skirmish).
-inline constexpr int contact_gap = 10;
-inline constexpr int lone_opening = 3;
-// After the opening, a champion with one teammate within 6 fights at this
-// aggression: our pairs died in 0.28-0.31 of their contacts (willow's
-// 0.11-0.16); at 1.4 0.22, our deaths 7.25 -> 5.25 a game and damage dealt /
-// taken 1.43 -> 1.63; at 1.0 the first-attack rate when even fell to 64%.
-inline constexpr float pair_aggression = 1.4f;
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
 inline constexpr float pursue_health = 0.6f;
@@ -54,9 +40,6 @@ inline constexpr float retreat_health = 0.35f;
 // beside) splits it differently in its two samples. Ours, at 28%, left at
 // 28-35% in 8 of 100.
 inline constexpr float fight_retreat_health = 0.35f;
-// Prism and Willow stand this far from the enemy they fight (worker_skirmish):
-// their spells' and heal's reach, outside basic attacks'.
-inline constexpr int backline_reach = 4;
 // Awake camps this strong (golems 120, monoliths 200) of groups we do not farm
 // keep us out of their reach (mark_camp_zones()).
 inline constexpr float avoided_camp_strength = 100;
@@ -86,10 +69,6 @@ inline constexpr float camp_risk_weight = 2.0f;
 // Not 0: with every gem group out of plan, gold-only groups tied at 0
 // and the lowest index won at any distance.
 inline constexpr float willow_gold_factor = 0.02f;
-// Heart of Ruin's fight test counts our side hor_fight_factor times:
-// willow best girl's, an enemy 3-4 tiles away, steps away in 20-26% of
-// those rounds and dashes onto it in 10-17% (ours 32-36% / 6%).
-inline constexpr float hor_fight_factor = 1.5f;
 // A retreat's recall counts enemies as chasing for this many of its turns:
 // willow best girl's back line completes recalls with an enemy 3-8 tiles
 // off (its Vesper 2.8 a game, ours 1.0 when we assumed a full chase).
@@ -109,8 +88,6 @@ inline constexpr int stuck_rounds = 40;
 inline constexpr float hard_camp_health = 5000;
 inline constexpr float casualty_margin = 0.12f;
 inline constexpr int replan_period = 4;
-inline constexpr float assist_finish_credit = 0.55f;
-inline constexpr float stun_followup_credit = 0.5f;
 inline constexpr float unused_cast_cost = 0.01f;
 // Camp choice divides a group's score by 1 + partner_penalty * c(c+1)/2 for
 // the c teammates already claiming it (whose help it also counts as faster
@@ -173,12 +150,8 @@ inline constexpr int worker_danger_margin = 1;
 // times in three, one four rounds old one time in three, and kept while
 // updated (the old rule) four fifths of them were phantoms.
 inline constexpr int ghost_lifetime = 2;
-// Breaking contact with a stronger group: a champion an enemy can soon reach,
-// where the enemy outweighs us by more than aggression, steps away instead of
-// farming on, and the camps near those enemies are worth worker_sighting_penalty
-// of their value for worker_sighting_memory rounds. Without it lone champions
-// walked into a waiting group one at a time: half our ladder fights started
-// outnumbered.
+// Camps near a recently seen enemy are worth worker_sighting_penalty of their
+// value for worker_sighting_memory rounds.
 inline constexpr int worker_sighting_memory = 20;
 inline constexpr float worker_sighting_penalty = 0.2f;
 // Banking: whatever a champion carries is banked on its way out from spawn
@@ -245,21 +218,6 @@ inline constexpr float plan_hazard = 0.02f;
 // so the gems near them are worth the more. 0 disables the scarcity term.
 inline constexpr int altar_walk_cap = 20;
 inline constexpr float scarce_altar_weight = 0.5f;
-// Spread fighting: an enemy champion within peel_range of a teammate (a
-// dive) counts peel_factor times in our victim and target choices,
-// peel_prism_factor when the dived teammate is a Prism (the Prism counts
-// its own divers so too). willow best girl's teammates strike their
-// Prism's diver 0.72-0.76 times in 3 rounds (ours 0.40-0.50; for the other
-// types theirs and ours are alike), and its divers die 2-3 times as often
-// as ours do; its champions farm apart and turn on whoever dives the
-// Prism. In a brawl every enemy is within 2 of some teammate, so an even
-// factor picked out nobody. A dived Prism with a teammate within
-// peel_support shoots back above half health (willow's 72-86% of dives,
-// ours 61-67%).
-inline constexpr int peel_range = 2;
-inline constexpr float peel_factor = 1.5f;
-inline constexpr float peel_prism_factor = 8.0f;
-inline constexpr int peel_support = 8;
 // A hit from an enemy out of sight (note_hidden_hit()) is stepped in on only
 // by a melee champion at hidden_step_health of its health or more: the step
 // onto the bush shows the whole bush, and a hit from one can be bait for a
@@ -298,10 +256,8 @@ inline constexpr float enemy_side_factor = 0.4f;
 // of its new targets when one is up (ours 22%) and keeps its bag for the
 // Focus it gives, so its teammates hold the monster captures.
 inline constexpr float prism_safe_gem_factor = 2.0f;
-// Behind in the gem race (behind_pressure()): how much cheaper a death looks,
-// and how much more willing we are to fight.
+// Behind in the gem race (behind_pressure()): how much cheaper a death looks.
 inline constexpr float behind_risk_relief = 0.3f;
-inline constexpr float behind_fight_bonus = 0.2f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

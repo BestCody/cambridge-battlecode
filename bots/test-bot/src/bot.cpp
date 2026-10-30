@@ -15,6 +15,7 @@ void Bot::take_turn() {
     turn_start_fuel = bc::fuel_remaining();
     round = bc::round_number();
     walked = false;
+    placed = false;
     if (!initialised) {
         // The first turn only sets up: on a large map initialisation takes
         // most of even this turn's doubled fuel. Champions shop and measure

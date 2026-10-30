@@ -113,8 +113,8 @@ bool Bot::worker_tribute() {
             me.submit_gems(selected);
             return true;
         }
-        if (worker_skirmish())
-            return true;
+        // The normal worker path already tried skirmish this turn. A winning
+        // bag reaches the deposit branch above, so no fight is missed here.
         retreating = true;
         return worker_escape();
     }
