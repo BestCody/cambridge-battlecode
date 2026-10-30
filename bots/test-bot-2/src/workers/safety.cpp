@@ -161,11 +161,9 @@ void Bot::drop_hidden() {
 }
 
 // Danger at a tile: how many enemies could hit it, and by how many tiles the
-// closest of them is still short (negative once inside its reach). A fresh
-// ghost counts from its last confirmed tile, avoiding the nearest-possible
-// tile model's false alarms. Once the sighting is older, project halfway
-// toward that nearest possible tile: retaining the last tile alone otherwise
-// treats an enemy that has had several turns to close as harmless.
+// closest of them is still short (negative once inside its reach). Fresh
+// ghosts count from their last confirmed tile; older ones project halfway
+// toward the nearest tile they could occupy now.
 std::pair<int, int> Bot::worker_danger(vec2 tile) const {
     int threats = 0, clearance = std::numeric_limits<int>::max();
     const auto count = [&](const ObservedUnit &enemy, vec2 at) {
@@ -488,7 +486,6 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
         chase.chasers = in_view;
         chase.pool = pool;
         chase.mate = -1;
-        chase.dash = false;
         chase.dash_ready = has_dash && own_dash(spells).wait == 0;
         // A fight is checked against the duel and a run against the race; a
         // melee champion's walk, and a stand when the run's first round
@@ -535,10 +532,8 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
                 chase.mode = Chase::run;
             else if (has_dash && race(goal, arrive, true, pool)) {
                 chase.mode = Chase::run;
-                chase.dash = true;
             } else if (chase.foreseen.size() > 1) {
                 chase.mode = Chase::run;
-                chase.dash = has_dash;
             } else {
                 chase.mode = Chase::fight;
                 chase.foreseen.clear();
@@ -547,26 +542,6 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
     }
     chase.kept = int(round);
     return chase.mode;
-}
-
-bool Bot::run_to_safety() {
-    // Toward the teammate the race ran to, else home, dashing only when the
-    // race needed it; spells that allow walking still go off. The step away
-    // (toward any teammate in the fight) is cheaper but is not the run the
-    // race checked: it lost 109 gems a game to v35 where this won 67.
-    bc::bitboard goals = own_spawn;
-    vec2 toward = home_centre;
-    for (std::size_t i = 0; i < allies.size(); ++i)
-        if (int(ally_slot[i]) == chase.mate) {
-            goals = around(allies[i].position, 2);
-            toward = allies[i].position;
-        }
-    strike_before_step();
-    if (!move_to(goals, toward, true, chase.dash))
-        return false;
-    observe_fight();
-    combat(true, -1, true);
-    return true;
 }
 
 void Bot::strike_before_step() {

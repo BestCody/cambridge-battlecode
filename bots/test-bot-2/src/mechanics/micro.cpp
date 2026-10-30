@@ -8,7 +8,7 @@ struct Strike {
     vec2 tile{};
     std::uint64_t hits = 0, origins = 1;
     float damage = 0, shield = 0, support = 0;
-    bool stun = false, reset = false, enhanced = false;
+    bool stun = false, reset = false, enhanced = false, heal = false;
 };
 struct Sequence {
     std::array<int, 3> actions{-1, -1, -1};
@@ -321,6 +321,20 @@ bool Bot::attack_combo(bool escaping) {
             a.shield = ability.shield_amount();
             a.support = shield_value(a.shield, incoming(position), spell.duration, initial_shield);
             add(a);
+        } else if (spell.kind == bc::ability_kind::heal) {
+            a.heal = true;
+            for (std::size_t i = 0; i < allies.size(); ++i) {
+                const auto &ally = allies[i].champion();
+                if (!ally.is_visible() || !ally.is_alive() ||
+                    allies[i].max_health - allies[i].health < policy::heal_trigger * focus * spell.modifier ||
+                    !(a.origins = in_range(allies[i].position, spell.range, spell.exclusive)))
+                    continue;
+                a.target = int(i);
+                a.support = ability.heal_amount(ally) * 0.9f;
+                if (allies[i].health < allies[i].max_health * 0.5f)
+                    a.support *= 2;
+                add(a);
+            }
         }
     }
     Sequence best;
@@ -380,7 +394,7 @@ bool Bot::attack_combo(bool escaping) {
     // One more action of the combo.
     const auto apply = [&](ComboState &s, float *left, int index, int origin) {
         const auto &a = actions[index];
-        if (s.own_health <= 0 || (a.target >= 0 && left[a.target] <= 0)) {
+        if (s.own_health <= 0 || (a.target >= 0 && !a.heal && left[a.target] <= 0)) {
             // A unit-targeted action cannot follow its target's death.
             s.alive = false;
             return;
@@ -653,7 +667,7 @@ bool Bot::attack_combo(bool escaping) {
         std::uint32_t live = 0;
         for (int j = 0; j < run.used; ++j) {
             const auto &a = actions[run.cast[j]];
-            if (alive && !(own <= 0) && !(a.target >= 0 && left[a.target] <= 0))
+            if (alive && !(own <= 0) && !(a.target >= 0 && !a.heal && left[a.target] <= 0))
                 live |= 1u << j;
         }
         return live;
@@ -784,7 +798,7 @@ bool Bot::attack_combo(bool escaping) {
                 if (run.alone_live & legal) {
                     copy_batch(b, run.alone);
                     v128_t going_on = wasm_v128_andnot(lane_mask(run.alone_live & legal), wasm_f32x4_le(b.own_health, zero));
-                    if (a.target >= 0)
+                    if (a.target >= 0 && !a.heal)
                         going_on = wasm_v128_andnot(going_on, wasm_f32x4_le(b.left[a.target], zero));
                     attack_scored = std::uint32_t(wasm_i32x4_bitmask(going_on));
                     if (attack_scored) {
@@ -844,7 +858,12 @@ bool Bot::attack_combo(bool escaping) {
                 continue;
             if (a.reset || a.shield > 0)
                 used = abilities[a.slot].use();
-            else if (spells[a.slot].kind == bc::ability_kind::aoe_damage)
+            else if (a.heal) {
+                const auto &ally = allies[a.target].champion();
+                if (ally.is_visible() && ally.is_alive() &&
+                    distance(position, vec2(ally.position())) <= spells[a.slot].range)
+                    used = abilities[a.slot].use(ally);
+            } else if (spells[a.slot].kind == bc::ability_kind::aoe_damage)
                 used = abilities[a.slot].use(a.tile);
             else {
                 const auto &enemy = enemies[a.target].champion();

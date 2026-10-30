@@ -1875,41 +1875,6 @@ std::pair<float, float> Bot::sides_at(vec2 tile) const {
     return s;
 }
 
-float Bot::friendly_power(vec2 at) const {
-    float p = own_power();
-    // Allies count if they can join before we fall (our health over the
-    // damage we take), and not while their reports put them in another fight.
-    const float taking = incoming(position);
-    const float lasting = taking > 0 ? health / taking : std::numeric_limits<float>::max();
-    for (std::size_t i = 0; i < allies.size(); ++i) {
-        const auto &a = allies[i];
-        int arrival = std::max(0, distance(at, a.position) - std::max(a.range, a.spell_reach));
-        // A stunned ally still counts (a stun costs it one action), without
-        // its burst while the stun has time left.
-        if (float(arrival) > lasting || a.channel)
-            continue;
-        const int fight = TeamMemory::fight_group(shared.get(ally_slot[i]), groups.size());
-        if (fight >= 0 && !same_fight(fight, at))
-            continue;
-        const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
-        p += unit_power(a.health + a.shield + a.ready_shield, a.damage_rate, ally_burst, a.healing_rate,
-                        a.mitigation) *
-             0.9f / (1 + arrival * 0.4f);
-    }
-    // Teammates out of our sight under attack in this fight are in it, at
-    // their starting kit.
-    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
-    for (unsigned s = 0; s < count; ++s) {
-        if (s == slot || (seen_slots >> s & 1) || !shared.attacked(s))
-            continue;
-        const unsigned code = shared.get(s);
-        if (TeamMemory::requested_force(code, groups.size()) &&
-            same_fight(TeamMemory::fight_group(code, groups.size()), at) && roster[s].is_alive())
-            p += roster_power[s] * 0.9f;
-    }
-    return p;
-}
-
 void Bot::track_enemy_respawns() {
     // Enemy death timers across turns, so an engagement beside their spawn can
     // price in a fresh body arriving at full strength. Needs no vision.
@@ -1962,10 +1927,9 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 }
 
 float Bot::enemy_power(vec2 at) const {
-    // Only enemies that can fight: not channelling, as friendly_power leaves
-    // out channelling allies. A stunned one counts without its burst (a stun
-    // costs it one action). Enemies out of sight count from their possible
-    // tile nearest us. One on its spawn fights from there and heals to full
+    // Only enemies that can fight: not channelling. A stunned one counts
+    // without its burst (a stun costs it one action). Enemies out of sight
+    // count from their possible tile nearest us. One on its spawn fights from there and heals to full
     // at the end of each of its turns there (docs/GameRules.md): it counts at
     // full health, and as we do not strike it there, it reflects nothing.
     // Left out, fights at their spawn's edge looked winnable: on

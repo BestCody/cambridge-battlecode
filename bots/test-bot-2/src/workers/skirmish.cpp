@@ -2,6 +2,78 @@
 #include "../bot.h"
 #include <tuple>
 
+bool Bot::wait_for_camp_ambush() {
+    if (enemies.empty())
+        return false;
+    if (ambush_camp_health.size() != groups.size()) {
+        ambush_camp_health.assign(groups.size(), -1.0f);
+        ambush_camp_round.assign(groups.size(), -1000);
+        ambush_round.fill(-1000);
+        ambush_group.fill(-1);
+    }
+
+    const auto abilities = bc::self().abilities();
+    const bool can_cast = bc::self().can_cast();
+    bool wait = false;
+    for (std::size_t k = 0; k < enemies.size(); ++k) {
+        const auto &enemy = enemies[k];
+        const unsigned entry = enemy_slot[k];
+        int group = group_at(enemy.position);
+        if (group < 0) {
+            int nearest = std::numeric_limits<int>::max();
+            for (std::size_t g = 0; g < groups.size(); ++g) {
+                if (groups[g].status != CampGroup::alive)
+                    continue;
+                const int d = distance(enemy.position, groups[g].centre);
+                if (d < nearest && d <= groups[g].reach + 1) {
+                    nearest = d;
+                    group = int(g);
+                }
+            }
+        }
+        if (group < 0 || groups[group].status != CampGroup::alive)
+            continue;
+
+        const auto &camp = groups[group];
+        const bool consecutive = ambush_round[entry] == int(round) - 1 && ambush_group[entry] == group &&
+                                 ambush_camp_round[group] == int(round) - 1;
+        const float enemy_loss = consecutive ? ambush_enemy_health[entry] - enemy.health : 0.0f;
+        const float camp_loss = consecutive ? ambush_camp_health[group] - camp.health : 0.0f;
+
+        ambush_enemy_health[entry] = enemy.health;
+        ambush_round[entry] = int(round);
+        ambush_group[entry] = group;
+        ambush_camp_health[group] = camp.health;
+        ambush_camp_round[group] = int(round);
+
+        if (!consecutive || enemy.channel || enemy.health <= 0 || enemy_loss < enemy.max_health * policy::ambush_enemy_loss ||
+            camp_loss < camp.max_health * policy::ambush_camp_loss || enemy_threatens(enemy, position))
+            continue;
+
+        float burst = bc::self().can_attack() && distance(position, enemy.position) <= range ? basic_damage() : 0.0f;
+        for (unsigned i = 0; i < spells.size(); ++i) {
+            if (!ready(abilities[i], can_cast) || spells[i].modifier <= 0)
+                continue;
+            const auto &spell = spells[i];
+            if (spell.kind == bc::ability_kind::attack_reset)
+                burst += basic_damage();
+            else if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
+                     spell.kind == bc::ability_kind::aoe_damage)
+                burst += focus * spell.modifier;
+            else if (spell.kind == bc::ability_kind::dash)
+                burst += abilities[i].damage_amount();
+        }
+        burst *= enemy.mitigation;
+        const float life = enemy.health + enemy.shield;
+        const float expected_camp_hit = std::max(0.0f, enemy_loss);
+        // Never postpone a kill already in hand. Wait only for the narrow
+        // window where one more observed camp hit should create it.
+        if (burst < life && burst + expected_camp_hit >= life)
+            wait = true;
+    }
+    return wait;
+}
+
 bool Bot::worker_skirmish() {
     profiling::Scope scope(profiling::Stage::skirmish);
     if (enemies.empty())
@@ -65,7 +137,9 @@ bool Bot::worker_skirmish() {
                 // The engine's damage for it, with Heart of Ruin's passive.
                 spell_burst = std::max(spell_burst, abilities[i].damage_amount());
         }
-    float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
+    const float burst = spell_burst +
+                        (bc::self().can_attack() && distance(position, victim.position) <= range ? basic_damage()
+                                                                                                  : 0.0f);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
     // A channelling victim (recalling or banking: not fighting back) our hit
     // and our teammates' still to come this round would finish holds us
@@ -78,7 +152,7 @@ bool Bot::worker_skirmish() {
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
     // full and their cooldowns read) plus a margin for our bag (a round of
-    // their hits per exit_bag_gems gems). The power test counts burst at a fifth
+    // their hits per prism_bag gems). The power test counts burst at a fifth
     // and the fixed retreat at 35% health came after it landed: one enemy
     // Marcella's spell took ours from 1226 to 307 in a round, 22 of our 72
     // deaths against one ladder team went from near-full health to dead in
