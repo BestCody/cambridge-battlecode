@@ -159,11 +159,23 @@ def play(configs, opponents, fuels, args):
                     "ours": int(teams[ours]["submittedGems"]),
                     "theirs": int(teams[1 - ours]["submittedGems"]),
                     "round": result["match"]["roundsCompleted"],
+                    **team_totals(result, "teamA" if ours == 0 else "teamB"),
                 })
         return games
     finally:
         for name in temporary:
             shutil.rmtree(ROOT / "bots" / name, ignore_errors=True)
+
+
+def team_totals(result, team):
+    """A team's end-of-game totals from the champion timelines (each a running total)."""
+    totals = {"collected": 0, "kills": 0, "deaths": 0}
+    metrics = {"collectedGems": "collected", "kills": "kills", "deaths": "deaths"}
+    for timeline in result.get("championTimelines", []):
+        key = metrics.get(timeline["metric"])
+        if key and timeline["owner"]["team"] == team and timeline["runs"]:
+            totals[key] += int(float(timeline["runs"][-1]["value"]))
+    return totals
 
 
 def parse_config(spec, bot):
@@ -188,6 +200,20 @@ def report(games, configs, opponents):
         ours, theirs = sum(g["ours"] for g in rows), sum(g["theirs"] for g in rows)
         print(f"{name:14} {opponent:16} {wins:4}/{len(rows):<4} {wins / len(rows):4.0%}  "
               f"{ours:10} {theirs:10} {ours - theirs:+8}")
+    # Our side's economy: gems picked up from camps and tributed, per game and
+    # per 100 rounds played (games end early on a winning deposit), and fights.
+    print(f"\n{'config':14} {'opponent':16} {'collected':>10} {'coll/game':>9} {'coll/100r':>9} "
+          f"{'banked/100r':>11} {'rounds':>7} {'kills':>6} {'deaths':>6}")
+    for name, opponent in pairs:
+        rows = [g for g in games if g["config"] == name and g["opponent"] == opponent]
+        if not rows:
+            continue
+        collected = sum(g.get("collected", 0) for g in rows)
+        banked = sum(g["ours"] for g in rows)
+        rounds = max(1, sum(g["round"] for g in rows))
+        print(f"{name:14} {opponent:16} {collected:10} {collected / len(rows):9.0f} {100 * collected / rounds:9.2f} "
+              f"{100 * banked / rounds:11.2f} {rounds / len(rows):7.0f} "
+              f"{sum(g.get('kills', 0) for g in rows):6} {sum(g.get('deaths', 0) for g in rows):6}")
     for name, opponent in pairs:
         rows = [g for g in games if g["config"] == name and g["opponent"] == opponent]
         if not rows:

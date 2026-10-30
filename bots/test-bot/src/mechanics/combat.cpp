@@ -53,29 +53,25 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         float effective = damage * (u.enemy() ? u.mitigation : camp_multiplier);
         float value = std::min(effective, u.health + u.shield);
         const float useful = value;
-        if (effective >= u.health + u.shield) {
-            value += u.enemy() ? kill_value(u) : u.strength * 8;
-            if (passive == bc::passive_type::reset_cooldowns_on_kill)
-                value += 60;
-        }
-        if (u.enemy()) {
-            value *= peel_factor(u);
-            value *= 1 + std::min(2.0f, u.gems / 100.0f);
-            value *= 1 + 0.6f * (1 - u.health / u.max_health);
-            if (u.channel && cc && !u.immune)
-                value += 120 + u.gems * 3;
-        } else
+        // An enemy champion as the micro counts it: a kill, then damage.
+        if (effective >= u.health + u.shield)
+            value += u.enemy() ? kill_value() : u.strength * 8;
+        if (!u.enemy())
             // Strikers first (striker_work()): a hit ends a striker
             // useful / rate rounds sooner and spares its strength each of
             // them; a harmless camp spares nothing, as every camp must fall.
             // A one-hit kill on a harmless cluster outranked a hit on the elk
             // beside it, which struck through the whole clear.
             value += u.strength * useful / camp_rate;
-        if (cc && !(u.stunned && u.stun_time > 0) && !u.immune)
-            value += controls[&u - targets.data()];
+        if (cc && !(u.stunned && u.stun_time > 0) && !u.immune) {
+            if (!u.enemy())
+                value += controls[&u - targets.data()];
+            else if (effective < u.health + u.shield)
+                value += stun_value(u, u.health + u.shield - effective);
+        }
         if (u.retaliation() > 0 && effective > 0) {
             const float recoil = u.retaliation() * mitigation;
-            value -= recoil * (1 + std::min(2.0f, gems / 100.0f));
+            value -= recoil;
             if (recoil >= health + own_shield)
                 value -= death_cost();
         }
@@ -165,12 +161,9 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 best_target = -1;
             }
         } else if (s.kind == bc::ability_kind::shield) {
-            float danger = incoming(position, farm_group);
-            float score = std::min(a.shield_amount(), danger * std::max(1, s.duration)) * 0.85f;
-            if (health < danger * 4)
-                score *= 2;
-            if (me.buffs().has_shield())
-                score *= 0.2f;
+            const auto buffs = me.buffs();
+            const float held = buffs.has_shield() ? buffs.get<bc::buff_shield>().value : 0.0f;
+            const float score = shield_value(a.shield_amount(), incoming(position), s.duration, held);
             if (score > best_score) {
                 best_score = score;
                 best_slot = slot_index;
@@ -191,7 +184,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 if (score > best_score) {
                     best_score = score;
                     best_slot = slot_index;
-                    best_target = i;
+                    best_target = int(i);
                 }
             }
         } else if (s.kind == bc::ability_kind::aoe_damage) {
@@ -291,12 +284,18 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         const auto &a = abilities[best_slot];
         const auto &s = spells[best_slot];
         bool success = false;
-        if (s.kind == bc::ability_kind::attack_reset || s.kind == bc::ability_kind::shield)
+        if (s.kind == bc::ability_kind::attack_reset)
+            // Read again here, not as scored above: a turn that ran out of
+            // fuel in between resumes next round with its attack back, and
+            // resetting an available attack is an engine error that threw
+            // away the rest of the turn (2-5 times in 42 games at 100k).
+            success = !me.can_attack() && a.use();
+        else if (s.kind == bc::ability_kind::shield)
             success = a.use();
         else if (s.kind == bc::ability_kind::heal) {
-            // The engine's tile of the target, as for basic attacks.
-            if (distance(position, vec2(allies[best_target].champion().position())) <= s.range)
-                success = a.use(allies[best_target].champion());
+            const auto &ally = allies[best_target].champion();
+            if (ally.is_visible() && ally.is_alive() && distance(position, vec2(ally.position())) <= s.range)
+                success = a.use(ally);
         } else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
         else if (!targets[best_target].enemy() ||
@@ -304,8 +303,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             success = std::visit([&](const auto *u) { return a.use(*u); }, targets[best_target].ref);
         if (success) {
             acted = true;
-            // Only a cast that strikes the group wakes it: a heal or shield
-            // cast on the way woke sleeping camps in our records (and let a
+            // Only a cast that strikes the group wakes it: a shield cast on
+            // the way woke sleeping camps in our records (and let a
             // hard group's party go in without its partner). A reset's
             // attack marks the group as any attack does.
             if (farm_group >= 0 && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
@@ -333,39 +332,66 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     return acted || dashed;
 }
 
-float Bot::basic_damage() const {
-    // Our basic hit before the target's mitigation. Heart of Ruin's passive
-    // adds up to half again with missing health, which the strength reading
-    // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
+float Bot::damage_bonus() const {
+    // Heart of Ruin's passive adds up to half again to all our damage with
+    // missing health, which the strength and focus readings leave out (its
+    // hits matched strength x (1 + 0.5 x missing) exactly).
     if (passive != bc::passive_type::missing_health_damage)
-        return strength;
-    return strength * hor_bonus(health, max_health);
+        return 1.0f;
+    return hor_bonus(health, max_health);
 }
 
-float Bot::peel_factor(const ObservedUnit &enemy) const {
-    // A dive: the enemy within peel_range of a living teammate in view (of
-    // us too, for a Prism).
-    float factor = type == bc::champion_type::prism && distance(position, enemy.position) <= policy::peel_range
-                       ? policy::peel_prism_factor
-                       : 1.0f;
+float Bot::basic_damage() const {
+    // Our basic hit before the target's mitigation.
+    return strength * damage_bonus();
+}
+
+float Bot::stun_prevented(const ObservedUnit &e) const {
+    if ((e.stunned && e.stun_time > 0) || e.immune)
+        return 0;
+    // One ability a turn: its hit, then a reset's second hit or its burst.
+    const float blow = e.strength + std::max(e.reset_ready ? e.strength : 0.0f, e.spell_burst);
+    const int reach = std::max(e.range, e.spell_reach) + e.move_speed;
+    float most = distance(position, e.position) <= reach ? std::min(blow * mitigation, health) : 0.0f;
     for (const auto &a : allies)
-        if (a.health > 0 && distance(a.position, enemy.position) <= policy::peel_range)
-            factor = std::max(factor, a.type == bc::champion_type::prism ? policy::peel_prism_factor
-                                                                          : policy::peel_factor);
-    return factor;
+        if (a.health > 0 && distance(a.position, e.position) <= reach)
+            most = std::max(most, std::min(blow * a.mitigation, a.health));
+    return most;
 }
 
-float Bot::kill_value(const ObservedUnit &enemy) const {
-    float value = 200 + enemy.gems * 7 + enemy.strength * 3;
-    const bool twin = enemy.type == bc::champion_type::cassi || enemy.type == bc::champion_type::issac;
-    if (twin) {
-        // One kill reward, plus the known combat power and bag of the sibling.
-        const auto other =
-            enemy.type == bc::champion_type::cassi ? bc::champion_type::issac : bc::champion_type::cassi;
-        for (const auto &unit : enemies)
-            if (unit.type == other && unit.health > 0)
-                value += unit.strength * 3 + unit.burst + unit.gems * 7;
+float Bot::stun_follow_up(const ObservedUnit &e) const {
+    // Teammates that finished this round cannot act before its next turn.
+    float damage = 0;
+    for (const auto &a : allies) {
+        if (a.health <= 0 || a.completed || (a.stunned && a.stun_time > 0) || a.channel)
+            continue;
+        const int d = distance(a.position, e.position);
+        if (d <= a.range)
+            damage += a.strength;
+        if (d <= std::max(a.range, a.spell_reach))
+            damage += a.burst;
     }
+    return damage * e.mitigation;
+}
+
+float Bot::stun_value(const ObservedUnit &e, float left) const {
+    const float window = stun_follow_up(e);
+    return stun_prevented(e) + (left <= window ? kill_value() : window);
+}
+
+float Bot::shield_value(float shield, float danger, int turns, float held) const {
+    const float absorbable = danger * float(std::max(1, turns));
+    float value = std::max(0.0f, std::min(shield, absorbable) - std::min(held, absorbable));
+    if (danger >= health + held && danger < health + shield)
+        value += death_cost();
+    return value;
+}
+
+float Bot::kill_value() const {
+    float value = 1;
+    for (const auto &e : enemies)
+        if (e.health > 0)
+            value += e.health + e.shield;
     return value;
 }
 

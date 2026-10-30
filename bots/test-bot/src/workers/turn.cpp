@@ -185,6 +185,8 @@ void Bot::play_worker_turn() {
         return;
     }
     worker_update_formation();
+    // Try the fight once before banking; an unsafe tribute can then retreat
+    // without running the skirmish micro a second time.
     if (worker_skirmish() || worker_pursue()) {
         note_activity(Activity::fight);
         return;
@@ -295,7 +297,7 @@ void Bot::worker_priority() {
                 continue;
             const bool lethal = burst >= hp + e.shield;
             const int tier = lethal ? priority_tier::finish : priority_tier::damage;
-            const float value = lethal ? burst + kill_value(e) : burst;
+            const float value = lethal ? burst + kill_value() : burst;
             best = std::max(best, tier + std::min(int(value), priority_tier::span));
         }
         if (best > 0)

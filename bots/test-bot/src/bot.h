@@ -372,12 +372,12 @@ struct ChampionGone {};
 
 class Bot {
     bool initialised = false, walked = false, retreating = false, banking = false;
+    // The fight micro has chosen our final tile for this turn.
+    bool placed = false;
     // Hit since our last turn, by anything, seen or not (a camp out of view,
     // an enemy in a bush), and where our last recall started.
     bool hit = false;
     vec2 recall_tile{-1, -1};
-    // This contact's first round and the last round with an enemy in view (worker_skirmish).
-    int contact_start = -100, contact_last = -100;
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.
@@ -489,7 +489,7 @@ class Bot {
     // fight, decided once and kept until something the decision did not
     // foresee happens. The round it was decided and last kept, the enemies
     // in view then (bits of their roster entries), whether the run
-    // uses our dash and whether it was ready, the teammate it runs to (its
+    // whether our dash was ready, the teammate it runs to (its
     // roster slot, -1: spawn), our health and shield then, and the damage the
     // race or duel foresaw by the end of each round since.
     struct Chase {
@@ -497,7 +497,7 @@ class Bot {
         Mode mode = none;
         int decided = -1, kept = -1, mate = -1;
         std::uint32_t chasers = 0;
-        bool dash = false, dash_ready = false;
+        bool dash_ready = false;
         float pool = 0;
         std::vector<float> foreseen;
     } chase;
@@ -798,8 +798,10 @@ class Bot {
         float pool = -1, here = 0;
         bool lethal(vec2 tile);
     };
-    float friendly_power(vec2 at) const;
-    // Our own power alone (friendly_power without teammates).
+    bool acts_on(const ObservedUnit &u, vec2 tile) const;
+    float unit_power_of(const ObservedUnit &u, bool full) const;
+    std::pair<float, float> sides_at(vec2 tile) const;
+    // Our own power alone, without teammates.
     float own_power() const;
     float enemy_power(vec2 at) const;
     float respawn_threat(vec2 at) const;
@@ -830,16 +832,15 @@ class Bot {
     void retreat_to_spawn();
     // combat.cpp, micro.cpp
     bool combat(bool fighting_champions, int farm_group = -1, bool escaping = false);
-    float kill_value(const ObservedUnit &enemy) const;
-    // What our own death costs, as a kill of us is worth to them.
-    float death_cost() const { return 200 + float(gems) * 7 + strength * 3; }
-    // How much an enemy diving a teammate counts in our choices (1: no dive).
-    float peel_factor(const ObservedUnit &enemy) const;
+    float kill_value() const;
+    float stun_prevented(const ObservedUnit &enemy) const;
+    float stun_follow_up(const ObservedUnit &enemy) const;
+    float stun_value(const ObservedUnit &enemy, float left) const;
+    float shield_value(float shield, float danger, int turns, float held) const;
+    float death_cost() const { return kill_value() * (gems > 0 ? 2.0f : 1.0f); }
     bool attack_combo(bool escaping);
-    bool attack_dash(vec2 victim);
     bool impact_dash(bool fighting_champions, int farm_group);
     bool advance_attack(vec2 victim, int stand = 0);
-    bool follow_through();
     // economy.cpp
     void buy_equipment();
     void refresh_equipment();
@@ -890,6 +891,7 @@ class Bot {
     // The run's next member is open by the time we walk there from here.
     bool run_continues() const;
     float basic_damage() const;
+    float damage_bonus() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
     int claimed_by(const ObservedUnit &ally) const;
@@ -902,10 +904,6 @@ class Bot {
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).
     bool confront_hidden();
-    // The fight rule: our power (ours: with the teammates that arrive) at the
-    // weight of who is near, against theirs (worker_skirmish(),
-    // confront_hidden()).
-    bool fight_favourable(float ours, float theirs, bool opening, bool dive) const;
     // Out of a fight too dangerous to stay in (worker_skirmish()).
     bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.
@@ -944,7 +942,6 @@ class Bot {
     std::uint32_t threat_bits() const;
     bool duel_won(std::uint32_t threats, float pool);
     bool race(vec2 goal, int arrive, bool use_dash, float pool);
-    bool run_to_safety();
     void avoid_reach();
 
     void take_turn();

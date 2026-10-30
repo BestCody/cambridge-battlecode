@@ -92,8 +92,8 @@ bool Bot::worker_update_formation() {
                     reported_group = int(i);
                 }
             }
-            // The squad that beats what we see by the fight rule: its power
-            // times aggression reaches theirs.
+            // Size the reported squad from enemy power and our average
+            // champion power, scaled by the formation aggression factor.
             const unsigned bodies = std::max(1u, unsigned(roster.size()));
             const float squad = enemy_power(at) / (policy::aggression * std::max(1.0f, team_average_power()));
             reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
