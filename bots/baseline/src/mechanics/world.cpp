@@ -530,16 +530,19 @@ void Bot::initialise() {
     // the fields are built here (as the draft would) and exported once rather
     // than read per tile; exports write every entry, so the buffers are never
     // filled first (memory fills cost about a fuel per byte).
-    const bool measured = opening.magic == DraftPlan::tag && opening.group_count == groups.size();
+    const bool measured = draft_measured();
     for (std::size_t i = 0; i < groups.size(); ++i)
         groups[i].set_splash(measured ? float(opening.group_splash[i]) : groups[i].count_splash());
-    if (measured)
+    if (measured) {
         for (std::size_t i = 0; i < groups.size(); ++i) {
             const auto &distance = opening.group_distance[i];
             groups[i].home_distance = distance[DraftPlan::home];
             groups[i].enemy_distance = distance[DraftPlan::enemy];
             groups[i].altar_distance = distance[DraftPlan::altar];
         }
+        // The hops too (else the background builds them).
+        prepare_hops();
+    }
     if (!measured) {
         bc::distance_field enemy_field;
         enemy_field.compute(neutral_terrain, bc::map::spawn_region(bc::team::enemy), search_visited);

@@ -770,7 +770,15 @@ int Bot::worker_choose_group(int excluded) {
         };
         const float our_rate = flat_dps * our_multiplier;
         const float party_best = best;
-        for (std::size_t i = 0; i < count; ++i) {
+        // A plan asks one free teammate at least: what the slowest of them
+        // would add elsewhere is the least any plan gives up (none free: no
+        // plan).
+        float least_asked = std::numeric_limits<float>::infinity();
+        for (unsigned s = 0; s < kits; ++s)
+            if (s != slot && living(s) && mates[s].free)
+                least_asked = std::min(least_asked, mate_rate[s]);
+        const float least_given_up = party_best * least_asked / our_rate;
+        for (std::size_t i = 0; i < count && least_asked != std::numeric_limits<float>::infinity(); ++i) {
             const auto &g = groups[i];
             // Groups whose walk is measured, with a request code to ask with.
             if (lanes.scores[i] == skipped || group_bounded[i] || g.status == CampGroup::capture ||
@@ -783,6 +791,22 @@ int Bot::worker_choose_group(int excluded) {
             rate += dash_rate * std::min(2.0f, lanes.camp_count[i]);
             const float speed = std::max(1.0f, rate * our_multiplier * policy::team_clear_share);
             const float start = g.status == CampGroup::cooling ? std::max(0.0f, float(g.respawn - now)) : 0.0f;
+            const float settle = float(capture_time + 1) + lanes.altar[i];
+            const float reward = lanes.gem_reward[i] + gold_weight * lanes.gold[i];
+            const auto plan_value = [&](float time) {
+                return reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
+            };
+            // No plan here ends its clear before `start` and a round a camp
+            // shared by everyone who could come, nor settles sooner; a
+            // plan's value only falls with its time and what it asks: a
+            // group whose value then, less the least a plan gives up, cannot
+            // beat the best is passed before the teammates' walks (they were
+            // 24k of a choice's 41k fuel, the turns past 100k freezing
+            // champions a round each).
+            const float soonest_clear = start + lanes.camp_count[i] / (lanes.claims[i] + 1 + float(kits));
+            if (lanes.factor[i] >= 0 &&
+                plan_value(soonest_clear + settle) * lanes.factor[i] - least_given_up <= best)
+                continue;
             const float ours_at = std::max(float(std::max(0, lanes.path[i] - our_range)) * travel_scale, start);
             const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             const float claim_at = std::max(lanes.claim_eta[i], start);
@@ -809,11 +833,6 @@ int Bot::worker_choose_group(int excluded) {
             }
             const float health_left = lanes.remaining[i], work = lanes.striker_work[i];
             const float trip_time = recall_trip + lanes.home[i] * travel_scale;
-            const float settle = float(capture_time + 1) + lanes.altar[i];
-            const float reward = lanes.gem_reward[i] + gold_weight * lanes.gold[i];
-            const auto plan_value = [&](float time) {
-                return reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
-            };
             // The front (scored as in score_lanes()): the claimants', then
             // each member joining.
             float front = lanes.front_range[i], fronts = lanes.front_count[i];
@@ -856,7 +875,22 @@ int Bot::worker_choose_group(int excluded) {
                 std::array<Cohort, 3> cohorts{{{ours_at, speed},
                                                {claim_at, claim_speed},
                                                {k > 0 ? soon[k - 1].first : ours_at, party_speed}}};
-                std::sort(cohorts.begin(), cohorts.end(), [](const Cohort &a, const Cohort &b) { return a.at < b.at; });
+                // By arrival, in std::sort's order for three (libc++'s
+                // __sort3, ties included) without the call.
+                const auto sooner = [](const Cohort &a, const Cohort &b) { return a.at < b.at; };
+                if (!sooner(cohorts[1], cohorts[0])) {
+                    if (sooner(cohorts[2], cohorts[1])) {
+                        std::swap(cohorts[1], cohorts[2]);
+                        if (sooner(cohorts[1], cohorts[0]))
+                            std::swap(cohorts[0], cohorts[1]);
+                    }
+                } else if (sooner(cohorts[2], cohorts[1]))
+                    std::swap(cohorts[0], cohorts[2]);
+                else {
+                    std::swap(cohorts[0], cohorts[1]);
+                    if (sooner(cohorts[2], cohorts[1]))
+                        std::swap(cohorts[1], cohorts[2]);
+                }
                 float t = cohorts[0].at, striking = 0, left = health_left, end = -1;
                 for (const auto &c : cohorts) {
                     if (striking > 0 && left <= striking * (c.at - t)) {

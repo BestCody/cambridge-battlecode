@@ -453,18 +453,38 @@ struct DraftPlan {
     std::uint8_t cheap_gem_groups = 0;
     float spacing = 0;
     // Walking distance from each camp group, in camp_groups() order, to our
-    // spawn, the enemy spawn and an altar's tribute tiles: three map-wide
-    // searches the draft affords on its first turn, which a champion's first
-    // turn cannot. group_count is 0 when they are not here.
-    static constexpr std::size_t max_groups = 130;
-    enum Ground { home, enemy, altar };
+    // spawn, the enemy spawn and an altar's tribute tiles, and from our
+    // spawn with one crystal hop (hop_walks(); unreachable where it saves
+    // nothing): map-wide searches the draft affords on its first turn, which
+    // a champion's turns cannot (the hops alone froze each champion 20-75
+    // rounds on the ladder). group_count is 0 when they are not here. The
+    // 70 maps have at most 51 groups and 18 altars.
+    static constexpr std::size_t max_groups = 100, max_altars = 24;
+    enum Ground { home, enemy, altar, hop };
     std::uint16_t group_count = 0;
-    std::array<std::array<std::uint16_t, 3>, max_groups> group_distance{};
+    std::array<std::array<std::uint16_t, 4>, max_groups> group_distance{};
     // And each group's splash shape: the most camps within splash radius of
     // one of its camps (at least 1), counted over every pair.
     std::array<std::uint8_t, max_groups> group_splash{};
+    // Each altar's walk from our spawn with one hop, as for the groups.
+    std::array<std::uint16_t, max_altars> altar_hop{};
 };
 static_assert(sizeof(DraftPlan) <= 1024);
+
+// The walk from our spawn with one teleport-crystal hop to every tile
+// (navigation.cpp), from the walk without (`walk`, row-major) and the open
+// tiles; written row-major to `hop`.
+void hop_walks(const std::uint16_t *walk, const bc::bitboard &open, int width, int height, std::uint16_t *hop);
+// A field's least value within crystal_range along each row, for rows
+// first_row to last_row and columns first_column (a multiple of 8) up to
+// end_column: rows padded by the range both sides into `rows` (row stride
+// (width + 2 range + 7) & ~7, 8 entries more), the minimum into `near` (row
+// stride (width + 7) & ~7).
+void row_window_min(const std::uint16_t *field, int width, int height, std::uint16_t *rows, std::uint16_t *near,
+                    int first_row, int last_row, int first_column, int end_column);
+// An altar's walk with a hop (the least over its tribute tiles) where shorter
+// than its walk, else unreachable.
+int altar_hop_walk(vec2 altar, const std::uint16_t *walk, const std::uint16_t *hop, int width, int height);
 
 // Tiles within tribute range of an altar, for the altar field.
 inline bc::bitboard altar_goals_of(const std::vector<vec2> &altars, const bc::bitboard &static_blocked) {

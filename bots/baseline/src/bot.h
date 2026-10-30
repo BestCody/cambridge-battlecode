@@ -581,6 +581,10 @@ class Bot {
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;
+    // Whether the draft's plan holds this map's group and altar measures.
+    bool draft_measured() const {
+        return opening.magic == DraftPlan::tag && opening.group_count == groups.size();
+    }
     std::vector<float> roster_power;
     // Each roster slot's kit, camp damage multiplier and base damage per
     // round on camps.
@@ -850,8 +854,10 @@ class Bot {
     // The rounds a hop must save to pay for its crystal (infinite before any
     // income).
     float hop_threshold() const;
-    // Field buffers for plan_hop(), rows padded for SIMD.
+    // Field buffers for plan_hop() and prepare_hops(), rows padded for SIMD
+    // (allocated by hop_buffers()).
     std::unique_ptr<std::uint16_t[]> hop_goal, hop_from, hop_rows, hop_near;
+    void hop_buffers();
     bc::distance_field hop_goal_field, hop_from_field;
     void prepare_hops();
     bool carrying_crystal() const;

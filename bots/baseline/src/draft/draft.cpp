@@ -4,6 +4,7 @@
 #include "../strategy.h"
 #include "team_compositions.h"
 #include <iostream>
+#include <memory>
 
 namespace {
 // Shared memory has a slot per body: every roster fits, and none has the twin
@@ -50,8 +51,10 @@ struct DraftState {
     }
 
     void measure_groups(const std::vector<bc::map::camp_group> &groups) {
-        // The same searches a champion's initialisation would run (world.cpp).
-        if (groups.size() > DraftPlan::max_groups)
+        // The same searches a champion's initialisation would run (world.cpp),
+        // and its hops (prepare_hops()).
+        const auto altars = bc::map::altars().positions();
+        if (groups.size() > DraftPlan::max_groups || altars.size() > DraftPlan::max_altars)
             return;
         const auto static_blocked = terrain();
         bc::distance_field home, enemy, altar;
@@ -59,7 +62,12 @@ struct DraftState {
         home.compute(static_blocked, bc::map::spawn_region(bc::team::ally), visited);
         enemy.compute(bc::map::walls() | bc::map::holes() | bc::map::altars(),
                       bc::map::spawn_region(bc::team::enemy), visited);
-        altar.compute(static_blocked, altar_goals_of(bc::map::altars().positions(), static_blocked), visited);
+        altar.compute(static_blocked, altar_goals_of(altars, static_blocked), visited);
+        const int w = bc::map::width(), h = bc::map::height();
+        const std::size_t tiles = std::size_t(w) * std::size_t(h);
+        const std::unique_ptr<std::uint16_t[]> walk(new std::uint16_t[tiles]), hop(new std::uint16_t[tiles]);
+        home.export_linear_buffer(std::span(walk.get(), tiles));
+        hop_walks(walk.get(), ~static_blocked, w, h, hop.get());
         for (std::size_t i = 0; i < groups.size(); ++i) {
             auto &distance = plan.group_distance[i];
             distance.fill(bc::distance_field::unreachable);
@@ -68,8 +76,11 @@ struct DraftState {
                 distance[DraftPlan::home] = std::min(distance[DraftPlan::home], home.get(p));
                 distance[DraftPlan::enemy] = std::min(distance[DraftPlan::enemy], enemy.get(p));
                 distance[DraftPlan::altar] = std::min(distance[DraftPlan::altar], altar.get(p));
+                distance[DraftPlan::hop] = std::min(distance[DraftPlan::hop], hop[std::size_t(p.y * w + p.x)]);
             }
         }
+        for (std::size_t i = 0; i < altars.size(); ++i)
+            plan.altar_hop[i] = std::uint16_t(altar_hop_walk(altars[i], walk.get(), hop.get(), w, h));
         for (std::size_t i = 0; i < groups.size(); ++i) {
             int shape = 1;
             for (const auto &a : groups[i]) {
