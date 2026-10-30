@@ -1,0 +1,9188 @@
+{
+  "championTimelines": [
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 12,
+          "value": "0"
+        },
+        {
+          "duration": 21,
+          "value": "21"
+        },
+        {
+          "duration": 1968,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 12,
+          "value": "0"
+        },
+        {
+          "duration": 1989,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 33,
+          "value": "0"
+        },
+        {
+          "duration": 1968,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 4,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 120.0
+        },
+        {
+          "duration": 1,
+          "value": 260.0
+        },
+        {
+          "duration": 1995,
+          "value": 360.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 63,
+          "value": 0.0
+        },
+        {
+          "duration": 1938,
+          "value": 140.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 26,
+          "value": 0.0
+        },
+        {
+          "duration": 9,
+          "value": 120.0
+        },
+        {
+          "duration": 27,
+          "value": 240.0
+        },
+        {
+          "duration": 37,
+          "value": 423.75298500061035
+        },
+        {
+          "duration": 1885,
+          "value": 543.7529850006104
+        },
+        {
+          "duration": 17,
+          "value": 588.7529850006104
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 69,
+          "value": "0"
+        },
+        {
+          "duration": 25,
+          "value": "21"
+        },
+        {
+          "duration": 1907,
+          "value": "32"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 69,
+          "value": "0"
+        },
+        {
+          "duration": 25,
+          "value": "21"
+        },
+        {
+          "duration": 1907,
+          "value": "32"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 26,
+          "value": 0.0
+        },
+        {
+          "duration": 56,
+          "value": 75.0
+        },
+        {
+          "duration": 2,
+          "value": 195.0
+        },
+        {
+          "duration": 1,
+          "value": 285.0
+        },
+        {
+          "duration": 1,
+          "value": 315.0
+        },
+        {
+          "duration": 1,
+          "value": 360.0
+        },
+        {
+          "duration": 1,
+          "value": 405.0
+        },
+        {
+          "duration": 1913,
+          "value": 435.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 1980,
+          "value": 0.0
+        },
+        {
+          "duration": 10,
+          "value": 120.0
+        },
+        {
+          "duration": 8,
+          "value": 240.0
+        },
+        {
+          "duration": 3,
+          "value": 360.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 24,
+          "value": "0"
+        },
+        {
+          "duration": 70,
+          "value": "21"
+        },
+        {
+          "duration": 1907,
+          "value": "31"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 24,
+          "value": "0"
+        },
+        {
+          "duration": 70,
+          "value": "21"
+        },
+        {
+          "duration": 1907,
+          "value": "31"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 10,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 120.0
+        },
+        {
+          "duration": 1,
+          "value": 150.0
+        },
+        {
+          "duration": 1,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 210.0
+        },
+        {
+          "duration": 1,
+          "value": 240.0
+        },
+        {
+          "duration": 1,
+          "value": 270.0
+        },
+        {
+          "duration": 1,
+          "value": 300.0
+        },
+        {
+          "duration": 1,
+          "value": 330.0
+        },
+        {
+          "duration": 1983,
+          "value": 360.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 35,
+          "value": 0.0
+        },
+        {
+          "duration": 3,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 214.5
+        },
+        {
+          "duration": 1,
+          "value": 250.125
+        },
+        {
+          "duration": 1,
+          "value": 286.875
+        },
+        {
+          "duration": 1,
+          "value": 324.75
+        },
+        {
+          "duration": 3,
+          "value": 363.75
+        },
+        {
+          "duration": 18,
+          "value": 405.45000076293945
+        },
+        {
+          "duration": 1,
+          "value": 596.5314712524414
+        },
+        {
+          "duration": 1,
+          "value": 628.9122619628906
+        },
+        {
+          "duration": 1,
+          "value": 661.2930526733398
+        },
+        {
+          "duration": 1,
+          "value": 694.7415924072266
+        },
+        {
+          "duration": 1,
+          "value": 728.1901321411133
+        },
+        {
+          "duration": 1,
+          "value": 762.2564239501953
+        },
+        {
+          "duration": 2,
+          "value": 796.3227157592773
+        },
+        {
+          "duration": 33,
+          "value": 834.2045631408691
+        },
+        {
+          "duration": 1,
+          "value": 1014.2045631408691
+        },
+        {
+          "duration": 1875,
+          "value": 1044.2045631408691
+        },
+        {
+          "duration": 1,
+          "value": 1374.2045631408691
+        },
+        {
+          "duration": 2,
+          "value": 1404.2045631408691
+        },
+        {
+          "duration": 1,
+          "value": 1436.2070655822754
+        },
+        {
+          "duration": 1,
+          "value": 1468.7005157470703
+        },
+        {
+          "duration": 3,
+          "value": 1501.6849174499512
+        },
+        {
+          "duration": 1,
+          "value": 1864.5133438110352
+        },
+        {
+          "duration": 2,
+          "value": 1897.497745513916
+        },
+        {
+          "duration": 1,
+          "value": 1932.4184799194336
+        },
+        {
+          "duration": 1,
+          "value": 1967.848690032959
+        },
+        {
+          "duration": 1,
+          "value": 2003.7883758544922
+        },
+        {
+          "duration": 1,
+          "value": 2040.2375411987305
+        },
+        {
+          "duration": 1,
+          "value": 2077.1961822509766
+        },
+        {
+          "duration": 1,
+          "value": 2306.054874420166
+        },
+        {
+          "duration": 2,
+          "value": 2344.1979904174805
+        },
+        {
+          "duration": 1,
+          "value": 2385.0074424743652
+        },
+        {
+          "duration": 1,
+          "value": 2428.239845275879
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 35,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 300.0
+        },
+        {
+          "duration": 1,
+          "value": 375.0
+        },
+        {
+          "duration": 1,
+          "value": 450.0
+        },
+        {
+          "duration": 1,
+          "value": 525.0
+        },
+        {
+          "duration": 1,
+          "value": 600.0
+        },
+        {
+          "duration": 1,
+          "value": 675.0
+        },
+        {
+          "duration": 1,
+          "value": 750.0
+        },
+        {
+          "duration": 1,
+          "value": 1050.0
+        },
+        {
+          "duration": 15,
+          "value": 1080.0
+        },
+        {
+          "duration": 3,
+          "value": 1200.0
+        },
+        {
+          "duration": 2,
+          "value": 1353.1274871826172
+        },
+        {
+          "duration": 1,
+          "value": 1388.7192115783691
+        },
+        {
+          "duration": 1,
+          "value": 1424.310935974121
+        },
+        {
+          "duration": 1,
+          "value": 1459.902660369873
+        },
+        {
+          "duration": 1,
+          "value": 1615.494384765625
+        },
+        {
+          "duration": 1,
+          "value": 1651.086109161377
+        },
+        {
+          "duration": 1,
+          "value": 1687.4246978759766
+        },
+        {
+          "duration": 1,
+          "value": 1905.4562339782715
+        },
+        {
+          "duration": 5,
+          "value": 1942.363052368164
+        },
+        {
+          "duration": 29,
+          "value": 2062.363052368164
+        },
+        {
+          "duration": 1876,
+          "value": 2152.363052368164
+        },
+        {
+          "duration": 1,
+          "value": 2197.363052368164
+        },
+        {
+          "duration": 1,
+          "value": 2435.863052368164
+        },
+        {
+          "duration": 1,
+          "value": 2468.593090057373
+        },
+        {
+          "duration": 5,
+          "value": 2501.323127746582
+        },
+        {
+          "duration": 1,
+          "value": 2534.7643966674805
+        },
+        {
+          "duration": 1,
+          "value": 2780.41202545166
+        },
+        {
+          "duration": 1,
+          "value": 2814.3771057128906
+        },
+        {
+          "duration": 1,
+          "value": 2848.342185974121
+        },
+        {
+          "duration": 1,
+          "value": 2882.3072662353516
+        },
+        {
+          "duration": 1,
+          "value": 2916.272346496582
+        },
+        {
+          "duration": 1,
+          "value": 2950.2374267578125
+        },
+        {
+          "duration": 1,
+          "value": 2995.2374267578125
+        },
+        {
+          "duration": 1,
+          "value": 3029.202507019043
+        },
+        {
+          "duration": 1,
+          "value": 3322.9929962158203
+        },
+        {
+          "duration": 1,
+          "value": 3403.7580757141113
+        },
+        {
+          "duration": 1,
+          "value": 3484.5231552124023
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 49,
+          "value": 0.0
+        },
+        {
+          "duration": 36,
+          "value": 780.0
+        },
+        {
+          "duration": 1916,
+          "value": 1462.3630981445312
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 34,
+          "value": 0.0
+        },
+        {
+          "duration": 8,
+          "value": 150.0
+        },
+        {
+          "duration": 16,
+          "value": 300.0
+        },
+        {
+          "duration": 8,
+          "value": 450.0
+        },
+        {
+          "duration": 39,
+          "value": 600.0
+        },
+        {
+          "duration": 1876,
+          "value": 750.0
+        },
+        {
+          "duration": 8,
+          "value": 900.0
+        },
+        {
+          "duration": 8,
+          "value": 1050.0
+        },
+        {
+          "duration": 4,
+          "value": 1200.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 78,
+          "value": "0"
+        },
+        {
+          "duration": 18,
+          "value": "21"
+        },
+        {
+          "duration": 1905,
+          "value": "42"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 78,
+          "value": "0"
+        },
+        {
+          "duration": 18,
+          "value": "21"
+        },
+        {
+          "duration": 1905,
+          "value": "42"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 3,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 90.0
+        },
+        {
+          "duration": 2,
+          "value": 120.0
+        },
+        {
+          "duration": 1,
+          "value": 165.0
+        },
+        {
+          "duration": 11,
+          "value": 210.0
+        },
+        {
+          "duration": 1,
+          "value": 255.0
+        },
+        {
+          "duration": 2,
+          "value": 330.0
+        },
+        {
+          "duration": 1,
+          "value": 375.0
+        },
+        {
+          "duration": 4,
+          "value": 420.0
+        },
+        {
+          "duration": 1,
+          "value": 465.0
+        },
+        {
+          "duration": 36,
+          "value": 495.0
+        },
+        {
+          "duration": 1,
+          "value": 540.0
+        },
+        {
+          "duration": 1,
+          "value": 585.0
+        },
+        {
+          "duration": 2,
+          "value": 615.0
+        },
+        {
+          "duration": 1,
+          "value": 660.0
+        },
+        {
+          "duration": 1,
+          "value": 705.0
+        },
+        {
+          "duration": 1,
+          "value": 750.0
+        },
+        {
+          "duration": 1,
+          "value": 795.0
+        },
+        {
+          "duration": 9,
+          "value": 855.0
+        },
+        {
+          "duration": 1,
+          "value": 900.0
+        },
+        {
+          "duration": 1,
+          "value": 945.0
+        },
+        {
+          "duration": 2,
+          "value": 975.0
+        },
+        {
+          "duration": 1,
+          "value": 1020.0
+        },
+        {
+          "duration": 1,
+          "value": 1065.0
+        },
+        {
+          "duration": 2,
+          "value": 1095.0
+        },
+        {
+          "duration": 1,
+          "value": 1185.0
+        },
+        {
+          "duration": 20,
+          "value": 1215.0
+        },
+        {
+          "duration": 1,
+          "value": 1260.0
+        },
+        {
+          "duration": 1,
+          "value": 1305.0
+        },
+        {
+          "duration": 1890,
+          "value": 1335.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 1981,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 45.0
+        },
+        {
+          "duration": 2,
+          "value": 90.0
+        },
+        {
+          "duration": 6,
+          "value": 135.0
+        },
+        {
+          "duration": 6,
+          "value": 180.0
+        },
+        {
+          "duration": 2,
+          "value": 225.0
+        },
+        {
+          "duration": 1,
+          "value": 315.0
+        },
+        {
+          "duration": 1,
+          "value": 360.0
+        },
+        {
+          "duration": 1,
+          "value": 405.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 1985,
+          "value": 0.0
+        },
+        {
+          "duration": 3,
+          "value": 32.98440170288086
+        },
+        {
+          "duration": 1,
+          "value": 230.89081573486328
+        },
+        {
+          "duration": 1,
+          "value": 263.87521743774414
+        },
+        {
+          "duration": 6,
+          "value": 383.87521743774414
+        },
+        {
+          "duration": 1,
+          "value": 612.7339096069336
+        },
+        {
+          "duration": 2,
+          "value": 650.877025604248
+        },
+        {
+          "duration": 2,
+          "value": 691.6864776611328
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 86,
+          "value": "0"
+        },
+        {
+          "duration": 1915,
+          "value": "42"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 1991,
+          "value": "0"
+        },
+        {
+          "duration": 10,
+          "value": "40"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 86,
+          "value": "0"
+        },
+        {
+          "duration": 1905,
+          "value": "42"
+        },
+        {
+          "duration": 10,
+          "value": "2"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 13,
+          "value": "0"
+        },
+        {
+          "duration": 73,
+          "value": "21"
+        },
+        {
+          "duration": 1915,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 13,
+          "value": "0"
+        },
+        {
+          "duration": 1988,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 86,
+          "value": "0"
+        },
+        {
+          "duration": 1915,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 6,
+          "value": 0.0
+        },
+        {
+          "duration": 1995,
+          "value": 60.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 26,
+          "value": 0.0
+        },
+        {
+          "duration": 9,
+          "value": 120.0
+        },
+        {
+          "duration": 1,
+          "value": 240.0
+        },
+        {
+          "duration": 1,
+          "value": 330.0
+        },
+        {
+          "duration": 1,
+          "value": 375.0
+        },
+        {
+          "duration": 1,
+          "value": 420.0
+        },
+        {
+          "duration": 1,
+          "value": 465.0
+        },
+        {
+          "duration": 1,
+          "value": 510.0
+        },
+        {
+          "duration": 1,
+          "value": 555.0
+        },
+        {
+          "duration": 1,
+          "value": 600.0
+        },
+        {
+          "duration": 16,
+          "value": 720.0
+        },
+        {
+          "duration": 8,
+          "value": 840.0
+        },
+        {
+          "duration": 9,
+          "value": 960.0
+        },
+        {
+          "duration": 23,
+          "value": 1080.0
+        },
+        {
+          "duration": 6,
+          "value": 1200.0
+        },
+        {
+          "duration": 1896,
+          "value": 1290.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 35,
+          "value": 0.0
+        },
+        {
+          "duration": 3,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 214.5
+        },
+        {
+          "duration": 1,
+          "value": 250.125
+        },
+        {
+          "duration": 1,
+          "value": 286.875
+        },
+        {
+          "duration": 1,
+          "value": 324.75
+        },
+        {
+          "duration": 62,
+          "value": 363.75
+        },
+        {
+          "duration": 1,
+          "value": 543.75
+        },
+        {
+          "duration": 1875,
+          "value": 573.75
+        },
+        {
+          "duration": 1,
+          "value": 873.75
+        },
+        {
+          "duration": 20,
+          "value": 903.75
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 1991,
+          "value": 0.0
+        },
+        {
+          "duration": 10,
+          "value": 1003.75
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "earnedGold",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "spentGold",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gold",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "gems",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 25,
+          "value": "0"
+        },
+        {
+          "duration": 74,
+          "value": "21"
+        },
+        {
+          "duration": 1902,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "collectedGems",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 25,
+          "value": "0"
+        },
+        {
+          "duration": 1976,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 99,
+          "value": "0"
+        },
+        {
+          "duration": 1902,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "saleRefunds",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "kills",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "deaths",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "assists",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": "0"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageDone",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 4,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 30.0
+        },
+        {
+          "duration": 1,
+          "value": 60.0
+        },
+        {
+          "duration": 4,
+          "value": 90.0
+        },
+        {
+          "duration": 1,
+          "value": 120.0
+        },
+        {
+          "duration": 1,
+          "value": 150.0
+        },
+        {
+          "duration": 1,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 210.0
+        },
+        {
+          "duration": 1,
+          "value": 240.0
+        },
+        {
+          "duration": 1,
+          "value": 270.0
+        },
+        {
+          "duration": 1,
+          "value": 300.0
+        },
+        {
+          "duration": 1,
+          "value": 330.0
+        },
+        {
+          "duration": 1983,
+          "value": 450.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "monsterDamageTaken",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageDone",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 35,
+          "value": 0.0
+        },
+        {
+          "duration": 1,
+          "value": 180.0
+        },
+        {
+          "duration": 1,
+          "value": 210.0
+        },
+        {
+          "duration": 1,
+          "value": 240.0
+        },
+        {
+          "duration": 1,
+          "value": 270.0
+        },
+        {
+          "duration": 1,
+          "value": 300.0
+        },
+        {
+          "duration": 1,
+          "value": 330.0
+        },
+        {
+          "duration": 1,
+          "value": 360.0
+        },
+        {
+          "duration": 1,
+          "value": 390.0
+        },
+        {
+          "duration": 1,
+          "value": 570.0
+        },
+        {
+          "duration": 18,
+          "value": 600.0
+        },
+        {
+          "duration": 2,
+          "value": 936.8804721832275
+        },
+        {
+          "duration": 1,
+          "value": 972.4721965789795
+        },
+        {
+          "duration": 1,
+          "value": 1008.0639209747314
+        },
+        {
+          "duration": 1,
+          "value": 1043.6556453704834
+        },
+        {
+          "duration": 1,
+          "value": 1079.2473697662354
+        },
+        {
+          "duration": 1,
+          "value": 1114.8390941619873
+        },
+        {
+          "duration": 1,
+          "value": 1151.177682876587
+        },
+        {
+          "duration": 1,
+          "value": 1369.2092189788818
+        },
+        {
+          "duration": 1911,
+          "value": 1406.1160373687744
+        },
+        {
+          "duration": 1,
+          "value": 1599.6160373687744
+        },
+        {
+          "duration": 1,
+          "value": 1632.3460750579834
+        },
+        {
+          "duration": 5,
+          "value": 1665.0761127471924
+        },
+        {
+          "duration": 1,
+          "value": 1698.5173816680908
+        },
+        {
+          "duration": 1,
+          "value": 1899.1650104522705
+        },
+        {
+          "duration": 1,
+          "value": 1933.130090713501
+        },
+        {
+          "duration": 1,
+          "value": 1967.0951709747314
+        },
+        {
+          "duration": 1,
+          "value": 2001.060251235962
+        },
+        {
+          "duration": 1,
+          "value": 2035.0253314971924
+        },
+        {
+          "duration": 2,
+          "value": 2068.990411758423
+        },
+        {
+          "duration": 1,
+          "value": 2102.9554920196533
+        },
+        {
+          "duration": 1,
+          "value": 2306.7459812164307
+        },
+        {
+          "duration": 1,
+          "value": 2342.5110607147217
+        },
+        {
+          "duration": 1,
+          "value": 2378.2761402130127
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "championDamageTaken",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 45,
+          "value": 0.0
+        },
+        {
+          "duration": 18,
+          "value": 41.70000076293945
+        },
+        {
+          "duration": 1,
+          "value": 372.7814712524414
+        },
+        {
+          "duration": 1,
+          "value": 405.1622619628906
+        },
+        {
+          "duration": 1,
+          "value": 437.54305267333984
+        },
+        {
+          "duration": 1,
+          "value": 470.99159240722656
+        },
+        {
+          "duration": 1,
+          "value": 504.4401321411133
+        },
+        {
+          "duration": 1,
+          "value": 538.5064239501953
+        },
+        {
+          "duration": 2,
+          "value": 572.5727157592773
+        },
+        {
+          "duration": 1909,
+          "value": 610.4545631408691
+        },
+        {
+          "duration": 3,
+          "value": 760.4545631408691
+        },
+        {
+          "duration": 1,
+          "value": 792.4570655822754
+        },
+        {
+          "duration": 4,
+          "value": 824.9505157470703
+        },
+        {
+          "duration": 3,
+          "value": 989.8725280761719
+        },
+        {
+          "duration": 1,
+          "value": 1024.7932624816895
+        },
+        {
+          "duration": 1,
+          "value": 1060.2234725952148
+        },
+        {
+          "duration": 1,
+          "value": 1096.163158416748
+        },
+        {
+          "duration": 1,
+          "value": 1132.6123237609863
+        },
+        {
+          "duration": 3,
+          "value": 1169.5709648132324
+        },
+        {
+          "duration": 2,
+          "value": 1289.5709648132324
+        },
+        {
+          "duration": 1,
+          "value": 1332.803367614746
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingDone",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 2001,
+          "value": 0.0
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "healingReceived",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 83,
+          "value": 0.0
+        },
+        {
+          "duration": 1918,
+          "value": 460.45458984375
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "shieldingDone",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 37,
+          "value": 0.0
+        },
+        {
+          "duration": 27,
+          "value": 150.0
+        },
+        {
+          "duration": 1919,
+          "value": 300.0
+        },
+        {
+          "duration": 8,
+          "value": 450.0
+        },
+        {
+          "duration": 8,
+          "value": 600.0
+        },
+        {
+          "duration": 2,
+          "value": 750.0
+        }
+      ],
+      "sampleCount": 2001
+    }
+  ],
+  "champions": [
+    {
+      "consumables": [],
+      "consumablesBought": [],
+      "id": 0,
+      "items": [],
+      "itemsBought": [],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 140.0,
+        "championDamageTaken": 588.7529850006104,
+        "collectedGems": "21",
+        "deaths": "0",
+        "earnedGold": "0",
+        "gems": "0",
+        "gold": "0",
+        "healingDone": 0.0,
+        "healingReceived": 0.0,
+        "kills": "0",
+        "monsterDamageDone": 360.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 0.0,
+        "spentGold": "0",
+        "submittedGems": "21"
+      },
+      "name": "Vendetta",
+      "team": "teamA"
+    },
+    {
+      "consumables": [],
+      "consumablesBought": [],
+      "id": 1,
+      "items": [],
+      "itemsBought": [],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 360.0,
+        "championDamageTaken": 0.0,
+        "collectedGems": "32",
+        "deaths": "0",
+        "earnedGold": "0",
+        "gems": "32",
+        "gold": "0",
+        "healingDone": 0.0,
+        "healingReceived": 0.0,
+        "kills": "0",
+        "monsterDamageDone": 435.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 0.0,
+        "spentGold": "0",
+        "submittedGems": "0"
+      },
+      "name": "Marcella",
+      "team": "teamA"
+    },
+    {
+      "consumables": [],
+      "consumablesBought": [],
+      "id": 2,
+      "items": [],
+      "itemsBought": [],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 2428.239845275879,
+        "championDamageTaken": 3484.5231552124023,
+        "collectedGems": "31",
+        "deaths": "0",
+        "earnedGold": "0",
+        "gems": "31",
+        "gold": "0",
+        "healingDone": 0.0,
+        "healingReceived": 1462.3630981445312,
+        "kills": "0",
+        "monsterDamageDone": 360.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 1200.0,
+        "spentGold": "0",
+        "submittedGems": "0"
+      },
+      "name": "Heart of Ruin",
+      "team": "teamA"
+    },
+    {
+      "consumables": [],
+      "consumablesBought": [],
+      "id": 3,
+      "items": [],
+      "itemsBought": [],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 405.0,
+        "championDamageTaken": 691.6864776611328,
+        "collectedGems": "42",
+        "deaths": "0",
+        "earnedGold": "0",
+        "gems": "42",
+        "gold": "0",
+        "healingDone": 0.0,
+        "healingReceived": 0.0,
+        "kills": "0",
+        "monsterDamageDone": 1335.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 0.0,
+        "spentGold": "0",
+        "submittedGems": "0"
+      },
+      "name": "Vesper Vale",
+      "team": "teamB"
+    },
+    {
+      "consumables": [
+        {
+          "consumable": "Altar Lock",
+          "quantity": "1"
+        }
+      ],
+      "consumablesBought": [
+        {
+          "consumable": "Altar Lock",
+          "quantity": "1"
+        }
+      ],
+      "id": 4,
+      "items": [
+        {
+          "item": "Treasure Shard of Health",
+          "quantity": "1"
+        }
+      ],
+      "itemsBought": [
+        {
+          "item": "Treasure Shard of Health",
+          "quantity": "1"
+        }
+      ],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 1290.0,
+        "championDamageTaken": 903.75,
+        "collectedGems": "21",
+        "deaths": "0",
+        "earnedGold": "42",
+        "gems": "0",
+        "gold": "2",
+        "healingDone": 0.0,
+        "healingReceived": 1003.75,
+        "kills": "0",
+        "monsterDamageDone": 60.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 0.0,
+        "spentGold": "40",
+        "submittedGems": "21"
+      },
+      "name": "Marcella",
+      "team": "teamB"
+    },
+    {
+      "consumables": [],
+      "consumablesBought": [],
+      "id": 5,
+      "items": [],
+      "itemsBought": [],
+      "metrics": {
+        "assists": "0",
+        "championDamageDone": 2378.2761402130127,
+        "championDamageTaken": 1332.803367614746,
+        "collectedGems": "21",
+        "deaths": "0",
+        "earnedGold": "0",
+        "gems": "0",
+        "gold": "0",
+        "healingDone": 0.0,
+        "healingReceived": 460.45458984375,
+        "kills": "0",
+        "monsterDamageDone": 450.0,
+        "monsterDamageTaken": 0.0,
+        "saleRefunds": "0",
+        "shieldingDone": 750.0,
+        "spentGold": "0",
+        "submittedGems": "21"
+      },
+      "name": "Heart of Ruin",
+      "team": "teamB"
+    }
+  ],
+  "diagnostics": {
+    "botFaults": {
+      "teamA": 0,
+      "teamB": 0
+    },
+    "codes": [],
+    "detailedCaptureComplete": true
+  },
+  "events": [
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65537,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32,
+            "ordinal": 209,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 6
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131073,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 287,
+            "ordinal": 1366,
+            "phase": "champions",
+            "round": 13,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 4,
+          "y": 5
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196609,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 539,
+            "ordinal": 2516,
+            "phase": "champions",
+            "round": 24,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 14,
+          "y": 16
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262145,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1010,
+            "ordinal": 4502,
+            "phase": "champions",
+            "round": 43,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 11
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327681,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1292,
+            "ordinal": 5756,
+            "phase": "champions",
+            "round": 55,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 3,
+          "y": 12
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 393217,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1882,
+            "ordinal": 8367,
+            "phase": "champions",
+            "round": 80,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 13
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 458753,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2148,
+            "ordinal": 9726,
+            "phase": "champions",
+            "round": 93,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 3,
+          "y": 18
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyItem",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 0,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 137,
+            "ordinal": 630,
+            "phase": "champions",
+            "round": 6,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 8,
+          "y": 7
+        }
+      ],
+      "kind": "campClear",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": 0,
+          "timestamp": {
+            "input": 740,
+            "ordinal": 3459,
+            "phase": "championStartTurn",
+            "round": 33,
+            "substep": 34
+          },
+          "value": "21",
+          "x": 15,
+          "y": 15
+        }
+      ],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 0,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 262,
+            "ordinal": 1256,
+            "phase": "campCaptures",
+            "round": 12,
+            "substep": 10
+          },
+          "value": "21",
+          "x": 7,
+          "y": 7
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65539,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 39,
+            "ordinal": 211,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 4,
+          "y": 3
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131075,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 272,
+            "ordinal": 1258,
+            "phase": "champions",
+            "round": 12,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 15,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196611,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 549,
+            "ordinal": 2517,
+            "phase": "champions",
+            "round": 24,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 21,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262147,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 919,
+            "ordinal": 4189,
+            "phase": "champions",
+            "round": 40,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 22,
+          "y": 3
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327683,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1179,
+            "ordinal": 5233,
+            "phase": "champions",
+            "round": 50,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 21,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 393219,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1426,
+            "ordinal": 6278,
+            "phase": "champions",
+            "round": 60,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 20,
+          "y": 5
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 458755,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1661,
+            "ordinal": 7321,
+            "phase": "champions",
+            "round": 70,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 18,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 524291,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1942,
+            "ordinal": 8680,
+            "phase": "champions",
+            "round": 83,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 9
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyItem",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 0,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 2044,
+            "ordinal": 9203,
+            "phase": "champions",
+            "round": 88,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 7
+        }
+      ],
+      "kind": "campClear",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 2,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 1616,
+            "ordinal": 7216,
+            "phase": "campCaptures",
+            "round": 69,
+            "substep": 12
+          },
+          "value": "21",
+          "x": 22,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 0,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 2166,
+            "ordinal": 9831,
+            "phase": "campCaptures",
+            "round": 94,
+            "substep": 12
+          },
+          "value": "11",
+          "x": 8,
+          "y": 7
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65541,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 48,
+            "ordinal": 213,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 2,
+          "y": 6
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131077,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 282,
+            "ordinal": 1260,
+            "phase": "champions",
+            "round": 12,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 0,
+          "y": 14
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196613,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 572,
+            "ordinal": 2623,
+            "phase": "champions",
+            "round": 25,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 5
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262149,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1188,
+            "ordinal": 5235,
+            "phase": "champions",
+            "round": 50,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 4,
+          "y": 4
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327685,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1779,
+            "ordinal": 7845,
+            "phase": "champions",
+            "round": 75,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 13,
+          "y": 13
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyItem",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 4,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 427,
+            "ordinal": 1889,
+            "phase": "champions",
+            "round": 18,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 1,
+          "y": 16
+        }
+      ],
+      "kind": "campClear",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 4,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 532,
+            "ordinal": 2515,
+            "phase": "campCaptures",
+            "round": 24,
+            "substep": 12
+          },
+          "value": "21",
+          "x": 1,
+          "y": 15
+        },
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 0,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 2166,
+            "ordinal": 9832,
+            "phase": "campCaptures",
+            "round": 94,
+            "substep": 12
+          },
+          "value": "10",
+          "x": 7,
+          "y": 8
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65536,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27,
+            "ordinal": 208,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 24
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131072,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 265,
+            "ordinal": 1257,
+            "phase": "champions",
+            "round": 12,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 25,
+          "y": 17
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196608,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 498,
+            "ordinal": 2306,
+            "phase": "champions",
+            "round": 22,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 9
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262144,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 766,
+            "ordinal": 3564,
+            "phase": "champions",
+            "round": 34,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 6
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327680,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1066,
+            "ordinal": 4711,
+            "phase": "champions",
+            "round": 45,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 28,
+          "y": 5
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 393216,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1297,
+            "ordinal": 5757,
+            "phase": "champions",
+            "round": 55,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 15
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 458752,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1541,
+            "ordinal": 6799,
+            "phase": "champions",
+            "round": 65,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 21
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 524288,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1765,
+            "ordinal": 7844,
+            "phase": "champions",
+            "round": 75,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 21,
+          "y": 21
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 589824,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1975,
+            "ordinal": 8889,
+            "phase": "champions",
+            "round": 85,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 29,
+          "y": 16
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 655360,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2192,
+            "ordinal": 9937,
+            "phase": "champions",
+            "round": 95,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 28,
+          "y": 14
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 720896,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2419,
+            "ordinal": 10982,
+            "phase": "champions",
+            "round": 105,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 13,
+          "y": 23
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 786432,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2660,
+            "ordinal": 12127,
+            "phase": "champions",
+            "round": 116,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 851968,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2852,
+            "ordinal": 13168,
+            "phase": "champions",
+            "round": 126,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 917504,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 3044,
+            "ordinal": 14209,
+            "phase": "champions",
+            "round": 136,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 983040,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 3237,
+            "ordinal": 15250,
+            "phase": "champions",
+            "round": 146,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1048576,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 3429,
+            "ordinal": 16291,
+            "phase": "champions",
+            "round": 156,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1114112,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 3621,
+            "ordinal": 17332,
+            "phase": "champions",
+            "round": 166,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1179648,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 3813,
+            "ordinal": 18373,
+            "phase": "champions",
+            "round": 176,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1245184,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4006,
+            "ordinal": 19414,
+            "phase": "champions",
+            "round": 186,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1310720,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4198,
+            "ordinal": 20455,
+            "phase": "champions",
+            "round": 196,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1376256,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4390,
+            "ordinal": 21496,
+            "phase": "champions",
+            "round": 206,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1441792,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4582,
+            "ordinal": 22537,
+            "phase": "champions",
+            "round": 216,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1507328,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4775,
+            "ordinal": 23578,
+            "phase": "champions",
+            "round": 226,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1572864,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 4967,
+            "ordinal": 24619,
+            "phase": "champions",
+            "round": 236,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1638400,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 5159,
+            "ordinal": 25660,
+            "phase": "champions",
+            "round": 246,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1703936,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 5351,
+            "ordinal": 26701,
+            "phase": "champions",
+            "round": 256,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1769472,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 5544,
+            "ordinal": 27742,
+            "phase": "champions",
+            "round": 266,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1835008,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 5736,
+            "ordinal": 28783,
+            "phase": "champions",
+            "round": 276,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1900544,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 5928,
+            "ordinal": 29824,
+            "phase": "champions",
+            "round": 286,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 1966080,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 6120,
+            "ordinal": 30865,
+            "phase": "champions",
+            "round": 296,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2031616,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 6313,
+            "ordinal": 31906,
+            "phase": "champions",
+            "round": 306,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2097152,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 6505,
+            "ordinal": 32947,
+            "phase": "champions",
+            "round": 316,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2162688,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 6697,
+            "ordinal": 33988,
+            "phase": "champions",
+            "round": 326,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2228224,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 6889,
+            "ordinal": 35029,
+            "phase": "champions",
+            "round": 336,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2293760,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 7082,
+            "ordinal": 36070,
+            "phase": "champions",
+            "round": 346,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2359296,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 7274,
+            "ordinal": 37111,
+            "phase": "champions",
+            "round": 356,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2424832,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 7466,
+            "ordinal": 38152,
+            "phase": "champions",
+            "round": 366,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2490368,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 7658,
+            "ordinal": 39193,
+            "phase": "champions",
+            "round": 376,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2555904,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 7851,
+            "ordinal": 40234,
+            "phase": "champions",
+            "round": 386,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2621440,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 8043,
+            "ordinal": 41275,
+            "phase": "champions",
+            "round": 396,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2686976,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 8235,
+            "ordinal": 42316,
+            "phase": "champions",
+            "round": 406,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2752512,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 8427,
+            "ordinal": 43357,
+            "phase": "champions",
+            "round": 416,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2818048,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 8620,
+            "ordinal": 44398,
+            "phase": "champions",
+            "round": 426,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2883584,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 8812,
+            "ordinal": 45439,
+            "phase": "champions",
+            "round": 436,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 2949120,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9004,
+            "ordinal": 46480,
+            "phase": "champions",
+            "round": 446,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3014656,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9196,
+            "ordinal": 47521,
+            "phase": "champions",
+            "round": 456,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3080192,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9389,
+            "ordinal": 48562,
+            "phase": "champions",
+            "round": 466,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3145728,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9581,
+            "ordinal": 49603,
+            "phase": "champions",
+            "round": 476,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3211264,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9773,
+            "ordinal": 50644,
+            "phase": "champions",
+            "round": 486,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3276800,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 9965,
+            "ordinal": 51685,
+            "phase": "champions",
+            "round": 496,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3342336,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 10158,
+            "ordinal": 52726,
+            "phase": "champions",
+            "round": 506,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3407872,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 10350,
+            "ordinal": 53767,
+            "phase": "champions",
+            "round": 516,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3473408,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 10542,
+            "ordinal": 54808,
+            "phase": "champions",
+            "round": 526,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3538944,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 10734,
+            "ordinal": 55849,
+            "phase": "champions",
+            "round": 536,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3604480,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 10927,
+            "ordinal": 56890,
+            "phase": "champions",
+            "round": 546,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3670016,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 11119,
+            "ordinal": 57931,
+            "phase": "champions",
+            "round": 556,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3735552,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 11311,
+            "ordinal": 58972,
+            "phase": "champions",
+            "round": 566,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3801088,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 11503,
+            "ordinal": 60013,
+            "phase": "champions",
+            "round": 576,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3866624,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 11696,
+            "ordinal": 61054,
+            "phase": "champions",
+            "round": 586,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3932160,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 11888,
+            "ordinal": 62095,
+            "phase": "champions",
+            "round": 596,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 3997696,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 12080,
+            "ordinal": 63136,
+            "phase": "champions",
+            "round": 606,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4063232,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 12272,
+            "ordinal": 64177,
+            "phase": "champions",
+            "round": 616,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4128768,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 12465,
+            "ordinal": 65218,
+            "phase": "champions",
+            "round": 626,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4194304,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 12657,
+            "ordinal": 66259,
+            "phase": "champions",
+            "round": 636,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4259840,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 12849,
+            "ordinal": 67300,
+            "phase": "champions",
+            "round": 646,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4325376,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 13041,
+            "ordinal": 68341,
+            "phase": "champions",
+            "round": 656,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4390912,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 13234,
+            "ordinal": 69382,
+            "phase": "champions",
+            "round": 666,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4456448,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 13426,
+            "ordinal": 70423,
+            "phase": "champions",
+            "round": 676,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4521984,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 13618,
+            "ordinal": 71464,
+            "phase": "champions",
+            "round": 686,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4587520,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 13810,
+            "ordinal": 72505,
+            "phase": "champions",
+            "round": 696,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4653056,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14003,
+            "ordinal": 73546,
+            "phase": "champions",
+            "round": 706,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4718592,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14195,
+            "ordinal": 74587,
+            "phase": "champions",
+            "round": 716,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4784128,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14387,
+            "ordinal": 75628,
+            "phase": "champions",
+            "round": 726,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4849664,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14579,
+            "ordinal": 76669,
+            "phase": "champions",
+            "round": 736,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4915200,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14772,
+            "ordinal": 77710,
+            "phase": "champions",
+            "round": 746,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 4980736,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 14964,
+            "ordinal": 78751,
+            "phase": "champions",
+            "round": 756,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5046272,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 15156,
+            "ordinal": 79792,
+            "phase": "champions",
+            "round": 766,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5111808,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 15348,
+            "ordinal": 80833,
+            "phase": "champions",
+            "round": 776,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5177344,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 15541,
+            "ordinal": 81874,
+            "phase": "champions",
+            "round": 786,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5242880,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 15733,
+            "ordinal": 82915,
+            "phase": "champions",
+            "round": 796,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5308416,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 15925,
+            "ordinal": 83956,
+            "phase": "champions",
+            "round": 806,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5373952,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 16117,
+            "ordinal": 84997,
+            "phase": "champions",
+            "round": 816,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5439488,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 16310,
+            "ordinal": 86038,
+            "phase": "champions",
+            "round": 826,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5505024,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 16502,
+            "ordinal": 87079,
+            "phase": "champions",
+            "round": 836,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5570560,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 16694,
+            "ordinal": 88120,
+            "phase": "champions",
+            "round": 846,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5636096,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 16886,
+            "ordinal": 89161,
+            "phase": "champions",
+            "round": 856,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5701632,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 17079,
+            "ordinal": 90202,
+            "phase": "champions",
+            "round": 866,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5767168,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 17271,
+            "ordinal": 91243,
+            "phase": "champions",
+            "round": 876,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5832704,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 17463,
+            "ordinal": 92284,
+            "phase": "champions",
+            "round": 886,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5898240,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 17655,
+            "ordinal": 93325,
+            "phase": "champions",
+            "round": 896,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 5963776,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 17848,
+            "ordinal": 94366,
+            "phase": "champions",
+            "round": 906,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6029312,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 18040,
+            "ordinal": 95407,
+            "phase": "champions",
+            "round": 916,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6094848,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 18232,
+            "ordinal": 96448,
+            "phase": "champions",
+            "round": 926,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6160384,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 18424,
+            "ordinal": 97489,
+            "phase": "champions",
+            "round": 936,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6225920,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 18617,
+            "ordinal": 98530,
+            "phase": "champions",
+            "round": 946,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6291456,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 18809,
+            "ordinal": 99571,
+            "phase": "champions",
+            "round": 956,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6356992,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19001,
+            "ordinal": 100612,
+            "phase": "champions",
+            "round": 966,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6422528,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19193,
+            "ordinal": 101653,
+            "phase": "champions",
+            "round": 976,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6488064,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19386,
+            "ordinal": 102694,
+            "phase": "champions",
+            "round": 986,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6553600,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19578,
+            "ordinal": 103735,
+            "phase": "champions",
+            "round": 996,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6619136,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19770,
+            "ordinal": 104776,
+            "phase": "champions",
+            "round": 1006,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6684672,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 19962,
+            "ordinal": 105817,
+            "phase": "champions",
+            "round": 1016,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6750208,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 20155,
+            "ordinal": 106858,
+            "phase": "champions",
+            "round": 1026,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6815744,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 20347,
+            "ordinal": 107899,
+            "phase": "champions",
+            "round": 1036,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6881280,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 20539,
+            "ordinal": 108940,
+            "phase": "champions",
+            "round": 1046,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 6946816,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 20731,
+            "ordinal": 109981,
+            "phase": "champions",
+            "round": 1056,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7012352,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 20924,
+            "ordinal": 111022,
+            "phase": "champions",
+            "round": 1066,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7077888,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 21116,
+            "ordinal": 112063,
+            "phase": "champions",
+            "round": 1076,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7143424,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 21308,
+            "ordinal": 113104,
+            "phase": "champions",
+            "round": 1086,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7208960,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 21500,
+            "ordinal": 114145,
+            "phase": "champions",
+            "round": 1096,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7274496,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 21693,
+            "ordinal": 115186,
+            "phase": "champions",
+            "round": 1106,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7340032,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 21885,
+            "ordinal": 116227,
+            "phase": "champions",
+            "round": 1116,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7405568,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 22077,
+            "ordinal": 117268,
+            "phase": "champions",
+            "round": 1126,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7471104,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 22269,
+            "ordinal": 118309,
+            "phase": "champions",
+            "round": 1136,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7536640,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 22462,
+            "ordinal": 119350,
+            "phase": "champions",
+            "round": 1146,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7602176,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 22654,
+            "ordinal": 120391,
+            "phase": "champions",
+            "round": 1156,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7667712,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 22846,
+            "ordinal": 121432,
+            "phase": "champions",
+            "round": 1166,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7733248,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 23038,
+            "ordinal": 122473,
+            "phase": "champions",
+            "round": 1176,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7798784,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 23231,
+            "ordinal": 123514,
+            "phase": "champions",
+            "round": 1186,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7864320,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 23423,
+            "ordinal": 124555,
+            "phase": "champions",
+            "round": 1196,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7929856,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 23615,
+            "ordinal": 125596,
+            "phase": "champions",
+            "round": 1206,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 7995392,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 23807,
+            "ordinal": 126637,
+            "phase": "champions",
+            "round": 1216,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8060928,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24000,
+            "ordinal": 127678,
+            "phase": "champions",
+            "round": 1226,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8126464,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24192,
+            "ordinal": 128719,
+            "phase": "champions",
+            "round": 1236,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8192000,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24384,
+            "ordinal": 129760,
+            "phase": "champions",
+            "round": 1246,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8257536,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24576,
+            "ordinal": 130801,
+            "phase": "champions",
+            "round": 1256,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8323072,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24769,
+            "ordinal": 131842,
+            "phase": "champions",
+            "round": 1266,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8388608,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 24961,
+            "ordinal": 132883,
+            "phase": "champions",
+            "round": 1276,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8454144,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 25153,
+            "ordinal": 133924,
+            "phase": "champions",
+            "round": 1286,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8519680,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 25345,
+            "ordinal": 134965,
+            "phase": "champions",
+            "round": 1296,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8585216,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 25538,
+            "ordinal": 136006,
+            "phase": "champions",
+            "round": 1306,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8650752,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 25730,
+            "ordinal": 137047,
+            "phase": "champions",
+            "round": 1316,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8716288,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 25922,
+            "ordinal": 138088,
+            "phase": "champions",
+            "round": 1326,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8781824,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 26114,
+            "ordinal": 139129,
+            "phase": "champions",
+            "round": 1336,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8847360,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 26307,
+            "ordinal": 140170,
+            "phase": "champions",
+            "round": 1346,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8912896,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 26499,
+            "ordinal": 141211,
+            "phase": "champions",
+            "round": 1356,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 8978432,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 26691,
+            "ordinal": 142252,
+            "phase": "champions",
+            "round": 1366,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9043968,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 26883,
+            "ordinal": 143293,
+            "phase": "champions",
+            "round": 1376,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9109504,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27076,
+            "ordinal": 144334,
+            "phase": "champions",
+            "round": 1386,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9175040,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27268,
+            "ordinal": 145375,
+            "phase": "champions",
+            "round": 1396,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9240576,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27460,
+            "ordinal": 146416,
+            "phase": "champions",
+            "round": 1406,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9306112,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27652,
+            "ordinal": 147457,
+            "phase": "champions",
+            "round": 1416,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9371648,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 27845,
+            "ordinal": 148498,
+            "phase": "champions",
+            "round": 1426,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9437184,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28037,
+            "ordinal": 149539,
+            "phase": "champions",
+            "round": 1436,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9502720,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28229,
+            "ordinal": 150580,
+            "phase": "champions",
+            "round": 1446,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9568256,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28421,
+            "ordinal": 151621,
+            "phase": "champions",
+            "round": 1456,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9633792,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28614,
+            "ordinal": 152662,
+            "phase": "champions",
+            "round": 1466,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9699328,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28806,
+            "ordinal": 153703,
+            "phase": "champions",
+            "round": 1476,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9764864,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 28998,
+            "ordinal": 154744,
+            "phase": "champions",
+            "round": 1486,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9830400,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 29190,
+            "ordinal": 155785,
+            "phase": "champions",
+            "round": 1496,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9895936,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 29383,
+            "ordinal": 156826,
+            "phase": "champions",
+            "round": 1506,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 9961472,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 29575,
+            "ordinal": 157867,
+            "phase": "champions",
+            "round": 1516,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10027008,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 29767,
+            "ordinal": 158908,
+            "phase": "champions",
+            "round": 1526,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10092544,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 29959,
+            "ordinal": 159949,
+            "phase": "champions",
+            "round": 1536,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10158080,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 30152,
+            "ordinal": 160990,
+            "phase": "champions",
+            "round": 1546,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10223616,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 30344,
+            "ordinal": 162031,
+            "phase": "champions",
+            "round": 1556,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10289152,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 30536,
+            "ordinal": 163072,
+            "phase": "champions",
+            "round": 1566,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10354688,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 30728,
+            "ordinal": 164113,
+            "phase": "champions",
+            "round": 1576,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10420224,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 30921,
+            "ordinal": 165154,
+            "phase": "champions",
+            "round": 1586,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10485760,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 31113,
+            "ordinal": 166195,
+            "phase": "champions",
+            "round": 1596,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10551296,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 31305,
+            "ordinal": 167236,
+            "phase": "champions",
+            "round": 1606,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10616832,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 31497,
+            "ordinal": 168277,
+            "phase": "champions",
+            "round": 1616,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10682368,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 31690,
+            "ordinal": 169318,
+            "phase": "champions",
+            "round": 1626,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10747904,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 31882,
+            "ordinal": 170359,
+            "phase": "champions",
+            "round": 1636,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10813440,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32074,
+            "ordinal": 171400,
+            "phase": "champions",
+            "round": 1646,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10878976,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32266,
+            "ordinal": 172441,
+            "phase": "champions",
+            "round": 1656,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 10944512,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32459,
+            "ordinal": 173482,
+            "phase": "champions",
+            "round": 1666,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11010048,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32651,
+            "ordinal": 174523,
+            "phase": "champions",
+            "round": 1676,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11075584,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 32843,
+            "ordinal": 175564,
+            "phase": "champions",
+            "round": 1686,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11141120,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33035,
+            "ordinal": 176605,
+            "phase": "champions",
+            "round": 1696,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11206656,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33228,
+            "ordinal": 177646,
+            "phase": "champions",
+            "round": 1706,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11272192,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33420,
+            "ordinal": 178687,
+            "phase": "champions",
+            "round": 1716,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11337728,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33612,
+            "ordinal": 179728,
+            "phase": "champions",
+            "round": 1726,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11403264,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33804,
+            "ordinal": 180769,
+            "phase": "champions",
+            "round": 1736,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11468800,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 33997,
+            "ordinal": 181810,
+            "phase": "champions",
+            "round": 1746,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11534336,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 34189,
+            "ordinal": 182851,
+            "phase": "champions",
+            "round": 1756,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11599872,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 34381,
+            "ordinal": 183892,
+            "phase": "champions",
+            "round": 1766,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11665408,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 34573,
+            "ordinal": 184933,
+            "phase": "champions",
+            "round": 1776,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11730944,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 34766,
+            "ordinal": 185974,
+            "phase": "champions",
+            "round": 1786,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11796480,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 34958,
+            "ordinal": 187015,
+            "phase": "champions",
+            "round": 1796,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11862016,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 35150,
+            "ordinal": 188056,
+            "phase": "champions",
+            "round": 1806,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11927552,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 35342,
+            "ordinal": 189097,
+            "phase": "champions",
+            "round": 1816,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 11993088,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 35535,
+            "ordinal": 190138,
+            "phase": "champions",
+            "round": 1826,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12058624,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 35727,
+            "ordinal": 191179,
+            "phase": "champions",
+            "round": 1836,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12124160,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 35919,
+            "ordinal": 192220,
+            "phase": "champions",
+            "round": 1846,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12189696,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36111,
+            "ordinal": 193261,
+            "phase": "champions",
+            "round": 1856,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12255232,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36304,
+            "ordinal": 194302,
+            "phase": "champions",
+            "round": 1866,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12320768,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36496,
+            "ordinal": 195343,
+            "phase": "champions",
+            "round": 1876,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12386304,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36688,
+            "ordinal": 196384,
+            "phase": "champions",
+            "round": 1886,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12451840,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36880,
+            "ordinal": 197425,
+            "phase": "champions",
+            "round": 1896,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12517376,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 37073,
+            "ordinal": 198466,
+            "phase": "champions",
+            "round": 1906,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12582912,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 37265,
+            "ordinal": 199507,
+            "phase": "champions",
+            "round": 1916,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12648448,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 37457,
+            "ordinal": 200548,
+            "phase": "champions",
+            "round": 1926,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12713984,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 37649,
+            "ordinal": 201589,
+            "phase": "champions",
+            "round": 1936,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12779520,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 37842,
+            "ordinal": 202630,
+            "phase": "champions",
+            "round": 1946,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 6,
+          "y": 18
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12845056,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 38034,
+            "ordinal": 203671,
+            "phase": "champions",
+            "round": 1956,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12910592,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 38226,
+            "ordinal": 204712,
+            "phase": "champions",
+            "round": 1966,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 5,
+          "y": 19
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 12976128,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 38418,
+            "ordinal": 205753,
+            "phase": "champions",
+            "round": 1976,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 7,
+          "y": 20
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyItem",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 1,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 164,
+            "ordinal": 735,
+            "phase": "champions",
+            "round": 7,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 23,
+          "y": 22
+        },
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 2,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 607,
+            "ordinal": 2833,
+            "phase": "champions",
+            "round": 27,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 23,
+          "y": 7
+        },
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 1,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 1679,
+            "ordinal": 7426,
+            "phase": "champions",
+            "round": 71,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 23,
+          "y": 23
+        },
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 5,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 2059,
+            "ordinal": 9308,
+            "phase": "champions",
+            "round": 89,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 29,
+          "y": 14
+        }
+      ],
+      "kind": "campClear",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 1,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 1829,
+            "ordinal": 8158,
+            "phase": "campCaptures",
+            "round": 78,
+            "substep": 11
+          },
+          "value": "21",
+          "x": 23,
+          "y": 22
+        },
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 5,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 2208,
+            "ordinal": 10042,
+            "phase": "campCaptures",
+            "round": 96,
+            "substep": 13
+          },
+          "value": "21",
+          "x": 29,
+          "y": 16
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65538,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 36,
+            "ordinal": 210,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 25,
+          "y": 27
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131074,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 299,
+            "ordinal": 1367,
+            "phase": "champions",
+            "round": 13,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 26,
+          "y": 26
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196610,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 684,
+            "ordinal": 3146,
+            "phase": "champions",
+            "round": 30,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 17,
+          "y": 17
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262146,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1174,
+            "ordinal": 5232,
+            "phase": "champions",
+            "round": 50,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 14,
+          "y": 14
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327682,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1745,
+            "ordinal": 7739,
+            "phase": "champions",
+            "round": 74,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 11,
+          "y": 14
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 393218,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2301,
+            "ordinal": 10461,
+            "phase": "champions",
+            "round": 100,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 10,
+          "y": 12
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 458754,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 38835,
+            "ordinal": 207628,
+            "phase": "champions",
+            "round": 1994,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 24,
+          "y": 25
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 30.0,
+          "context": "32",
+          "target": {
+            "kind": "item",
+            "name": "Treasure Shard of Health"
+          },
+          "timestamp": {
+            "input": 38775,
+            "ordinal": 207315,
+            "phase": "champions",
+            "round": 1991,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 29,
+          "y": 29
+        }
+      ],
+      "kind": "buyItem",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 10.0,
+          "context": "42",
+          "target": {
+            "kind": "consumable",
+            "name": "Altar Lock"
+          },
+          "timestamp": {
+            "input": 38774,
+            "ordinal": 207314,
+            "phase": "champions",
+            "round": 1991,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 29,
+          "y": 29
+        }
+      ],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "campClear",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": 0,
+          "timestamp": {
+            "input": 1993,
+            "ordinal": 8994,
+            "phase": "championStartTurn",
+            "round": 86,
+            "substep": 7
+          },
+          "value": "21",
+          "x": 15,
+          "y": 15
+        }
+      ],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 1,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 284,
+            "ordinal": 1365,
+            "phase": "campCaptures",
+            "round": 13,
+            "substep": 11
+          },
+          "value": "21",
+          "x": 22,
+          "y": 23
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "death",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "kill",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "assist",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 65540,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 43,
+            "ordinal": 212,
+            "phase": "champions",
+            "round": 2,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 23,
+          "y": 24
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 131076,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 277,
+            "ordinal": 1259,
+            "phase": "champions",
+            "round": 12,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 30,
+          "y": 17
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 196612,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 576,
+            "ordinal": 2624,
+            "phase": "champions",
+            "round": 25,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 27,
+          "y": 26
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 262148,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 1184,
+            "ordinal": 5234,
+            "phase": "champions",
+            "round": 50,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 13,
+          "y": 13
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 327684,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2076,
+            "ordinal": 9309,
+            "phase": "champions",
+            "round": 89,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 20,
+          "y": 21
+        },
+        {
+          "amount": 0.0,
+          "context": "ward",
+          "target": {
+            "id": 393220,
+            "kind": "ward"
+          },
+          "timestamp": {
+            "input": 2289,
+            "ordinal": 10356,
+            "phase": "champions",
+            "round": 99,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 18,
+          "y": 11
+        }
+      ],
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyItem",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "buyConsumable",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "sellItem",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": {
+            "id": 5,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 423,
+            "ordinal": 1888,
+            "phase": "champions",
+            "round": 18,
+            "substep": 0
+          },
+          "value": "1",
+          "x": 29,
+          "y": 14
+        }
+      ],
+      "kind": "campClear",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "0",
+          "target": 0,
+          "timestamp": {
+            "input": 2286,
+            "ordinal": 10355,
+            "phase": "championStartTurn",
+            "round": 99,
+            "substep": 8
+          },
+          "value": "21",
+          "x": 15,
+          "y": 15
+        }
+      ],
+      "kind": "gemSubmission",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [
+        {
+          "amount": 0.0,
+          "context": "campGroup",
+          "target": {
+            "id": 5,
+            "kind": "campGroup"
+          },
+          "timestamp": {
+            "input": 553,
+            "ordinal": 2622,
+            "phase": "campCaptures",
+            "round": 25,
+            "substep": 13
+          },
+          "value": "21",
+          "x": 29,
+          "y": 14
+        }
+      ],
+      "kind": "gemCollection",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "gemLoss",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "itemCombination",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "botFault",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "fuelExhausted",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    },
+    {
+      "entries": [],
+      "kind": "resignation",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    }
+  ],
+  "formatVersion": "1.0",
+  "heatmaps": [
+    {
+      "kind": "death",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 0,
+        "kind": "champion",
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 159,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 32,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 155,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 26,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 32,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 101,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 50,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 399,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "death",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 1,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 97,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 17,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 59,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 56,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 2,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 2,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "2"
+        },
+        {
+          "duration": 47,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 674,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "death",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 2,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      "runs": [
+        {
+          "duration": 128,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 32,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 26,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 227,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 17,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 526,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "death",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 3,
+        "kind": "champion",
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 183,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 26,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 92,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 158,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 26,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 35,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 26,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 11,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "46"
+        },
+        {
+          "duration": 29,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "47"
+        },
+        {
+          "duration": 32,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "94"
+        },
+        {
+          "duration": 44,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 2,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 50,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 41,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 192,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "death",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 4,
+        "kind": "champion",
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 382,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 62,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 2,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 95,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 254,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 32,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 29,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 98,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "death",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "kill",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 961,
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "kind": "wardPlacement",
+      "owner": {
+        "id": 5,
+        "kind": "champion",
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      },
+      "runs": [
+        {
+          "duration": 359,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 56,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 140,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 113,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 95,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 65,
+          "value": "0"
+        },
+        {
+          "duration": 1,
+          "value": "1"
+        },
+        {
+          "duration": 127,
+          "value": "0"
+        }
+      ]
+    }
+  ],
+  "jsonFormatVersion": "1.0",
+  "match": {
+    "engineBuildHash": "85aa7167b44db7cea97509f55e997750520e33d644e9f4f90d6128c50eba1d21",
+    "engineVersion": "2.0.0",
+    "finalInput": 38992,
+    "finalRoundPartial": false,
+    "finalSubstep": 6,
+    "height": 31,
+    "mapHash": "3ad3afd3b410c72ca0d391a079943d1a290b330f996d56731686eae7b7deb8c8",
+    "metricSemanticsVersion": 1,
+    "outcome": "teamB",
+    "roundsCompleted": 2000,
+    "roundsStarted": 2000,
+    "seed": "15235631919082659381",
+    "width": 31
+  },
+  "roster": {
+    "champions": [
+      {
+        "draftPick": 0,
+        "id": 0,
+        "name": "Vendetta",
+        "team": "teamA"
+      },
+      {
+        "draftPick": 2,
+        "id": 1,
+        "name": "Marcella",
+        "team": "teamA"
+      },
+      {
+        "draftPick": 4,
+        "id": 2,
+        "name": "Heart of Ruin",
+        "team": "teamA"
+      },
+      {
+        "draftPick": 1,
+        "id": 3,
+        "name": "Vesper Vale",
+        "team": "teamB"
+      },
+      {
+        "draftPick": 3,
+        "id": 4,
+        "name": "Marcella",
+        "team": "teamB"
+      },
+      {
+        "draftPick": 5,
+        "id": 5,
+        "name": "Heart of Ruin",
+        "team": "teamB"
+      }
+    ],
+    "draft": [
+      {
+        "champion": "Vendetta",
+        "team": "teamA"
+      },
+      {
+        "champion": "Vesper Vale",
+        "team": "teamB"
+      },
+      {
+        "champion": "Marcella",
+        "team": "teamA"
+      },
+      {
+        "champion": "Marcella",
+        "team": "teamB"
+      },
+      {
+        "champion": "Heart of Ruin",
+        "team": "teamA"
+      },
+      {
+        "champion": "Heart of Ruin",
+        "team": "teamB"
+      }
+    ]
+  },
+  "teamTimelines": [
+    {
+      "metric": "submittedGems",
+      "owner": "teamA",
+      "runs": [
+        {
+          "duration": 33,
+          "value": "0"
+        },
+        {
+          "duration": 1968,
+          "value": "21"
+        }
+      ],
+      "sampleCount": 2001
+    },
+    {
+      "metric": "submittedGems",
+      "owner": "teamB",
+      "runs": [
+        {
+          "duration": 86,
+          "value": "0"
+        },
+        {
+          "duration": 13,
+          "value": "21"
+        },
+        {
+          "duration": 1902,
+          "value": "42"
+        }
+      ],
+      "sampleCount": 2001
+    }
+  ],
+  "teams": [
+    {
+      "submittedGems": "21",
+      "team": "teamA"
+    },
+    {
+      "submittedGems": "42",
+      "team": "teamB"
+    }
+  ]
+}

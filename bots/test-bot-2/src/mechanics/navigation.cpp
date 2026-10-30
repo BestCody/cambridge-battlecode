@@ -353,6 +353,19 @@ void Bot::retreat_to_spawn() {
         hit && (position == recall_tile || (incoming(position) == 0 && !threatened.is_set(position)));
     const bool safe = !threatened.is_set(position) && incoming(position) == 0 && !cancelled;
     const int walk = home_field.get(position);
+    // Spawn is not invulnerable, but opponents cannot enter it and its
+    // end-of-turn recovery is worth taking immediately. If this move can reach
+    // a free spawn tile that does not take our remaining health before the
+    // recovery, do not let the broader threatened mask route us away from it.
+    bool survivable_spawn = false;
+    if (me.can_move() && walk <= int(stats.base_move_speed)) {
+        auto reachable_spawn = spawn & ~blocked;
+        for (const vec2 tile : reachable_spawn.positions())
+            if (distance(position, tile) <= int(stats.base_move_speed) && incoming(tile) < health) {
+                survivable_spawn = true;
+                break;
+            }
+    }
     // A recall reports itself: teammates read every other recall as one
     // cancelled at the next turn (fake_recall()).
     if (safe && walk > recall_turns * stats.base_move_speed) {
@@ -370,7 +383,7 @@ void Bot::retreat_to_spawn() {
     auto safe_tiles = around(position, stats.vision_radius);
     subtract(safe_tiles, blocked);
     subtract(safe_tiles, threatened);
-    const auto &goals = walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
+    const auto &goals = survivable_spawn || walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
                                 cancelled
                             ? spawn
                             : safe_tiles;
