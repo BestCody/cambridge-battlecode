@@ -273,7 +273,13 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         const auto &a = abilities[best_slot];
         const auto &s = spells[best_slot];
         bool success = false;
-        if (s.kind == bc::ability_kind::attack_reset || s.kind == bc::ability_kind::shield)
+        if (s.kind == bc::ability_kind::attack_reset)
+            // Read again here, not as scored above: a turn that ran out of
+            // fuel in between resumes next round with its attack back, and
+            // resetting an available attack is an engine error that threw
+            // away the rest of the turn (2-5 times in 42 games at 100k).
+            success = !me.can_attack() && a.use();
+        else if (s.kind == bc::ability_kind::shield)
             success = a.use();
         else if (s.kind == bc::ability_kind::aoe_damage)
             success = a.use(best_tile);
