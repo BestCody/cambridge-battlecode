@@ -1,12 +1,10 @@
 // Worker turn: the independent policy every champion plays.
 #include "../bot.h"
 #include <cstdio>
-#include <cstring>
-#include <iostream>
-#include <tuple>
 
 bool Bot::worker_escape() {
     profiling::Scope scope(profiling::Stage::retreat);
+    cluster_run.clear(); // A retreat ends a cluster run.
     // Flee even when an enemy can reach us next turn: fleeing loses some free
     // hits but survives far more often. Standing traded down to death in two
     // thirds of the fights we were losing, where the top team breaks contact.
@@ -14,9 +12,16 @@ bool Bot::worker_escape() {
     // still come.
     if (!worker_update_formation())
         publish(TeamMemory::recall);
-    if (bc::map::spawn_region(bc::team::ally).is_set(position) && health >= max_health) {
-        retreating = false;
-        return false;
+    if (own_spawn_tile[tile_index(position)]) {
+        if (health >= max_health) {
+            retreating = false;
+            return false;
+        }
+        // The spawn heals us at the turn's end: strike what reaches us
+        // from here rather than stand idle under fire (a melee champion
+        // without its dash, which would leave the spawn).
+        combat(true, -1, range <= 1);
+        return true;
     }
     retreat_to_spawn();
     return true;
@@ -42,32 +47,65 @@ void Bot::play_worker_turn() {
     const float before = health; // As our last turn left it.
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
     // The recall our last turn ended in goes first: a channel blocks every
-    // other action, shopping included. A hit or a stun may have ended it.
-    if (faking) {
-        faking = false;
+    // other action, shopping included. A hit or a stun may have ended it. One
+    // carrying a capture's holder home runs on.
+    if (faking && !homeward)
         (void)bc::detail::sdk_cancel_channel();
-    }
+    capture_recall |= faking && homeward;
+    faking = homeward = false;
     track_enemy_respawns(); // Needs no vision: also while dead, recalling or banking.
+    // A capture's recall that ended (home, hit, stunned or dead) stops
+    // telling teammates it is leaving.
+    if (capture_recall && !me.is_recalling()) {
+        capture_recall = false;
+        shared.set_leaving(slot, false);
+    }
     if (!me.is_alive()) {
+        // A death where an enemy champion could hit us was theirs.
+        if (!death_counted && threatened_last)
+            champion_damage += before;
+        death_counted = true;
+        threatened_last = false;
         note_activity(Activity::dead);
+        recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
+        // A dead Prism's bag went to its killer: it published its last bag
+        // for the whole respawn, and teammates counted those gems as ours.
+        if (passive == bc::passive_type::gem_focus)
+            shared.set_prism_bag(0);
         chase.mode = Chase::none;
+        hidden.reset();
         buy_equipment();
         retreating = banking = false;
         target = -1;
-        crystal_plan.takeoff = {-1, -1};
+        cluster_run.clear();
         return;
     }
     buy_equipment();
-    if (me.is_recalling() || me.is_teleporting()) {
+    // Read once: nothing below acts before its last use (a turn that acts
+    // returns), and only actions change it.
+    const auto state = me.state();
+    if (state.contains(bc::champion_state::recalling) || state.contains(bc::champion_state::teleporting)) {
         note_activity(Activity::recall);
-        publish(TeamMemory::recall);
+        // A capture's holder riding its recall home keeps its claim, so
+        // teammates leave the capture to it, and says it is leaving.
+        if (capture_recall)
+            shared.set_leaving(slot, true);
+        else
+            publish(TeamMemory::recall);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         return;
     }
+    // What camps in reach as our last turn left the records could have
+    // struck (note_hidden_hit()): looked up before observe() rewrites them,
+    // only when struck.
+    camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
+    shared.set_jungle(slot, camp_mitigation < 1); // For teammates' hard-camp parties.
+    if (passive == bc::passive_type::gem_focus)
+        shared.set_prism_bag(gems); // For teammates' gem race (behind_pressure()).
     hit = health < before;
     // A chase ends once no enemy can reach us, and a stun means deciding it
     // again; a turn spent on anything else keeps it.
@@ -78,7 +116,15 @@ void Bot::play_worker_turn() {
     for (const auto &e : enemies)
         attacked = attacked || enemy_threatens(e, position);
     shared.set_attacked(slot, attacked);
-    if (me.is_submitting_gems()) {
+    // Struck for more than everything we know of could: an enemy out of
+    // sight did.
+    if (hit)
+        note_hidden_hit(before - health);
+    death_counted = false;
+    if (hit && (attacked || threatened_last))
+        champion_damage += before - health;
+    threatened_last = attacked;
+    if (state.contains(bc::champion_state::submitting_gems)) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);
         // Protect a valuable bag only when the remaining channel is lethal; a
@@ -91,7 +137,12 @@ void Bot::play_worker_turn() {
         }
         return;
     }
-    const bool at_spawn = bc::map::spawn_region(bc::team::ally).is_set(position);
+    const bool at_spawn = own_spawn_tile[tile_index(position)];
+    // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
+    if (at_spawn)
+        recall_tile = {-1, -1};
+    if (at_spawn)
+        left_spawn = int(round);
     if (at_spawn && health >= max_health)
         retreating = false;
     // A winning bag within three steps of an altar is banked even when hurt:
@@ -109,7 +160,8 @@ void Bot::play_worker_turn() {
         note_activity(at_spawn ? Activity::heal : Activity::retreat);
         return;
     }
-    if (!me.can_move() && !me.can_attack() && !me.can_cast()) {
+    if (!state.intersects(bc::champion_state::can_move | bc::champion_state::can_attack |
+                          bc::champion_state::can_cast)) {
         // A stunned champion still reports the fight it is caught in: help
         // matters most while it cannot act.
         if (!worker_update_formation())
@@ -133,7 +185,7 @@ void Bot::play_worker_turn() {
         return;
     }
     worker_update_formation();
-    if (worker_skirmish()) {
+    if (worker_skirmish() || worker_pursue()) {
         note_activity(Activity::fight);
         return;
     }
@@ -141,32 +193,13 @@ void Bot::play_worker_turn() {
         note_activity(Activity::bank);
         return;
     }
+    place_lock();
     if (worker_reinforce()) {
         note_activity(Activity::reinforce);
         return;
     }
-
-    bool upgrade =
-        me.gold_count() >= bc::item_type::power_shard_of_strength.cost() *
-                               (is_carry(type) ? policy::carry_shopping_shards : policy::shopping_shards);
-    bool about_to_capture = target >= 0 && groups[target].status == CampGroup::capture &&
-                            distance(position, groups[target].centre) <= 2;
-    // A camp waiting to respawn or being captured reads 0 health: only one
-    // being cleared is nearly clear.
-    bool nearly_clear = target >= 0 && groups[target].status == CampGroup::alive &&
-                        groups[target].health < dps(groups[target]) * 3;
-    if (!at_spawn && !about_to_capture && !nearly_clear && upgrade) {
-        if (gems && altar_walk().get(position) <= 5) {
-            banking = true;
-            if (worker_tribute())
-                return;
-        }
-        retreating = true;
-        if (worker_escape()) {
-            note_activity(Activity::shop);
-            return;
-        }
-    }
+    // Shopping needs no trip of its own: every trip home (a capture's recall,
+    // or health) buys all the gold affords (buy_equipment()).
     worker_farm();
     if (target >= 0)
         note_activity(distance(position, groups[target].centre) <= range + 3 ? Activity::farm
@@ -179,13 +212,18 @@ void Bot::fake_recall() {
     // each of ours. Teammates tell a real recall by its report. A channel
     // blocks every later action, so it is the turn's last; one already
     // going needs none, and a stun refuses it.
-    static const auto spawn = bc::map::spawn_region(bc::team::ally);
+    const auto &spawn = own_spawn;
     const auto state = bc::self().state();
     if (!state.contains(bc::champion_state::alive) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems) || state.contains(bc::champion_state::teleporting) ||
         spawn.is_set(position))
         return;
     faking = bc::detail::sdk_recall() == 0;
+    // A capture's holder riding this recall home says it is leaving at once:
+    // teammates later in the round would otherwise read a fake recall and
+    // step on beside it.
+    if (faking && homeward)
+        shared.set_leaving(slot, true);
 }
 
 void Bot::note_activity(Activity activity) {
@@ -199,10 +237,9 @@ void Bot::note_activity(Activity activity) {
     current_activity = activity;
     last_activity_round = round;
     if (!repeat && int(round) % 250 == 0 && round > 0) {
-        static constexpr const char *names[] = {"idle",  "dead",      "recall", "heal", "retreat", "bank",
-                                                "fight", "reinforce", "shop",   "farm", "travel"};
-        std::printf("ACTIVITY r=%u type=%d switches=%u crystals=%u/%u", round, int(type), target_switches,
-                    crystals_bought, crystals_used);
+        static constexpr const char *names[] = {"idle",  "dead",      "recall", "heal",
+                                                "retreat", "bank", "fight", "reinforce", "farm", "travel"};
+        std::printf("ACTIVITY r=%u type=%d switches=%u", round, int(type), target_switches);
         for (unsigned i = 0; i < activity_turns.size(); ++i)
             std::printf(" %s=%u", names[i], activity_turns[i]);
         std::printf("\n");
@@ -217,8 +254,11 @@ void Bot::worker_priority() {
         return;
     auto &me = bc::self();
     int priority = priority_tier::idle - static_cast<int>(slot);
-    if (me.is_alive() && !me.is_recalling() && !me.is_submitting_gems() && !me.is_teleporting() &&
-        !enemies.empty()) {
+    // Reads only, so their order changes nothing: no enemy in view (most
+    // turns) needs none of the engine's.
+    const auto busy = bc::champion_state::recalling | bc::champion_state::submitting_gems |
+                      bc::champion_state::teleporting;
+    if (!enemies.empty() && me.is_alive() && !me.state().intersects(busy)) {
         const auto abilities = me.abilities();
         std::array<bool, 2> ready{};
         for (unsigned i = 0; i < ready.size(); ++i)
@@ -255,7 +295,7 @@ void Bot::worker_priority() {
                 continue;
             const bool lethal = burst >= hp + e.shield;
             const int tier = lethal ? priority_tier::finish : priority_tier::damage;
-            const float value = lethal ? burst + 200 + e.gems * 7 : burst;
+            const float value = lethal ? burst + kill_value(e) : burst;
             best = std::max(best, tier + std::min(int(value), priority_tier::span));
         }
         if (best > 0)

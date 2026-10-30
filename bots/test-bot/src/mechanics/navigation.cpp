@@ -46,6 +46,8 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
         occupied_into(dash_blocked, dash_terrain);
         dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(design.range), step_tiles);
         subtract_into(search_goals, step_tiles, blocked);
+        if (design.modifier > 0 && design.radius > 0)
+            drop_waking_landings(search_goals, int(design.range + design.radius), design.radius, engaged_group);
         // The landings in reading order, and their walks: from one export of
         // the field when there are many (an export costs about one read per
         // 150 tiles), else read one by one.
@@ -105,7 +107,7 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
             if (best < 0 || (!urgent && original - score < 1.75f))
                 return false;
             if (a.use(choices[best])) {
-                position = me.position();
+                refresh_self();
                 if (design.exclusive)
                     walked = true;
                 return true;
@@ -127,14 +129,25 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
     return false;
 }
 
-bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_group, bool allow_teleport) {
+std::span<const vec2> Bot::step_positions() {
+    const std::size_t side = 2 * std::size_t(static_cast<std::uint16_t>(stats.base_move_speed)) + 1;
+    if (step_list.size() < side * side)
+        step_list.resize(side * side);
+    return {step_list.data(), step_tiles.positions_into(step_list)};
+}
+
+bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use_dash, int engaged_group,
+                  bool allow_teleport) {
     profiling::Scope scope(profiling::Stage::move);
     auto &me = bc::self();
     const auto state = me.state();
     if (state.contains(bc::champion_state::teleporting) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems))
         return false;
-    goals &= open_terrain;
+    // The goals on open terrain, in a mask kept between calls (the caller's
+    // is left as it is): one engine operation where a copy costs a new mask.
+    auto &goals = move_goals;
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(wanted.ptr(), open_terrain.ptr(), goals.ptr()));
     if (goals.is_empty() || goals.is_set(position))
         return false;
     auto &field = move_field;
@@ -186,9 +199,11 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         return false;
     }
     if (breaking_through && !urgent) {
+        // Only through a group a visit can afford: our banking champions
+        // broke through the monolith pair beside an altar and died.
         int next_group = -1, best_distance = field.get(position);
         for (const auto &c : camps)
-            if (distance(position, c.position) <= range) {
+            if (distance(position, c.position) <= range && c.group >= 0 && visit_affordable(groups[c.group])) {
                 int d = field.get(c.position);
                 if (d < best_distance) {
                     best_distance = d;
@@ -213,8 +228,14 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
         vec2 best = position;
         float best_score = std::numeric_limits<float>::infinity();
+        // Equally short steps go toward the destination in a straight line.
+        // Taken in tile order (lowest row, then lowest column), every walk
+        // drifted to the low-x and low-y map edges: 7-8% of our time away
+        // from spawn on an edge, willow best girl's 1-2% on any edge, and
+        // flights there 12-16% against 1-5%, cornered.
+        int best_line = std::numeric_limits<int>::max();
         const int remaining = field.get(position);
-        for (auto p : step_tiles.positions()) {
+        for (const vec2 p : step_positions()) {
             if (p == position)
                 continue;
             int d = field.get(p);
@@ -226,15 +247,17 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
             float least = float(d) * 10;
             if (bush)
                 least -= 0.4f;
-            if (!(least < best_score))
+            const int line = (p.x - toward.x) * (p.x - toward.x) + (p.y - toward.y) * (p.y - toward.y);
+            if (least > best_score || (least == best_score && line >= best_line))
                 continue; // The incoming estimate only adds: this tile cannot win.
             float score = float(d) * 10;
             score += incoming(p, engaged_group) * (urgent ? 0.8f : 0.14f);
             // Respect bush cover when taking an aggressive approach.
             if (bush)
                 score -= 0.4f;
-            if (score < best_score) {
+            if (score < best_score || (score == best_score && line < best_line)) {
                 best_score = score;
+                best_line = line;
                 best = p;
             }
         }
@@ -248,21 +271,51 @@ bool Bot::move_to(bc::bitboard goals, bool urgent, bool use_dash, int engaged_gr
     return moved;
 }
 
+void Bot::drop_waking_landings(bc::bitboard &landings, int reach, float radius, int keep) {
+    // A landing that strikes around it wakes the camps it reaches: our
+    // Heart of Ruin's travel dashes woke camps it then left 5-6 times a
+    // game (willow best girl's 1.3-1.4), and teammates walking by took
+    // their fire. Only beside the camps we mean to fight: our target's and
+    // the group `keep` names.
+    bool near = false;
+    for (const auto &c : camps)
+        if (c.health > 0 && c.group != target && c.group != keep && distance(position, c.position) <= reach) {
+            if (!near) {
+                dash_wake.clear();
+                near = true;
+            }
+            dash_wake.draw_chebyshev(c.position, radius);
+        }
+    if (near)
+        subtract(landings, dash_wake);
+}
+
 bool Bot::health_recovery_needed() const {
-    if (bc::map::spawn_region(bc::team::ally).is_set(position))
+    if (own_spawn_tile[tile_index(position)])
         return health < max_health;
-    float threshold = policy::retreat_health;
-    if (type == bc::champion_type::heart_of_ruin)
-        threshold = policy::heart_retreat_health; // Stronger when hurt, and it shields itself.
-    // Also home when the health left is twice the damage it is taking (camp
-    // damage included).
-    return health < max_health * threshold || health <= incoming(position, target) * 2;
+    // Also home when the health left only covers the damage it is taking
+    // (camp damage included) for the rounds it takes to walk out of reach of
+    // the awake camps hitting us (two at least): camps do not chase, but a
+    // hit cancels a recall, so leaving means walking out under their fire
+    // (from beside an elk, four rounds; a monolith outranges every
+    // champion). Mid-fight, a lower share.
+    bool fighting = false;
+    for (const auto &e : enemies)
+        fighting = fighting || enemy_threatens(e, position);
+    const float share = fighting ? policy::fight_retreat_health : policy::retreat_health;
+    int out = 2;
+    for (const auto &c : camps)
+        if (c.strength > 0 && distance(position, c.position) <= c.range && !camp_dormant(c))
+            out = std::max(out, c.range - distance(position, c.position) + 1);
+    return health < max_health * share || health <= incoming(position, target) * float(out);
 }
 
 void Bot::retreat_to_spawn() {
     auto &me = bc::self();
-    const auto spawn = bc::map::spawn_region(bc::team::ally);
-    if (spawn.is_set(position) || me.is_recalling() || me.is_teleporting() || me.is_submitting_gems() ||
+    const auto &spawn = own_spawn;
+    if (spawn.is_set(position) ||
+        me.state().intersects(bc::champion_state::recalling | bc::champion_state::teleporting |
+                              bc::champion_state::submitting_gems) ||
         me.buffs().has_stun())
         return;
     track_ghosts();
@@ -270,29 +323,39 @@ void Bot::retreat_to_spawn() {
     // whose current stun can expire, rather than just their current attack tile.
     bc::bitboard threatened;
     for (const auto &camp : camps)
+        // A camp whose reach we stand in after a hit is awake whatever our
+        // record says: recalling there was cancelled by its next strike.
         if (camp.strength > 0 && distance(position, camp.position) <= stats.vision_radius + camp.range &&
-            !camp_dormant(camp))
+            (!camp_dormant(camp) || (hit && distance(position, camp.position) <= camp.range)))
             threatened.draw_chebyshev(camp.position, camp.range);
     // Enemies out of sight count from their possible tile nearest us: one
     // that just stepped into a bush is still there.
     for (const auto *list : {&enemies, &ghosts})
         for (const auto &enemy : *list) {
             const auto design = enemy.champion().base_stats();
-            const int reach = std::max(enemy.range, enemy.spell_reach) +
-                              rules::settings().recall_time * design.base_move_speed;
+            // A dash ready within the recall closes its tiles too (a damaging
+            // dash's spell reach already counts them).
+            const int dash = enemy.dash_range > 0 && enemy.dash_wait >= 0 && enemy.dash_wait <= recall_turns
+                                 ? int(enemy.dash_range)
+                                 : 0;
+            const int reach = std::max(enemy.range + dash, enemy.spell_reach) +
+                              std::min(recall_turns, policy::recall_chase_turns) * design.base_move_speed;
             if (distance(position, enemy.position) <= stats.vision_radius + reach)
                 threatened.draw_chebyshev(enemy.position, reach);
         }
     // A hit on the tile of our last recall cancelled it: whatever struck,
     // seen or not (a camp out of view, an enemy in a bush), would cancel the
     // next one too. Recalling again on the same tile kept champions standing
-    // under those hits, often until they died, so walk home instead.
-    const bool cancelled = hit && position == recall_tile;
+    // under those hits, often until they died, so walk home instead. So does
+    // a hit where nothing in view reaches: our Prism, stepped out of sight of
+    // the elks it woke, recalled under their fire and died.
+    const bool cancelled =
+        hit && (position == recall_tile || (incoming(position) == 0 && !threatened.is_set(position)));
     const bool safe = !threatened.is_set(position) && incoming(position) == 0 && !cancelled;
     const int walk = home_field.get(position);
     // A recall reports itself: teammates read every other recall as one
     // cancelled at the next turn (fake_recall()).
-    if (safe && walk > rules::settings().recall_time * stats.base_move_speed) {
+    if (safe && walk > recall_turns * stats.base_move_speed) {
         me.recall();
         publish(TeamMemory::recall);
         recall_tile = position;
@@ -303,12 +366,16 @@ void Bot::retreat_to_spawn() {
     // strike, walk on.
     if (!safe && chase_mode(true) == Chase::fight && combat(true, -1, range <= 1))
         return;
-    const auto safe_tiles = around(position, stats.vision_radius) & ~blocked & ~threatened;
-    const auto goals = walk <= rules::settings().recall_time * stats.base_move_speed || safe_tiles.is_empty() ||
-                               cancelled
-                           ? spawn
-                           : safe_tiles;
-    const bool moved = move_to(goals, true, true);
+    // around(...) & ~blocked & ~threatened, in place (no complement masks).
+    auto safe_tiles = around(position, stats.vision_radius);
+    subtract(safe_tiles, blocked);
+    subtract(safe_tiles, threatened);
+    const auto &goals = walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
+                                cancelled
+                            ? spawn
+                            : safe_tiles;
+    strike_before_step();
+    const bool moved = move_to(goals, home_centre, true, true);
     if (!moved && safe) {
         // Occupancy can block a short walk home. Do not wait on that route when
         // this tile already permits the recall that fulfils the same recovery.
@@ -336,7 +403,8 @@ void Bot::retreat_to_spawn() {
         };
         vec2 best = position;
         auto best_score = score(position);
-        for (auto tile : blocked.reachable_tiles(position, stats.base_move_speed).positions()) {
+        blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
+        for (const vec2 tile : step_positions()) {
             const auto value = score(tile);
             if (value < best_score) {
                 best = tile;

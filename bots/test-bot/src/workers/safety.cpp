@@ -1,12 +1,12 @@
 // Worker safety: detect danger, remember it, and step away.
 #include "../bot.h"
 #include <tuple>
+#include <wasm_simd128.h>
 
 bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     // Channelling enemies cannot hit us this turn, and enemies on their spawn
     // are shopping or healing, not hunting.
-    if (enemy.health <= 0 || enemy.channel || enemy_spawn.is_set(at))
+    if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(at)])
         return false;
     // A stunned enemy loses its next move, so only its standing reach counts.
     const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
@@ -17,15 +17,22 @@ bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
 void Bot::worker_track_sightings() {
     if (enemy_seen_near.size() != groups.size())
         enemy_seen_near.assign(groups.size(), -policy::worker_sighting_memory - 1);
+    // A group is seen near when enemy_threatens() holds for one of its camps:
+    // the enemy's test and reach do not depend on the camp, so each camp's
+    // test is its distance, four camps a step (padding is never in reach).
     for (const auto &enemy : enemies) {
-        if (enemy.health <= 0)
+        if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(enemy.position)])
             continue;
-        for (std::size_t i = 0; i < groups.size(); ++i)
-            for (const auto &camp : groups[i].camps)
-                if (enemy_threatens(enemy, camp.position)) {
-                    enemy_seen_near[i] = round;
-                    break;
-                }
+        const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
+        const v128_t reach =
+            wasm_i32x4_splat(std::max(enemy.range, enemy.spell_reach) + move + policy::worker_danger_margin);
+        const v128_t x = wasm_i32x4_splat(enemy.position.x), y = wasm_i32x4_splat(enemy.position.y);
+        for (std::size_t k = 0; k < camp_lanes; k += 4) {
+            const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
+                                                wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&camp_y[k]))));
+            for (unsigned lanes = wasm_i32x4_bitmask(wasm_i32x4_le(apart, reach)); lanes; lanes &= lanes - 1)
+                enemy_seen_near[camp_group[k + unsigned(__builtin_ctz(lanes))]] = round;
+        }
     }
 }
 
@@ -121,6 +128,32 @@ void Bot::track_ghosts() {
         ghost.stun_time = -1;
         ghost_last.push_back(ghost_seen[i]->position);
     }
+    // The hidden attacker last, where it struck from, until that tile is
+    // seen, one of the enemies out of view at its hit comes into view where
+    // it could have walked from the tile since (the hidden one, as like as
+    // not), or we are out of its area: kept on beyond that it would hold
+    // farmers off a bush long left, as ghosts kept past their lifetime did.
+    sighted_ghosts = ghosts.size();
+    bool shown = false;
+    if (hidden)
+        for (std::size_t k = 0; k < enemies.size(); ++k)
+            shown = shown || (hidden_from >> enemy_slot[k] & 1 &&
+                              distance(enemies[k].position, hidden->position) <=
+                                  (int(round) - hidden_hit + 1) * enemies[k].move_speed + 1);
+    if (hidden && (shown || visible.is_set(hidden->position) ||
+                   distance(position, hidden->position) > int(stats.vision_radius)))
+        hidden.reset();
+    if (hidden) {
+        ghosts.push_back(*hidden);
+        ghost_last.push_back(hidden->position);
+    }
+}
+
+void Bot::drop_hidden() {
+    hidden.reset();
+    ghosts.erase(ghosts.begin() + std::ptrdiff_t(sighted_ghosts), ghosts.end());
+    ghost_last.resize(sighted_ghosts);
+    ++threat_revision; // The lanes listed it.
 }
 
 // Danger at a tile: how many enemies could hit it, and by how many tiles the
@@ -145,15 +178,7 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
 }
 
 namespace {
-// Tiles an enemy closes on us in a round and still strikes: a melee one walks
-// and strikes in one turn, a ranged one cannot walk and shoot; a ready dash
-// adds its tiles (in place of the walk when no walk can follow it).
-int closing(const ObservedUnit &e, bool dash) {
-    const int walk = e.range <= 1 ? e.move_speed : 0;
-    if (!dash || e.dash_range <= 0)
-        return walk;
-    return e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range));
-}
+int closing(const ObservedUnit &e, bool dash) { return closing_tiles(e, e.reset_ready, dash); }
 
 // Our dash: tiles, rounds until usable (-1: no dash), cooldown, and whether a
 // walk can follow it.
@@ -190,7 +215,7 @@ std::uint32_t Bot::threat_bits() const {
         if (e.health <= 0 || e.channel || (e.stunned && e.stun_time > 0) || enemy_spawn_tile[tile_index(e.position)])
             continue;
         int reach = e.range + closing(e, e.dash_wait == 0);
-        if (e.burst > 0)
+        if (e.spell_burst > 0)
             reach = std::max(reach, e.spell_reach);
         if (distance(position, e.position) <= reach)
             bits |= 1u << enemy_slot[k];
@@ -205,9 +230,32 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     // Killing one is not enough: champions took on four for a low one and
     // died. A healer's heal counts as health on each of them, and teammates
     // heading home are leaving the fight. The damage we take by the end of
-    // each round is kept to check the fight against.
+    // each round is kept to check the fight against. A fight too dangerous
+    // to stay in (worker_skirmish()'s test: health and shields against exit
+    // damage and the bag margin) is no duel won, ours or a teammate's: one
+    // too dangerous where it stands leaves, as one below
+    // fight_retreat_health heads home (health_recovery_needed()).
+    const bool immune = passive == bc::passive_type::stun_immunity;
+    if (const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune); risk.damage > 0) {
+        std::array<bool, 2> is_ready{};
+        for (unsigned i = 0; i < spells.size(); ++i)
+            if (spells[i].kind == bc::ability_kind::shield)
+                is_ready[i] = ready(bc::self().abilities()[i], bc::self().can_cast());
+        if (exit_pool(pool - health, is_ready) <= risk.damage + risk.margin)
+            return false;
+    }
+    std::uint32_t staying = 0;
+    for (std::size_t k = 0; k < allies.size(); ++k) {
+        const auto &a = allies[k];
+        if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
+            a.health < a.max_health * policy::fight_retreat_health)
+            continue;
+        const auto risk = exit_risk(a.position, a.health, a.mitigation, a.camp_mitigation, unsigned(a.gems), a.immune);
+        if (risk.damage <= 0 || a.health + a.shield + a.ready_shield > risk.damage + risk.margin)
+            staying |= 1u << k;
+    }
     struct Foe {
-        float lasts, rate;
+        float lasts, rate, burst;
     };
     static std::vector<Foe> foes;
     foes.clear();
@@ -222,17 +270,21 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
         float rate = ours;
         for (std::size_t k = 0; k < allies.size(); ++k) {
             const auto &a = allies[k];
-            if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
-                a.health < a.max_health * policy::retreat_health)
+            if (!(staying >> k & 1))
                 continue;
             if (distance(a.position, e.position) <= a.range + closing(a, false))
                 rate += a.damage_rate;
         }
-        foes.push_back({(e.health + e.shield + heal) / (rate * e.mitigation), e.damage_rate * mitigation});
+        // Its ready burst lands in the first round (race() counts it too).
+        foes.push_back({(e.health + e.shield + heal) / (rate * e.mitigation), e.damage_rate * mitigation,
+                        (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * mitigation});
     }
     if (foes.empty())
         return false;
-    std::sort(foes.begin(), foes.end(), [](const Foe &a, const Foe &b) { return a.lasts < b.lasts; });
+    // Killed in the order that takes the least damage, as striker_work()
+    // orders camps: the most damage per round of killing first (the quickest
+    // kill first left a slow, hard-hitting foe striking longest).
+    std::sort(foes.begin(), foes.end(), [](const Foe &a, const Foe &b) { return a.lasts * b.rate < b.lasts * a.rate; });
     // Each falls when the kills before it and its own are done.
     for (std::size_t k = 1; k < foes.size(); ++k)
         foes[k].lasts += foes[k - 1].lasts;
@@ -241,7 +293,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     for (int r = 0; float(r) < foes.back().lasts; ++r) {
         for (const auto &f : foes)
             if (f.lasts > float(r))
-                taken += f.rate;
+                taken += f.rate + (r == 0 ? f.burst : 0.0f);
         chase.foreseen.push_back(taken);
         if (taken >= pool)
             return false;
@@ -268,7 +320,7 @@ bool Bot::race(vec2 goal, int arrive, bool use_dash, float pool) {
     };
     static std::vector<Runner> runners;
     runners.clear();
-    const int recall = rules::settings().recall_time;
+    const int recall = recall_turns;
     OwnDash dash;
     if (use_dash)
         dash = own_dash(spells);
@@ -439,16 +491,7 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
             // Safety is the nearest teammate in view further from the
             // enemies than we are (on the fight path; a retreat heads home),
             // else home.
-            static const vec2 home = [] {
-                const auto tiles = bc::map::spawn_region(bc::team::ally).positions();
-                int x = 0, y = 0, n = 0;
-                for (const auto p : tiles) {
-                    x += p.x;
-                    y += p.y;
-                    ++n;
-                }
-                return n ? vec2{x / n, y / n} : vec2{0, 0};
-            }();
+            const vec2 home = home_centre;
             const auto exposure = [&](vec2 at) {
                 int nearest = std::numeric_limits<int>::max();
                 for (const auto &e : enemies)
@@ -500,25 +543,47 @@ bool Bot::run_to_safety() {
     // race needed it; spells that allow walking still go off. The step away
     // (toward any teammate in the fight) is cheaper but is not the run the
     // race checked: it lost 109 gems a game to v35 where this won 67.
-    bc::bitboard goals = bc::map::spawn_region(bc::team::ally);
+    bc::bitboard goals = own_spawn;
+    vec2 toward = home_centre;
     for (std::size_t i = 0; i < allies.size(); ++i)
-        if (int(ally_slot[i]) == chase.mate)
+        if (int(ally_slot[i]) == chase.mate) {
             goals = around(allies[i].position, 2);
-    if (!move_to(goals, true, chase.dash))
+            toward = allies[i].position;
+        }
+    strike_before_step();
+    if (!move_to(goals, toward, true, chase.dash))
         return false;
     observe_fight();
     combat(true, -1, true);
     return true;
 }
 
+void Bot::strike_before_step() {
+    // A melee champion strikes and steps in one turn, so it strikes first,
+    // while the enemy is in reach: willow best girl's Heart of Ruin and
+    // Marcella, below 35% health beside an enemy, strike in 67-78% of those
+    // rounds and step away in 46-63%; ours, stepping first, struck in 24-31%.
+    // Spells that exclude walking wait for the step.
+    if (range > 1)
+        return;
+    bool reach = false;
+    for (const auto &e : enemies)
+        reach = reach || (e.health > 0 && distance(position, e.position) <= range);
+    if (!reach)
+        return;
+    const bool stepped = walked;
+    walked = true; // combat() then leaves spells that exclude walking.
+    combat(true, -1, true);
+    walked = stepped;
+}
+
 void Bot::avoid_reach() {
     // Moves for the rest of this turn keep out of the reach of the stronger
     // group in view: walking back in after stepping away kept a champion
     // hovering at its edge until it was caught.
-    static const auto enemy_spawn = bc::map::spawn_region(bc::team::enemy);
     avoid_zone.clear();
     const auto counted = [&](const ObservedUnit &e) {
-        return e.health > 0 && !e.channel && !enemy_spawn.is_set(e.position);
+        return e.health > 0 && !e.channel && !enemy_spawn_tile[tile_index(e.position)];
     };
     for (const auto &e : enemies) {
         if (!counted(e))
@@ -573,7 +638,7 @@ vec2 Bot::step_away_tile() {
     auto best_score = std::tuple{threats, -clearance, way(position)};
     if (bc::self().can_move()) {
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
-        for (auto tile : step_tiles.positions()) {
+        for (const vec2 tile : step_positions()) {
             if (tile == position)
                 continue;
             const auto [count, room] = worker_danger(tile);

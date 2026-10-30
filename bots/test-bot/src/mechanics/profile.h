@@ -19,19 +19,18 @@ enum class Stage {
     move,
     combat,
     ward,
-    crystal,
     priority,
     background,
     routes,
-    hops,
     sieges,
     diagnostics,
     count
 };
 inline constexpr const char *stage_names[] = {
-    "turn",    "buy",       "observe",    "retreat", "choose", "skirmish", "search",
-    "tribute", "formation", "reinforce",  "farm",    "move",   "combat",   "ward",
-    "crystal", "priority",  "background", "routes",  "hops",   "sieges",   "diag"};
+    "turn",    "buy",       "observe",   "retreat",  "choose",     "skirmish", "search",
+    "tribute", "formation", "reinforce", "farm",     "move",       "combat",   "ward",
+    "priority", "background", "routes",  "sieges",   "diag"};
+static_assert(std::size(stage_names) == static_cast<std::size_t>(Stage::count));
 
 struct Totals {
     unsigned long long fuel = 0, calls = 0, peak = 0;
