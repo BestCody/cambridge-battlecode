@@ -26,18 +26,14 @@ inline constexpr float late_gold_value = 0.30f;
 // (worker_pursue()).
 inline constexpr float pursue_health = 0.6f;
 // A champion heads home below this share of its health, away from camps
-// (health_recovery_needed()): willow best girl's
+// (health_recovery_needed()), in a fight or not: willow best girl's
 // turn for home (by recall in 88-89% of trips) most often at 25-35% (20-26%
 // of its trips) and seldom at 35-45% (7-10%); ours, leaving at 45%, turned
-// at 35-45% in 23-25% and at 25-35% in 13-14%.
-inline constexpr float retreat_health = 0.35f;
-// While an enemy champion can hit us, home only below this share: willow
-// best girl's champions in contact start for home most at 28-35% of their
-// health (12-14 retreats per 100 contact rounds, 6-8 at 35-45%), the same
-// line as its trips home; how the fight stands (ahead or behind, a teammate
-// beside) splits it differently in its two samples. Ours, at 28%, left at
+// at 35-45% in 23-25% and at 25-35% in 13-14%. In contact its champions
+// start for home most at 28-35% of their health (12-14 retreats per 100
+// contact rounds, 6-8 at 35-45%), the same line; ours, at 28%, left at
 // 28-35% in 8 of 100.
-inline constexpr float fight_retreat_health = 0.35f;
+inline constexpr float retreat_health = 0.35f;
 // The health a camp visit can spend, before the walk out of the camps' reach:
 // all of it, unless below the line we go home at away from camps (then home
 // first). Print dont int's tanks leave camps at 15-20% of their health, 1-2
@@ -77,8 +73,6 @@ inline constexpr int stuck_rounds = 40;
 inline constexpr float hard_camp_health = 5000;
 inline constexpr float casualty_margin = 0.12f;
 inline constexpr int replan_period = 4;
-inline constexpr float assist_finish_credit = 0.55f;
-inline constexpr float stun_followup_credit = 0.5f;
 inline constexpr float unused_cast_cost = 0.01f;
 // Squad assembly: converging on surviving allies is the real regroup.
 inline constexpr float depleted_rally_bonus = 3.0f;
@@ -179,10 +173,6 @@ inline constexpr float plan_hazard = 0.02f;
 // so the gems near them are worth the more. 0 disables the scarcity term.
 inline constexpr int altar_walk_cap = 20;
 inline constexpr float scarce_altar_weight = 0.5f;
-// Spread fighting: an enemy champion within peel_range of a teammate (a
-// dive) counts peel_factor times in our victim and target choices.
-inline constexpr int peel_range = 2;
-inline constexpr float peel_factor = 1.5f;
 // A hit from an enemy out of sight (note_hidden_hit()) is stepped in on only
 // by a melee champion at hidden_step_health of its health or more: the step
 // onto the bush shows the whole bush, and a hit from one can be bait for a

@@ -234,7 +234,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     // to stay in (worker_skirmish()'s test: health and shields against exit
     // damage and the bag margin) is no duel won, ours or a teammate's: one
     // too dangerous where it stands leaves, as one below
-    // fight_retreat_health heads home (health_recovery_needed()).
+    // retreat_health heads home (health_recovery_needed()).
     const bool immune = passive == bc::passive_type::stun_immunity;
     if (const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune); risk.damage > 0) {
         std::array<bool, 2> is_ready{};
@@ -248,7 +248,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     for (std::size_t k = 0; k < allies.size(); ++k) {
         const auto &a = allies[k];
         if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
-            a.health < a.max_health * policy::fight_retreat_health)
+            a.health < a.max_health * policy::retreat_health)
             continue;
         const auto risk = exit_risk(a.position, a.health, a.mitigation, a.camp_mitigation, unsigned(a.gems), a.immune);
         if (risk.damage <= 0 || a.health + a.shield + a.ready_shield > risk.damage + risk.margin)

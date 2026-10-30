@@ -98,7 +98,7 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
                     if (walk[j] == next) {
                         const int k = landing[j];
                         const float value =
-                            float(next) + incoming(choices[k], engaged_group) * (urgent ? 0.06f : 0.012f);
+                            float(next) + incoming(choices[k]) * (urgent ? 0.06f : 0.012f);
                         if (value < score || (value == score && best >= 0 && k < best)) {
                             score = value;
                             best = k;
@@ -229,7 +229,7 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
             if (least > best_score || (least == best_score && line >= best_line))
                 continue; // The incoming estimate only adds: this tile cannot win.
             float score = float(d) * 10;
-            score += incoming(p, engaged_group) * (urgent ? 0.8f : 0.14f);
+            score += incoming(p) * (urgent ? 0.8f : 0.14f);
             // Respect bush cover when taking an aggressive approach.
             if (bush)
                 score -= 0.4f;
@@ -276,16 +276,13 @@ bool Bot::health_recovery_needed() const {
     // the awake camps hitting us (two at least): camps do not chase, but a
     // hit cancels a recall, so leaving means walking out under their fire
     // (from beside an elk, four rounds; a monolith outranges every
-    // champion). Mid-fight, a lower share.
+    // champion).
     // At a camp with no enemy in view, only that walk counts: print dont
     // int's tanks leave camps at 15-20% of their health (golems and
     // monoliths ~10%), 1-2 rounds of the camps' damage past it; ours, home
     // at 35%, made twice the trips. Applied in fights too, the walk-out
     // rule lost 7 games of 80 (vleave).
-    bool fighting = false;
-    for (const auto &e : enemies)
-        fighting = fighting || enemy_threatens(e, position);
-    const float share = fighting ? policy::fight_retreat_health : policy::retreat_health;
+    const float share = policy::retreat_health;
     // At a camp: every awake camp reaching us is of the group we clear (one
     // of another group striking us is no clear to stay for: our Vesper
     // stood at 20% beside another group's wolf until it killed her).
@@ -300,7 +297,7 @@ bool Bot::health_recovery_needed() const {
             reaching += c.strength;
         }
     const bool at_camp = reached && ours;
-    float per_round = incoming(position, target);
+    float per_round = incoming(position);
     if (at_camp && enemies.empty()) {
         // Every awake camp reaching us, at its full strength, hitting us or
         // not: behind the front we take nothing until the front leaves, then
@@ -837,13 +834,13 @@ int Bot::follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_d
         walking_to_hop = false;
         return moved;
     }
-    if (take_hop(engaged_group))
+    if (take_hop())
         return 1;
     hop_plan.landing = {-1, -1}; // Not now: the walk, for this goal.
     return -1;
 }
 
-bool Bot::take_hop(int engaged_group) {
+bool Bot::take_hop() {
     const vec2 landing = hop_plan.landing;
     const int reach = rules::crystal_range;
     auto &me = bc::self();
@@ -860,7 +857,7 @@ bool Bot::take_hop(int engaged_group) {
             landings.push_back(p);
     for (const vec2 destination : landings) {
         if (blocked.is_set(destination) ||
-            incoming(destination, engaged_group) * rules::settings().tp_crystal_time >= health * 0.5f)
+            incoming(destination) * rules::settings().tp_crystal_time >= health * 0.5f)
             continue;
         if (crystal.use(destination))
             return true;

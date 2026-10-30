@@ -192,6 +192,7 @@ void Bot::play_worker_turn() {
         note_activity(Activity::fight);
         return;
     }
+    skirmish_declined = int(round); // A pursuit declined acts on nothing.
     if (worker_tribute()) {
         note_activity(Activity::bank);
         return;
@@ -275,7 +276,7 @@ void Bot::worker_priority() {
         int best = 0;
         for (const auto &e : enemies) {
             const float hp = live_health(e);
-            if (hp <= 0)
+            if (hp <= 0 || enemy_spawn_tile[tile_index(e.position)])
                 continue;
             const int d = distance(position, e.position);
             const float basic = d <= range ? basic_damage() : 0;
@@ -297,9 +298,10 @@ void Bot::worker_priority() {
             if (burst <= 0)
                 continue;
             const bool lethal = burst >= hp + e.shield;
+            // The tier says a kill; within it the bigger burst goes first (a
+            // kill's value on top had every finisher at the cap).
             const int tier = lethal ? priority_tier::finish : priority_tier::damage;
-            const float value = lethal ? burst + kill_value(e) : burst;
-            best = std::max(best, tier + std::min(int(value), priority_tier::span));
+            best = std::max(best, tier + std::min(int(burst), priority_tier::span));
         }
         if (best > 0)
             priority = best;

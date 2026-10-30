@@ -1537,7 +1537,7 @@ int Bot::mate_claim(unsigned s) const {
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
-float Bot::incoming(vec2 tile, int engaged_group, bool include_camps, bool include_enemies) const {
+float Bot::incoming(vec2 tile, bool include_camps, bool include_enemies) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
@@ -1860,13 +1860,18 @@ float Bot::exit_pool() const {
 }
 
 bool Bot::ExitCheck::lethal(vec2 tile) {
+    // With our bag's margin, as the stay test weighs a tile
+    // (worker_skirmish()): a step taken now is not one that test leaves at
+    // the next turn.
     const bool immune = bot.passive == bc::passive_type::stun_immunity;
-    const float damage = bot.exit_risk(tile, bot.health, bot.mitigation, bot.camp_mitigation, 0, immune).damage;
-    if (damage <= 0)
+    const auto risk = bot.exit_risk(tile, bot.health, bot.mitigation, bot.camp_mitigation, bot.gems, immune);
+    if (risk.damage <= 0)
         return false;
+    const float damage = risk.damage + risk.margin;
     if (pool < 0) {
         pool = bot.exit_pool();
-        here = bot.exit_damage(bot.position, immune).damage * bot.mitigation;
+        const auto stay = bot.exit_risk(bot.position, 0, bot.mitigation, bot.camp_mitigation, bot.gems, immune);
+        here = stay.damage + stay.margin;
     }
     return damage >= pool && damage > here;
 }

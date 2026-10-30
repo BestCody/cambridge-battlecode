@@ -117,7 +117,9 @@ bool Bot::worker_tribute() {
             me.submit_gems(selected);
             return true;
         }
-        if (worker_skirmish())
+        // The fight was asked this turn unless a winning bag came here first
+        // (play_worker_turn()).
+        if (skirmish_declined != int(round) && worker_skirmish())
             return true;
         retreating = true;
         return worker_escape();

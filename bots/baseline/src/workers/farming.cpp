@@ -82,7 +82,6 @@ int Bot::worker_choose_group(int excluded) {
     profiling::Scope scope(profiling::Stage::choose);
     measure_paths(1);
     const float gold_value = gold_value_now();
-    const float reserve = std::max(max_health * policy::casualty_margin, incoming(position) * 2);
     // Squad assembly: count living allies. After a wipe a lone respawn must not
     // walk straight back into a grouped enemy and feed one champion at a time.
     std::uint64_t alive = 0; // Bit s: roster slot s.

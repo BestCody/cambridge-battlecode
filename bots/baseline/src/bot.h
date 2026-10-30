@@ -376,6 +376,8 @@ struct ChampionGone {};
 
 class Bot {
     bool initialised = false, walked = false, retreating = false, banking = false;
+    // The micro placed us this turn (worker_skirmish()): its tile is final.
+    bool placed = false;
     // Hit since our last turn, by anything, seen or not (a camp out of view,
     // an enemy in a bush), and where our last recall started.
     bool hit = false;
@@ -404,6 +406,10 @@ class Bot {
     // the damage taken over our last turn.
     float tribute_taken = 0, taken_last = 0;
     int tribute_turns = 0;
+    // The round worker_skirmish() last declined the fight in
+    // play_worker_turn(): nothing acts between that and the tribute's ask
+    // (worker_tribute()), so the answer stands without a second run.
+    int skirmish_declined = -1;
     // Walled off (camp bodies sealing the only route): turns of a walk that
     // made no step, and the group or altar left out until a round.
     int farm_stalls = 0, stuck_group = -1, stuck_group_until = -1;
@@ -765,7 +771,7 @@ class Bot {
     void observe_fight();
     void publish(unsigned claim);
     // The enemies' part left out with `include_enemies` false: the camps' alone.
-    float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true, bool include_enemies = true) const;
+    float incoming(vec2 tile, bool include_camps = true, bool include_enemies = true) const;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -801,9 +807,9 @@ class Bot {
     // our shield and slot readiness, or read here.
     float exit_pool(float shield, const std::array<bool, 2> &is_ready) const;
     float exit_pool() const;
-    // A step or landing onto a tile whose exit damage reaches our pool and
-    // is worse than here's: the micro refuses it. The pool and the damage
-    // here are read on first need.
+    // A step or landing onto a tile whose exit damage and bag margin reach
+    // our pool and are worse than here's: the micro refuses it. The pool and
+    // the damage here are read on first need.
     struct ExitCheck {
         const Bot &bot;
         float pool = -1, here = 0;
@@ -861,7 +867,7 @@ class Bot {
     // move_to()'s part: -1 to walk on, else whether it acted (walked to the
     // take-off or started the hop).
     int follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_dash, int engaged_group);
-    bool take_hop(int engaged_group);
+    bool take_hop();
     // step_tiles' tiles in reading order, listed into storage kept between
     // calls (positions() allocates a list on each): step_tiles must hold
     // tiles within our move speed on both axes, as a step's reach does.
@@ -876,16 +882,25 @@ class Bot {
     void retreat_to_spawn();
     // combat.cpp, micro.cpp
     bool combat(bool fighting_champions, int farm_group = -1, bool escaping = false);
-    float kill_value(const ObservedUnit &enemy) const;
-    // What our own death costs, as a kill of us is worth to them.
-    float death_cost() const { return 200 + float(gems) * 7 + strength * 3; }
-    // How much an enemy diving a teammate counts in our choices (1: no dive).
-    float peel_factor(const ObservedUnit &enemy) const;
+    // A kill, as XSquare's sage counts one: more than any damage this turn
+    // (all the health of the enemies in view), so the most kills come
+    // first and the most damage second.
+    float kill_value() const;
+    // A stun's worth (one round, the enemy's next turn skipped): the damage
+    // that turn would have dealt one of ours it reaches at most (capped at
+    // that one's health), and the window, our teammates still to act this
+    // round hitting it where it stands. stun_value() adds the two for an
+    // enemy left with `left` health: a kill when the window covers it.
+    float stun_prevented(const ObservedUnit &enemy) const;
+    float stun_follow_up(const ObservedUnit &enemy) const;
+    float stun_value(const ObservedUnit &enemy, float left) const;
+    // Our own death, the same: one kill, theirs; carrying gems, more than any
+    // kill of ours, as the killer takes the bag (a trade of our death for a
+    // kill, against Ren's retaliation, is even only with nothing carried).
+    float death_cost() const { return kill_value() * (gems > 0 ? 2.0f : 1.0f); }
     bool attack_combo(bool escaping);
-    bool attack_dash(vec2 victim);
     bool impact_dash(bool fighting_champions, int farm_group);
     bool advance_attack(vec2 victim, int stand = 0);
-    bool follow_through();
     // economy.cpp
     void buy_equipment();
     void refresh_equipment();

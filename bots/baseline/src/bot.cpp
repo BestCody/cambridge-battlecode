@@ -91,8 +91,8 @@ void Bot::record_life() {
     life.health = me.health();
     life.max_health = max_health;
     life.gems = gems;
-    life.enemy_threat = incoming(position, engaged, false);
-    life.camp_threat = incoming(position, engaged) - life.enemy_threat;
+    life.enemy_threat = incoming(position, false);
+    life.camp_threat = incoming(position) - life.enemy_threat;
     life.enemies_near = 0;
     life.nearest_enemy = -1;
     for (const auto &enemy : enemies) {
