@@ -262,7 +262,8 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     float heal = 0;
     for (const auto &e : enemies)
         heal = std::max(heal, e.healing_rate * heal_period);
-    const float ours = spell_dps(spells, strength, focus);
+    // With Heart of Ruin's passive, as the enemies' rates have it.
+    const float ours = spell_dps(spells, strength, focus) * damage_bonus();
     for (std::size_t j = 0; j < enemies.size(); ++j) {
         const auto &e = enemies[j];
         if (!(threats >> enemy_slot[j] & 1))

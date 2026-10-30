@@ -540,13 +540,15 @@ class Bot {
     // nearest unit to a camp.
     mutable std::vector<std::int32_t> unit_x, unit_y;
     mutable std::uint32_t unit_revision = 0;
-    // The enemies that can strike (not stunned), in order, packed for
-    // incoming() in lanes of four: tile, reach for a hit, for a melee lunge
-    // (one more; none for ranged) and for a spell, and what each adds. Padding
-    // reaches no tile.
+    // The enemies that can strike (not stunned through their turn, not
+    // teleporting), in order, packed for incoming() in lanes of four: tile,
+    // reach for a hit, for a step and a hit (a melee one, or a ranged one
+    // with a ready reset; -1 none), whether it is melee (-1) and for a
+    // spell; its hit, a ready reset's second hit and its ready burst.
+    // Padding reaches no tile.
     struct EnemyLanes {
-        std::vector<std::int32_t> x, y, reach, lunge, spell;
-        std::vector<float> strength, lunge_strength, half_burst;
+        std::vector<std::int32_t> x, y, reach, lunge, melee, spell;
+        std::vector<float> hit, reset, burst;
         std::size_t lanes = 0;
         std::uint32_t revision = 0;
     };
@@ -770,8 +772,7 @@ class Bot {
     int threat_target(std::size_t k) const;
     void observe_fight();
     void publish(unsigned claim);
-    // The enemies' part left out with `include_enemies` false: the camps' alone.
-    float incoming(vec2 tile, bool include_camps = true, bool include_enemies = true) const;
+    float incoming(vec2 tile, bool include_camps = true) const;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -951,6 +952,9 @@ class Bot {
     // The run's next member is open by the time we walk there from here.
     bool run_continues() const;
     float basic_damage() const;
+    // Our damage's factor from Heart of Ruin's passive (1 without it), as
+    // ObservedUnit applies it to theirs.
+    float damage_bonus() const;
     void track_enemy_respawns();
     bool camp_dormant(const ObservedUnit &c) const;
     int claimed_by(const ObservedUnit &ally) const;

@@ -313,13 +313,18 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     return acted || dashed;
 }
 
-float Bot::basic_damage() const {
-    // Our basic hit before the target's mitigation. Heart of Ruin's passive
-    // adds up to half again with missing health, which the strength reading
-    // leaves out (its hits matched strength x (1 + 0.5 x missing) exactly).
+float Bot::damage_bonus() const {
+    // Heart of Ruin's passive adds up to half again to all our damage with
+    // missing health, which the strength and focus readings leave out (its
+    // hits matched strength x (1 + 0.5 x missing) exactly).
     if (passive != bc::passive_type::missing_health_damage)
-        return strength;
-    return strength * hor_bonus(health, max_health);
+        return 1.0f;
+    return hor_bonus(health, max_health);
+}
+
+float Bot::basic_damage() const {
+    // Our basic hit before the target's mitigation.
+    return strength * damage_bonus();
 }
 
 float Bot::stun_prevented(const ObservedUnit &e) const {

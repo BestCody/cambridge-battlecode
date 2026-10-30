@@ -207,50 +207,6 @@ bool Bot::worker_skirmish() {
                 s.second += ours_list[k].power;
         return s;
     };
-    // The most a tile can take next turn, as XSquare's micro counts it: every
-    // enemy that can hit it does, on us. Left out only an enemy that cannot
-    // act (stunned through its turn, or teleporting: recall and tribute can
-    // be cancelled). One ability a turn, so on top of its hit an enemy adds
-    // a ready attack reset's second hit or a ready damage spell's burst,
-    // whichever is more. A melee enemy steps in and does all of it; a ranged
-    // one steps in only on a ready reset, which the walk then spends: one
-    // hit. The camps' part as incoming() finds it, our mitigation once.
-    struct Threat {
-        vec2 at;
-        int range, lunge, spell;
-        bool melee;
-        float hit, reset, burst;
-    };
-    std::array<Threat, 16> threats{};
-    std::size_t threat_count = 0;
-    for (const auto &e : enemies) {
-        const bool teleporting = e.channel && !e.recalling && !e.tributing;
-        if (e.health <= 0 || (e.stunned && e.stun_time > 0) || teleporting || threat_count == threats.size())
-            continue;
-        threats[threat_count++] = {e.position,
-                                   e.range,
-                                   e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1,
-                                   e.spell_reach,
-                                   e.range <= 1,
-                                   e.strength,
-                                   e.reset_ready ? e.strength : 0.0f,
-                                   e.spell_burst};
-    }
-    const auto most_taken = [&](vec2 tile) {
-        float damage = 0;
-        for (std::size_t k = 0; k < threat_count; ++k) {
-            const auto &t = threats[k];
-            const int d = distance(tile, t.at);
-            const float spell = d <= t.spell ? t.burst : 0.0f;
-            if (d <= t.range || (t.melee && d <= t.lunge))
-                damage += t.hit + std::max(t.reset, spell);
-            else if (d <= t.lunge)
-                damage += std::max(t.hit, spell);
-            else
-                damage += spell;
-        }
-        return damage * mitigation + incoming(tile, true, false);
-    };
     // The enemies a tile we reach can strike, once: alive, off their spawn,
     // within our longest reach of a tile a step takes us to.
     std::array<const ObservedUnit *, 16> near{};
@@ -391,7 +347,9 @@ bool Bot::worker_skirmish() {
         aims(position, true, struck_here);
     const auto score = [&](vec2 tile) {
         Score s;
-        s.taken = most_taken(tile);
+        // The most it can take next turn (incoming(): every enemy that can hit
+        // it does, one ability a turn; the camps; our mitigation).
+        s.taken = incoming(tile);
         if (strikes_first && tile != position) {
             s.kills = struck_here.kills;
             s.dealt = struck_here.dealt;
@@ -468,10 +426,11 @@ bool Bot::worker_skirmish() {
     }
     engaged = engaged || (here.strike && !nothing_ready);
     debug_block({
-        std::printf("MICRO r=%u id=%u type=%d engaged=%d here=%d/%d/%d stand=%d,%d %d/%d/%d taken=%.0f ours=%.0f\n",
+        std::printf("MICRO r=%u id=%u type=%d engaged=%d here=%d/%d/%d stand=%d,%d %d/%d/%d taken=%.0f ours=%.0f "
+                    "theirs=%.0f\n",
                     round, id(bc::self()), int(type), int(engaged), here.safety, here.kills, here.strike, stand.x,
                     stand.y, best_score.safety, best_score.kills, best_score.strike, best_score.taken,
-                    best_score.ours);
+                    best_score.ours, sides(stand).first);
     });
     if (!engaged)
         return false;

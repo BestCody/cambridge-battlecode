@@ -1537,70 +1537,71 @@ int Bot::mate_claim(unsigned s) const {
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
-float Bot::incoming(vec2 tile, bool include_camps, bool include_enemies) const {
+float Bot::incoming(vec2 tile, bool include_camps) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
         const std::size_t room = (enemies.size() + 3) & ~std::size_t{3};
         if (packed.x.size() < room) {
-            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.spell})
+            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.melee, &packed.spell})
                 lanes->resize(room);
-            for (auto *lanes : {&packed.strength, &packed.lunge_strength, &packed.half_burst})
+            for (auto *lanes : {&packed.hit, &packed.reset, &packed.burst})
                 lanes->resize(room);
         }
         std::size_t n = 0;
         for (const auto &e : enemies) {
-            // A stun whose timer has run out ends before the enemy acts.
-            if (e.health <= 0 || (e.stunned && e.stun_time > 0) || e.channel)
+            // A stun whose timer has run out ends before the enemy acts; a
+            // recall or tribute can be cancelled to strike, a teleport not.
+            const bool teleporting = e.channel && !e.recalling && !e.tributing;
+            if (e.health <= 0 || (e.stunned && e.stun_time > 0) || teleporting)
                 continue;
-            // A ready attack reset is a second hit where the first lands; a
-            // ranged champion may walk and still shoot once with it (the
-            // reset gives back the attack the walk took).
-            const float hits = e.reset_ready ? 2.0f : 1.0f;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
             packed.reach[n] = e.range;
             packed.lunge[n] = e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1;
+            packed.melee[n] = e.range <= 1 ? -1 : 0;
             packed.spell[n] = e.spell_reach;
-            packed.strength[n] = e.strength * hits;
-            packed.lunge_strength[n] = e.strength * (e.range <= 1 ? hits : 1.0f) * 0.85f;
-            packed.half_burst[n++] = e.spell_burst * 0.5f;
+            packed.hit[n] = e.strength;
+            packed.reset[n] = e.reset_ready ? e.strength : 0.0f;
+            packed.burst[n++] = e.spell_burst;
         }
         packed.lanes = (n + 3) & ~std::size_t{3};
         for (; n < packed.lanes; ++n) {
-            packed.x[n] = packed.y[n] = 0;
+            packed.x[n] = packed.y[n] = packed.melee[n] = 0;
             packed.reach[n] = packed.lunge[n] = packed.spell[n] = -1;
-            packed.strength[n] = packed.lunge_strength[n] = packed.half_burst[n] = 0;
+            packed.hit[n] = packed.reset[n] = packed.burst[n] = 0;
         }
     }
-    // Four enemies a step: what each adds by its reach (a hit, else a melee
-    // lunge; and a spell), then added one by one in their order, as a loop
-    // over them adds. One out of reach adds zero, which leaves the total as it
-    // is (never below zero).
+    // The most the tile can take from them next turn, as XSquare's micro
+    // counts it: every enemy that can hit it does, on us. One ability a
+    // turn, so on top of its hit an enemy adds a ready reset's second hit or
+    // its ready burst, whichever is more; a melee enemy steps in and does all
+    // of it; a ranged one steps in only on a ready reset, which the walk then
+    // spends (one hit, or its burst); out of reach, its burst where the spell
+    // reaches. It replaced a reset's two hits plus half a burst, and a 0.85
+    // step-in: the micro's own count had taken this rule. Four enemies a
+    // step, then added one by one in their order, as a loop over them adds;
+    // one out of reach adds zero (never below zero).
     float damage = 0;
-    if (include_enemies) {
-        const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y), none = wasm_f32x4_splat(0);
-        for (std::size_t k = 0; k < packed.lanes; k += 4) {
-            const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&packed.x[k]))),
-                                            wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&packed.y[k]))));
-            const v128_t hit = wasm_i32x4_le(d, wasm_v128_load(&packed.reach[k]));
-            const v128_t lunge = wasm_v128_andnot(wasm_i32x4_le(d, wasm_v128_load(&packed.lunge[k])), hit);
-            const v128_t spell = wasm_i32x4_le(d, wasm_v128_load(&packed.spell[k]));
-            if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(hit, lunge), spell)))
-                continue;
-            const v128_t strike = wasm_v128_bitselect(
-                wasm_v128_load(&packed.strength[k]),
-                wasm_v128_bitselect(wasm_v128_load(&packed.lunge_strength[k]), none, lunge), hit);
-            const v128_t cast = wasm_v128_bitselect(wasm_v128_load(&packed.half_burst[k]), none, spell);
-            damage += wasm_f32x4_extract_lane(strike, 0);
-            damage += wasm_f32x4_extract_lane(cast, 0);
-            damage += wasm_f32x4_extract_lane(strike, 1);
-            damage += wasm_f32x4_extract_lane(cast, 1);
-            damage += wasm_f32x4_extract_lane(strike, 2);
-            damage += wasm_f32x4_extract_lane(cast, 2);
-            damage += wasm_f32x4_extract_lane(strike, 3);
-            damage += wasm_f32x4_extract_lane(cast, 3);
-        }
+    const v128_t tx = wasm_i32x4_splat(tile.x), ty = wasm_i32x4_splat(tile.y), none = wasm_f32x4_splat(0);
+    for (std::size_t k = 0; k < packed.lanes; k += 4) {
+        const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(tx, wasm_v128_load(&packed.x[k]))),
+                                        wasm_i32x4_abs(wasm_i32x4_sub(ty, wasm_v128_load(&packed.y[k]))));
+        const v128_t near = wasm_i32x4_le(d, wasm_v128_load(&packed.lunge[k]));
+        const v128_t full = wasm_v128_or(wasm_i32x4_le(d, wasm_v128_load(&packed.reach[k])),
+                                         wasm_v128_and(near, wasm_v128_load(&packed.melee[k])));
+        const v128_t cast = wasm_i32x4_le(d, wasm_v128_load(&packed.spell[k]));
+        if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(full, near), cast)))
+            continue;
+        const v128_t hit = wasm_v128_load(&packed.hit[k]);
+        const v128_t spell = wasm_v128_bitselect(wasm_v128_load(&packed.burst[k]), none, cast);
+        const v128_t taken = wasm_v128_bitselect(
+            wasm_f32x4_add(hit, wasm_f32x4_max(wasm_v128_load(&packed.reset[k]), spell)),
+            wasm_v128_bitselect(wasm_f32x4_max(hit, spell), spell, near), full);
+        damage += wasm_f32x4_extract_lane(taken, 0);
+        damage += wasm_f32x4_extract_lane(taken, 1);
+        damage += wasm_f32x4_extract_lane(taken, 2);
+        damage += wasm_f32x4_extract_lane(taken, 3);
     }
     if (!include_camps)
         return damage * mitigation;
@@ -1891,9 +1892,12 @@ float Bot::own_power() const {
                 burst = std::max(burst, focus * s.modifier);
         }
     }
-    // None of our champions heals (our drafts have no healer).
-    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus), burst, 0,
-                      mitigation);
+    // Heart of Ruin's passive on our damage, as on an enemy's or a
+    // teammate's (ObservedUnit). None of our champions heals (our drafts
+    // have no healer).
+    const float bonus = damage_bonus();
+    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus) * bonus,
+                      burst * bonus, 0, mitigation);
 }
 
 float Bot::friendly_power(vec2 at) const {
