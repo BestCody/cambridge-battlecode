@@ -281,7 +281,7 @@ bool Bot::health_recovery_needed() const {
     // int's tanks leave camps at 15-20% of their health (golems and
     // monoliths ~10%), 1-2 rounds of the camps' damage past it; ours, home
     // at 35%, made twice the trips. Applied in fights too, the walk-out
-    // rule lost 7 games of 80 (vleave).
+    // rule lost (vleave).
     const float share = policy::retreat_health;
     // At a camp: every awake camp reaching us is of the group we clear (one
     // of another group striking us is no clear to stay for: our Vesper
@@ -308,7 +308,7 @@ bool Bot::health_recovery_needed() const {
         // The walk out, counted: the fewest steps to a tile no awake camp
         // reaches (around walls and other camps' reach). Counted from each
         // camp alone, it came short: champions left on the line and died
-        // walking out (12 camp deaths in 80 games, 2 before).
+        // walking out (12 camp deaths, 2 before).
         constexpr int far = 8;
         if (health <= per_round * float(far)) {
             static bc::bitboard reach, open, covered;

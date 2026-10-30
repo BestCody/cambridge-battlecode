@@ -182,8 +182,8 @@ inline constexpr int lock_range = 2;
 // Camp choice prices a clear longer than our health lasts as trips home, not
 // as the risk of dying (camps never regenerate, and a team's clear shares the
 // camps' hits); visit_risk caps the risk of each such visit. With no contest
-// factor on camps nearer the enemy, it won 48 of 80 head to head and 78 of 80
-// against db11 (75): monolith captures late in the game rose fivefold.
+// factor on camps nearer the enemy, it won head to head and against
+// db11: monolith captures late in the game rose fivefold.
 inline constexpr float visit_risk = 0.25f;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
