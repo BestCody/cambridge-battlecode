@@ -415,15 +415,15 @@ bool Bot::race(vec2 goal, int arrive, bool use_dash, float pool) {
     }
 }
 
-Bot::Chase::Mode Bot::chase_mode(bool retreat) {
-    // Breaking contact with a stronger group: run, unless the first round of
-    // the race to safety kills us (walking would only give the chasers free
-    // hits), and fight when we win the duel with the chasers. Decided
-    // once and kept: flipping between the two gets neither the distance nor
-    // the damage. Only what the decision did not foresee changes it: a new
-    // enemy joins, a chaser dies or is stunned, we are hit harder than the
-    // race or the duel foresaw, we reach the teammate we ran to, or,
-    // fighting, our dash comes back or nothing is left in our reach. The
+Bot::Chase::Mode Bot::chase_mode() {
+    // Retreating home under fire: run, unless the first round of the race
+    // to safety kills us (walking would only give the chasers free hits),
+    // and fight when we win the duel with the chasers. Decided once and
+    // kept: flipping between the two gets neither the distance nor the
+    // damage. Only what the decision did not foresee changes it: a new enemy
+    // joins, a chaser dies or is stunned, we are hit harder than the race or
+    // the duel foresaw, or, fighting, our dash comes back or nothing is left
+    // in our reach. The
     // chase itself ends when no enemy can reach us, a stun, death or a recall
     // (play_worker_turn()). A melee champion strikes as it walks, so it runs
     // unless it wins the duel. A turn decides once (the fight path can hand
@@ -459,11 +459,7 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
             keep = chase.pool - pool <= chase.foreseen[since - 1] + 1;
         }
     }
-    if (keep && chase.mode == Chase::run) {
-        for (std::size_t i = 0; i < allies.size(); ++i)
-            if (int(ally_slot[i]) == chase.mate && distance(position, allies[i].position) <= 2)
-                keep = false;
-    } else if (keep) {
+    if (keep && chase.mode == Chase::fight) {
         bool reach = false;
         for (const auto &e : enemies)
             reach = reach || (e.health > 0 && distance(position, e.position) <= range);
@@ -476,8 +472,6 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
         chase.decided = int(round);
         chase.chasers = in_view;
         chase.pool = pool;
-        chase.mate = -1;
-        chase.dash = false;
         chase.dash_ready = has_dash && own_dash(spells).wait == 0;
         // A fight is checked against the duel and a run against the race; a
         // melee champion's walk, and a stand when the run's first round
@@ -488,47 +482,18 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
             chase.mode = Chase::run;
             chase.foreseen.clear();
         } else {
-            // Safety is the nearest teammate in view further from the
-            // enemies than we are (on the fight path; a retreat heads home),
-            // else home.
-            const vec2 home = home_centre;
-            const auto exposure = [&](vec2 at) {
-                int nearest = std::numeric_limits<int>::max();
-                for (const auto &e : enemies)
-                    nearest = std::min(nearest, distance(at, e.position));
-                return nearest;
-            };
-            vec2 goal = home;
-            int arrive = -1;
-            if (!retreat) {
-                const int ours = exposure(position);
-                int best = std::numeric_limits<int>::max();
-                for (std::size_t i = 0; i < allies.size(); ++i) {
-                    const auto &a = allies[i];
-                    if (a.channel || exposure(a.position) <= ours)
-                        continue;
-                    if (const int d = distance(position, a.position); d < best) {
-                        best = d;
-                        goal = a.position;
-                        arrive = 2;
-                        chase.mate = int(ally_slot[i]);
-                    }
-                }
-            }
+            // A retreat heads home.
+            const vec2 goal = home_centre;
+            const int arrive = -1;
             // When no run ends alive against chasers that follow perfectly, we
             // still run, checked against the race (a chaser often breaks off:
             // standing and shooting traded one Willow down to death where
             // walking away lived), and stand only when the run's first round
             // kills us anyway.
-            if (race(goal, arrive, false, pool))
+            if (race(goal, arrive, false, pool) || (has_dash && race(goal, arrive, true, pool)) ||
+                chase.foreseen.size() > 1)
                 chase.mode = Chase::run;
-            else if (has_dash && race(goal, arrive, true, pool)) {
-                chase.mode = Chase::run;
-                chase.dash = true;
-            } else if (chase.foreseen.size() > 1) {
-                chase.mode = Chase::run;
-                chase.dash = has_dash;
-            } else {
+            else {
                 chase.mode = Chase::fight;
                 chase.foreseen.clear();
             }
@@ -536,26 +501,6 @@ Bot::Chase::Mode Bot::chase_mode(bool retreat) {
     }
     chase.kept = int(round);
     return chase.mode;
-}
-
-bool Bot::run_to_safety() {
-    // Toward the teammate the race ran to, else home, dashing only when the
-    // race needed it; spells that allow walking still go off. The step away
-    // (toward any teammate in the fight) is cheaper but is not the run the
-    // race checked: it lost 109 gems a game to v35 where this won 67.
-    bc::bitboard goals = own_spawn;
-    vec2 toward = home_centre;
-    for (std::size_t i = 0; i < allies.size(); ++i)
-        if (int(ally_slot[i]) == chase.mate) {
-            goals = around(allies[i].position, 2);
-            toward = allies[i].position;
-        }
-    strike_before_step();
-    if (!move_to(goals, toward, true, chase.dash))
-        return false;
-    observe_fight();
-    combat(true, -1, true);
-    return true;
 }
 
 void Bot::strike_before_step() {
@@ -575,43 +520,6 @@ void Bot::strike_before_step() {
     walked = true; // combat() then leaves spells that exclude walking.
     combat(true, -1, true);
     walked = stepped;
-}
-
-void Bot::avoid_reach() {
-    // Moves for the rest of this turn keep out of the reach of the stronger
-    // group in view: walking back in after stepping away kept a champion
-    // hovering at its edge until it was caught.
-    avoid_zone.clear();
-    const auto counted = [&](const ObservedUnit &e) {
-        return e.health > 0 && !e.channel && !enemy_spawn_tile[tile_index(e.position)];
-    };
-    for (const auto &e : enemies) {
-        if (!counted(e))
-            continue;
-        const int move = e.stunned && e.stun_time > 0 ? 0 : e.move_speed;
-        avoid_zone.draw_chebyshev(
-            e.position, float(std::max(e.range, e.spell_reach) + move + policy::worker_danger_margin));
-    }
-    avoid_zone.set(position, false);
-    // A step further from every enemy in view stays open: in a corner or a
-    // corridor the zone boxed champions in where a step away was free.
-    const auto exposure = [&](vec2 at) {
-        int nearest = std::numeric_limits<int>::max();
-        for (const auto &e : enemies)
-            if (counted(e))
-                nearest = std::min(nearest, distance(at, e.position));
-        return nearest;
-    };
-    const int here = exposure(position);
-    for (int dx = -1; dx <= 1; ++dx)
-        for (int dy = -1; dy <= 1; ++dy) {
-            const vec2 step{position.x + dx, position.y + dy};
-            if ((dx || dy) && step.x >= 0 && step.y >= 0 && step.x < map_width && step.y < map_height &&
-                exposure(step) > here)
-                avoid_zone.set(step, false);
-        }
-    avoid_round = int(round);
-    blocked |= avoid_zone;
 }
 
 vec2 Bot::step_away_tile() {

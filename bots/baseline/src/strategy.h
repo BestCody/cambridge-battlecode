@@ -22,23 +22,6 @@ namespace policy {
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
 inline constexpr float early_gold_value = 0.15f;
 inline constexpr float late_gold_value = 0.30f;
-// A fight is taken when our power times aggression reaches theirs; the squad a
-// reported fight takes is sized by the same ratio. willow best girl attacks
-// first in 76/60/55% of contacts where it is ahead/even/behind in numbers
-// (80/77/71% against v46). Ours at 1.8: 85/75/72%. 1.6 brought the rates
-// closer but moved kills per attack, Heart of Ruin's damage, Willow's
-// healing and its distance from enemies away from willow's, so 1.8 stays.
-inline constexpr float aggression = 1.8f;
-// A contact starts after this many rounds without an enemy champion in view;
-// a lone champion fights its first lone_opening rounds at aggression, then
-// at 1.0 (worker_skirmish).
-inline constexpr int contact_gap = 10;
-inline constexpr int lone_opening = 3;
-// After the opening, a champion with one teammate within 6 fights at this
-// aggression: our pairs died in 0.28-0.31 of their contacts (willow's
-// 0.11-0.16); at 1.4 0.22, our deaths 7.25 -> 5.25 a game and damage dealt /
-// taken 1.43 -> 1.63; at 1.0 the first-attack rate when even fell to 64%.
-inline constexpr float pair_aggression = 1.4f;
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
 inline constexpr float pursue_health = 0.6f;
@@ -79,10 +62,6 @@ inline constexpr int short_trip_rounds = 25;
 // ... and, healthy or far out, carrying an emblem's gold (five shards) to
 // spend: the trip home buys it.
 inline constexpr unsigned home_capture_gold = 150;
-// Heart of Ruin's fight test counts our side hor_fight_factor times:
-// willow best girl's, an enemy 3-4 tiles away, steps away in 20-26% of
-// those rounds and dashes onto it in 10-17% (ours 32-36% / 6%).
-inline constexpr float hor_fight_factor = 1.5f;
 // A retreat's recall counts enemies as chasing for this many of its turns:
 // willow best girl's back line completes recalls with an enemy 3-8 tiles
 // off (its Vesper 2.8 a game, ours 1.0 when we assumed a full chase).
@@ -146,10 +125,9 @@ inline constexpr int worker_danger_margin = 1;
 // times in three, one four rounds old one time in three, and kept while
 // updated (the old rule) four fifths of them were phantoms.
 inline constexpr int ghost_lifetime = 2;
-// Breaking contact with a stronger group: a champion an enemy can soon reach,
-// where the enemy outweighs us by more than aggression, steps away instead of
-// farming on, and the camps near those enemies are worth worker_sighting_penalty
-// of their value for worker_sighting_memory rounds. Without it lone champions
+// Outnumbered where it stands (worker_skirmish()'s tile classes), the camps
+// near those enemies are worth worker_sighting_penalty of their value for
+// worker_sighting_memory rounds. Without it lone champions
 // walked into a waiting group one at a time: half our ladder fights started
 // outnumbered.
 inline constexpr int worker_sighting_memory = 20;
@@ -228,9 +206,6 @@ inline constexpr float marcella_travel_hazard = 0.0f;
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
 inline constexpr float enemy_side_factor = 0.4f;
-// Behind in the gem race (behind_pressure()): how much more willing we are
-// to fight.
-inline constexpr float behind_fight_bonus = 0.2f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

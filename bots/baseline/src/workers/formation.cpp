@@ -59,7 +59,7 @@ float Bot::reported_power(vec2 at) const {
         if (asked > force && same_fight(TeamMemory::fight_group(code, groups.size()), at))
             force = asked;
     }
-    return force ? float(force) * policy::aggression * team_average_power() : 0.0f;
+    return force ? float(force) * team_average_power() : 0.0f;
 }
 
 bool Bot::worker_update_formation() {
@@ -92,10 +92,10 @@ bool Bot::worker_update_formation() {
                     reported_group = int(i);
                 }
             }
-            // The squad that beats what we see by the fight rule: its power
-            // times aggression reaches theirs.
+            // The squad that matches what we see: its power reaches theirs
+            // (as worker_skirmish() weighs a tile's sides, no factor).
             const unsigned bodies = std::max(1u, unsigned(roster.size()));
-            const float squad = enemy_power(at) / (policy::aggression * std::max(1.0f, team_average_power()));
+            const float squad = enemy_power(at) / std::max(1.0f, team_average_power());
             reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
         }
     }

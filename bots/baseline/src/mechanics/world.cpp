@@ -1537,7 +1537,7 @@ int Bot::mate_claim(unsigned s) const {
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
-float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
+float Bot::incoming(vec2 tile, int engaged_group, bool include_camps, bool include_enemies) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
@@ -1578,7 +1578,7 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
     // over them adds. One out of reach adds zero, which leaves the total as it
     // is (never below zero).
     float damage = 0;
-    {
+    if (include_enemies) {
         const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y), none = wasm_f32x4_splat(0);
         for (std::size_t k = 0; k < packed.lanes; k += 4) {
             const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&packed.x[k]))),

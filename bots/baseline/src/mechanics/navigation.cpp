@@ -167,8 +167,6 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         // Camp bodies can seal an entire corridor. Route through destructible
         // obstacles, then clear the next blocking group instead of idling.
         auto temporary = static_blocked | bc::vision::champion_tiles() | bc::vision::teleport_tiles();
-        if (avoid_round == int(round))
-            temporary |= avoid_zone;
         temporary.set(position, false);
         field.compute_to(temporary, goals & ~temporary, around(position, 0), visited);
         breaking_through = field.get(position) != bc::distance_field::unreachable;
@@ -400,7 +398,7 @@ void Bot::retreat_to_spawn() {
     // Caught by enemies we cannot outrun home: stand and fight from here (no
     // dash into the group) rather than take their hits for free; nothing to
     // strike, walk on.
-    if (!safe && chase_mode(true) == Chase::fight && combat(true, -1, range <= 1))
+    if (!safe && chase_mode() == Chase::fight && combat(true, -1, range <= 1))
         return;
     // around(...) & ~blocked & ~threatened, in place (no complement masks).
     auto safe_tiles = around(position, stats.vision_radius);

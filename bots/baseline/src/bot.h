@@ -380,8 +380,6 @@ class Bot {
     // an enemy in a bush), and where our last recall started.
     bool hit = false;
     vec2 recall_tile{-1, -1};
-    // This contact's first round and the last round with an enemy in view (worker_skirmish).
-    int contact_start = -100, contact_last = -100;
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.
@@ -493,10 +491,6 @@ class Bot {
     // operation): each is written in full or cleared before it is read.
     bc::bitboard ghost_keep{bc::uninitialized}, ghost_spread{bc::uninitialized};
     std::vector<vec2> ghost_tiles;
-    // The round avoid_reach() kept this turn's moves out of a stronger
-    // group's reach, and those tiles.
-    int avoid_round = -1;
-    bc::bitboard avoid_zone{bc::uninitialized};
     bc::bitboard camp_zone{bc::uninitialized};
     // Tiles a dash landing would strike a camp from (drop_waking_landings()).
     bc::bitboard dash_wake{bc::uninitialized};
@@ -511,9 +505,9 @@ class Bot {
     struct Chase {
         enum Mode { none, run, fight };
         Mode mode = none;
-        int decided = -1, kept = -1, mate = -1;
+        int decided = -1, kept = -1;
         std::uint32_t chasers = 0;
-        bool dash = false, dash_ready = false;
+        bool dash_ready = false;
         float pool = 0;
         std::vector<float> foreseen;
     } chase;
@@ -720,8 +714,6 @@ class Bot {
     void occupied_into(bc::bitboard &out, const bc::bitboard &terrain);
     void refresh_blocked() {
         occupied_into(blocked, static_blocked);
-        if (avoid_round == int(round))
-            blocked |= avoid_zone;
         if (camp_zone_round == int(round))
             blocked |= camp_zone;
     }
@@ -772,7 +764,8 @@ class Bot {
     int threat_target(std::size_t k) const;
     void observe_fight();
     void publish(unsigned claim);
-    float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
+    // The enemies' part left out with `include_enemies` false: the camps' alone.
+    float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true, bool include_enemies = true) const;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -955,10 +948,6 @@ class Bot {
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).
     bool confront_hidden();
-    // The fight rule: our power (ours: with the teammates that arrive) at the
-    // weight of who is near, against theirs (worker_skirmish(),
-    // confront_hidden()).
-    bool fight_favourable(float ours, float theirs, bool opening, bool dive) const;
     // Out of a fight too dangerous to stay in (worker_skirmish()).
     bool leave_fight(vec2 victim);
     // Reports the fight we see (true) or clears an old report.
@@ -992,13 +981,11 @@ class Bot {
     vec2 step_away_tile();
     // A melee champion's strike, from where it stands, before a step away.
     void strike_before_step();
-    // Run or fight while breaking contact with a stronger group.
-    Chase::Mode chase_mode(bool retreat);
+    // Run or fight while retreating home under fire.
+    Chase::Mode chase_mode();
     std::uint32_t threat_bits() const;
     bool duel_won(std::uint32_t threats, float pool);
     bool race(vec2 goal, int arrive, bool use_dash, float pool);
-    bool run_to_safety();
-    void avoid_reach();
 
     void take_turn();
 

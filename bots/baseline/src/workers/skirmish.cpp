@@ -1,5 +1,6 @@
 // Worker skirmish decisions against enemy champions.
 #include "../bot.h"
+#include <tuple>
 
 bool Bot::worker_skirmish() {
     profiling::Scope scope(profiling::Stage::skirmish);
@@ -48,13 +49,6 @@ bool Bot::worker_skirmish() {
     if (selected < 0)
         return false;
     const auto victim = enemies[selected];
-    // Each champion sees only its part of a fight: the enemy is as large as
-    // the teammate who sees the most of it reports.
-    float ours = friendly_power(victim.position),
-          theirs = std::max(enemy_power(victim.position), reported_power(victim.position));
-    // Price in imminent enemy respawns: a fight beside their base can be joined
-    // by a full-health body, so the effective enemy power must reflect it.
-    theirs += respawn_threat(position);
     float spell_burst = 0;
     for (unsigned i = 0; i < 2; ++i)
         if (is_ready[i]) {
@@ -81,18 +75,6 @@ bool Bot::worker_skirmish() {
     // has teammates behind it that punish an over-extend.
     bool nearly_dead = victim.health + victim.shield <= victim.max_health * 0.2f;
     bool finish = nearly_dead && victim.channel;
-    // A champion with no teammate within 6 fights the opening exchange of a
-    // contact at aggression and stays only while as strong as the enemy, one
-    // with a single teammate there at pair_aggression: willow best girl's
-    // lone champions hit in 34-78% of contacts and leave in 29-61% whatever
-    // the odds, dying in 0-6%; ours, staying at aggression up to 3 times
-    // their health against them, died in 10-32%.
-    if (int(round) - contact_last > policy::contact_gap)
-        contact_start = int(round);
-    contact_last = int(round);
-    const bool opening = int(round) - contact_start < policy::lone_opening;
-    const bool dive = peel_factor(victim) > 1;
-    bool favourable = fight_favourable(ours, theirs, opening, dive);
     // Too dangerous to stay, decided every round: our health and shields
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
@@ -116,164 +98,366 @@ bool Bot::worker_skirmish() {
                      pool > exit_damage(position, immune, victim.position).damage * mitigation;
     }
     debug_block({
-        std::printf("RISK r=%u id=%u type=%d hp=%.0f pool=%.0f exit=%.0f margin=%.0f gems=%u fav=%d kill=%d "
+        std::printf("RISK r=%u id=%u type=%d hp=%.0f pool=%.0f exit=%.0f margin=%.0f gems=%u kill=%d "
                     "finish=%d td=%d ovr=%d\n",
-                    round, id(bc::self()), int(type), health, pool, risk.damage, risk.margin, gems, int(favourable),
-                    int(kill), int(finish), int(too_dangerous), int(overridden));
+                    round, id(bc::self()), int(type), health, pool, risk.damage, risk.margin, gems, int(kill),
+                    int(finish), int(too_dangerous), int(overridden));
     });
     if (too_dangerous && !overridden)
         return leave_fight(victim.position);
-    if (!favourable && !kill && !finish) {
-        // Break contact with a stronger group that can soon reach us rather
-        // than walk into it alone: half our ladder fights started outnumbered.
-        if (worker_danger(position).first) {
-            worker_track_sightings(); // The camps by these enemies wait out the sighting.
-            // Fight from where we stand: no dash into the group, and a ranged
-            // champion shoots rather than walks.
-            if (chase_mode(false) == Chase::fight && combat(true, -1, range <= 1))
-                return true;
-            if (range <= 1) {
-                // A melee champion walks and strikes in one turn: strike, then
-                // step. A failed step keeps the camp, so the turn is not spent
-                // idle. Spells that exclude walking wait for the step.
-                const bool stepped = walked;
-                walked = true;
-                const bool struck = combat(true, -1, true);
-                walked = stepped;
-                const vec2 step = step_away_tile();
-                if (step != position && move_step(step)) {
-                    target = -1;
-                    return true;
-                }
-                if (struck)
-                    return true;
-            } else if (run_to_safety()) {
-                target = -1;
-                return true;
-            }
-        }
-        if (distance(position, victim.position) <= std::max(victim.range + 1, 4)) {
-            // Use a free ranged stun/poke on the way to the economic objective.
-            // Ranged and unmoved, a shot costs no walk: fire back. Kept from
-            // shooting there, our Prism stood beside a Vendetta for four
-            // rounds, its spells cooling, and died without striking.
-            // A melee champion's poke leaves spells that exclude walking: the
-            // farming walk that follows still goes.
-            const bool stepped = walked;
-            walked = walked || range <= 1;
-            combat(true, -1, !(range > 1 && !stepped));
-            walked = stepped;
-        }
-        // The farming and travel that follow keep out of the stronger group's
-        // reach.
-        avoid_reach();
-        return false;
-    }
-    int d = distance(position, victim.position);
-    // A dive on a teammate is ours to answer while the power at the diver's
-    // tile (the dived teammate there) is with us.
-    const bool peel = peel_factor(victim) > 1;
-    if (!favourable && d > range && !kill && !peel)
-        return false;
-    // A champion farming (it struck its camp in the last two rounds) farms
-    // on while the victim is beyond its reach: willow best girl's farmers,
-    // the nearest enemy 4-6 tiles away, keep hitting their camp in 49% of
-    // rounds and step toward it in 18-21% (12-15% at 7-8 tiles, walking
-    // between camps); ours kept farming in 36% and stepped closer in 28%,
-    // and our Willow, holding 4 tiles off with nothing to cast, stood idle
-    // in 27% of those rounds (willow's 4-11%). Farming's combat still heals
-    // and shoots what is in range.
-    // A capture's holder fights from its tiles: leaving them resets it.
+    // The fight, as XSquare's open Battlecode micro decides it (2022-2024
+    // winners'; most top teams ran a copy): no fight-or-flee rule and no
+    // aggression factor, but every tile we can end on, scored each turn
+    // from what is on the board, and the best taken. Their classes, tile by
+    // tile: 0 a losing spot (we would die there, or take more there next
+    // turn than we deal from it this turn, with our side no stronger than
+    // theirs: a turn's trade on both sides, the damage taken at its most), 1
+    // outnumbered (the enemies that can reach it next turn outweigh our
+    // side that can), 2 safe; then
+    // the most kills from it, then the most damage dealt from it (the damage taken only sets the
+    // class, as in XSquare's), then distance (the longest reach while we can strike, else closer to
+    // the victim chosen above: low health, gems, channelling, a dive on a
+    // teammate; closing on the nearest enemy instead took our kills per
+    // attack from 0.26 to 0.16), then the most of our side able to act
+    // there. The side count ranked
+    // before distance pulled a bystander toward an idle teammate and away
+    // from the fight it was joining (00lost-world r214-221: seven rounds
+    // 4-5 tiles from our Marcella dying 1v2). Nothing ready: every
+    // tile counts as striking, so the farthest within reach wins (they back
+    // off between shots). Sides are powers (health with damage), not counts: our
+    // champions run 1,000 to 3,800 health. A teammate counts where it can
+    // act, so a tile beside one in a fight is backed and the fight is
+    // joined: bystanders 2-7 tiles from a teammate dying 1v3 stepped away
+    // in all five of print dont int's ranked games we lost on replay.
+    auto &me = bc::self();
     const bool on_capture = target >= 0 && groups[target].status == CampGroup::capture &&
                             groups[target].tiles().is_set(position);
-    if (d > ready_reach && !kill && !peel && target >= 0 &&
-        (groups[target].attacked >= int(round) - 2 || on_capture))
-        return false;
-    auto &me = bc::self();
-    bool moved = false;
-    // A teammate within 3 covers us: alone, a ranged attacker keeps a melee
-    // enemy from walking in and striking (below).
-    bool covered = false;
+    const bool attack_ready = me.can_attack();
+    bool nothing_ready = !attack_ready;
+    for (unsigned i = 0; i < spells.size(); ++i)
+        if (is_ready[i] && (spells[i].kind == bc::ability_kind::attack_reset ||
+                            (spells[i].modifier > 0 && (spells[i].kind == bc::ability_kind::damage ||
+                                                        spells[i].kind == bc::ability_kind::cc ||
+                                                        spells[i].kind == bc::ability_kind::aoe_damage ||
+                                                        spells[i].kind == bc::ability_kind::dash))))
+            nothing_ready = false;
+    // Who can act on a tile by next turn: its attack or spell reach plus a
+    // move (none while a stun holds it).
+    const auto acts_on = [](const ObservedUnit &u, vec2 tile) {
+        const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
+        return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
+    };
+    const auto power_of = [&](const ObservedUnit &u, bool full) {
+        return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
+                          u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
+    };
+    // Each side's units once: enemies in view and out of sight (from their
+    // possible tile nearest us), at full health on their spawn, where they
+    // heal (enemy_power()); allies in view not channelling.
+    struct Side {
+        const ObservedUnit *unit;
+        float power;
+    };
+    std::array<Side, 16> theirs_list{}, ours_list{};
+    std::size_t their_count = 0, our_count = 0;
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &e : *list)
+            if (e.health > 0 && !e.channel && their_count < theirs_list.size())
+                theirs_list[their_count++] = {&e, power_of(e, enemy_spawn_tile[tile_index(e.position)])};
     for (const auto &a : allies)
-        covered = covered || (a.health > 0 && distance(position, a.position) <= 3);
-    // Below half health, a ranged attacker with an enemy beside it steps away
-    // rather than shoot: willow best girl's Vesper does in 59-74% of those
-    // rounds (3-15% at full health), ours in 33-57%, and ours stood beside
-    // enemies 21 rounds a game to willow's 5-11.
-    if (range > 1 && health < max_health * 0.5f && me.can_move() && !kill &&
-        std::any_of(enemies.begin(), enemies.end(), [&](const auto &e) {
-            return e.health > 0 && distance(position, e.position) <= 1;
-        })) {
-        const vec2 step = step_away_tile();
-        if (step != position && move_step(step)) {
-            observe_fight();
-            combat(true, -1, true); // A ready reset still shoots.
-            return true;
+        if (a.health > 0 && !a.channel && our_count < ours_list.size())
+            ours_list[our_count++] = {&a, power_of(a, false)};
+    const float own = own_power(), life = health + self_shield();
+    // Each ready spell's damage to a champion (reset: a second attack; dash:
+    // the engine's figure), read once.
+    const float basic = basic_damage();
+    std::array<float, 2> spell_hit{};
+    {
+        const auto kit = me.abilities();
+        for (unsigned i = 0; i < spells.size(); ++i) {
+            const auto &sp = spells[i];
+            if (!is_ready[i])
+                continue;
+            if (sp.kind == bc::ability_kind::attack_reset)
+                spell_hit[i] = basic;
+            else if (sp.modifier > 0 && (sp.kind == bc::ability_kind::damage || sp.kind == bc::ability_kind::cc ||
+                                         sp.kind == bc::ability_kind::aoe_damage))
+                spell_hit[i] = focus * sp.modifier;
+            else if (sp.modifier > 0 && sp.kind == bc::ability_kind::dash)
+                spell_hit[i] = kit[i].damage_amount();
         }
     }
-    // Alone, a ranged attacker steps back from a healthy melee enemy two
-    // tiles off, which would walk in and strike, and shoots once it is
-    // beside it: willow best girl's Vesper steps away at 2 tiles in 47-55%
-    // of those rounds (17-21% when the enemy is below half health; at 1
-    // tile 15-24%); ours in 30%.
-    if (range > 1 && !covered && me.can_move() && !kill) {
-        const ObservedUnit *closest = nullptr;
+    // The sides that can act on a tile by next turn: theirs, then ours (we
+    // count wherever we stand).
+    const auto sides = [&](vec2 tile) {
+        std::pair<float, float> s{0.0f, own};
+        for (std::size_t k = 0; k < their_count; ++k)
+            if (acts_on(*theirs_list[k].unit, tile))
+                s.first += theirs_list[k].power;
+        for (std::size_t k = 0; k < our_count; ++k)
+            if (acts_on(*ours_list[k].unit, tile))
+                s.second += ours_list[k].power;
+        return s;
+    };
+    // The most a tile can take next turn, as XSquare's micro counts it: every
+    // enemy that can hit it does, on us. Left out only an enemy that cannot
+    // act (stunned through its turn, or teleporting: recall and tribute can
+    // be cancelled). One ability a turn, so on top of its hit an enemy adds
+    // a ready attack reset's second hit or a ready damage spell's burst,
+    // whichever is more. A melee enemy steps in and does all of it; a ranged
+    // one steps in only on a ready reset, which the walk then spends: one
+    // hit. The camps' part as incoming() finds it, our mitigation once.
+    struct Threat {
+        vec2 at;
+        int range, lunge, spell;
+        bool melee;
+        float hit, reset, burst;
+    };
+    std::array<Threat, 16> threats{};
+    std::size_t threat_count = 0;
+    for (const auto &e : enemies) {
+        const bool teleporting = e.channel && !e.recalling && !e.tributing;
+        if (e.health <= 0 || (e.stunned && e.stun_time > 0) || teleporting || threat_count == threats.size())
+            continue;
+        threats[threat_count++] = {e.position,
+                                   e.range,
+                                   e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1,
+                                   e.spell_reach,
+                                   e.range <= 1,
+                                   e.strength,
+                                   e.reset_ready ? e.strength : 0.0f,
+                                   e.spell_burst};
+    }
+    const auto most_taken = [&](vec2 tile) {
+        float damage = 0;
+        for (std::size_t k = 0; k < threat_count; ++k) {
+            const auto &t = threats[k];
+            const int d = distance(tile, t.at);
+            const float spell = d <= t.spell ? t.burst : 0.0f;
+            if (d <= t.range || (t.melee && d <= t.lunge))
+                damage += t.hit + std::max(t.reset, spell);
+            else if (d <= t.lunge)
+                damage += std::max(t.hit, spell);
+            else
+                damage += spell;
+        }
+        return damage * mitigation + incoming(tile, -1, true, false);
+    };
+    // The enemies a tile we reach can strike, once: alive, off their spawn,
+    // within our longest reach of a tile a step takes us to.
+    std::array<const ObservedUnit *, 16> near{};
+    std::size_t near_count = 0;
+    {
+        int reach = range;
+        for (unsigned i = 0; i < spells.size(); ++i)
+            if (spell_hit[i] > 0)
+                reach = std::max(reach, int(spells[i].range + spells[i].radius));
+        reach += int(stats.base_move_speed);
+        for (const auto &e : enemies)
+            if (e.health > 0 && !enemy_spawn_tile[tile_index(e.position)] && near_count < near.size() &&
+                distance(position, e.position) <= reach)
+                near[near_count++] = &e;
+    }
+    // Then nearer our nearest teammate in view, before the distance to the
+    // enemy (XSquare's 2023 attacker: minDistToAlly between landing a hit
+    // and the distance to the enemy).
+    struct Score {
+        int safety = 0, kills = 0, strike = 0;
+        float dealt = 0, taken = 0, ours = 0;
+        int ally = 0, reach = 0;
+        bool operator>(const Score &o) const {
+            return std::tie(safety, kills, dealt, ally, reach, ours) >
+                   std::tie(o.safety, o.kills, o.dealt, o.ally, o.reach, o.ours);
+        }
+    };
+    // What we deal from a tile this turn, as XSquare's sage scores one: the
+    // most kills, then the most damage (each enemy's at most its health), of
+    // every way to aim the ready attack (one enemy in range) and one ready
+    // spell (a reset's second hit or a spell on one enemy, an area on every
+    // enemy in its radius; one that excludes walking only where we stand).
+    // A tile was a yes or no before: an area hit on two counted as on one,
+    // and a kill as any strike once one tile had one.
+    // A ranged champion walks or attacks, not both (a ready reset gives the
+    // attack back after the walk: its one hit); the micro had counted its
+    // attack from every tile it walks to.
+    std::array<float, 16> hurt{};
+    const auto aims = [&](vec2 tile, Score &s) {
+        const bool attacks = attack_ready && (range <= 1 || tile == position);
+        const auto tally = [&]() {
+            for (int basic_on = -1; basic_on < int(near_count); ++basic_on) {
+                if (basic_on >= 0 && (!attacks || distance(tile, near[basic_on]->position) > range))
+                    continue;
+                int kills = 0;
+                float dealt = 0;
+                for (std::size_t k = 0; k < near_count; ++k) {
+                    const auto &e = *near[k];
+                    const float life_k = e.health + e.shield;
+                    const float d = hurt[k] + (int(k) == basic_on ? basic * e.mitigation : 0.0f);
+                    kills += d > 0 && d >= life_k;
+                    dealt += std::min(d, life_k);
+                }
+                if (std::tie(kills, dealt) > std::tie(s.kills, s.dealt)) {
+                    s.kills = kills;
+                    s.dealt = dealt;
+                }
+            }
+        };
+        hurt.fill(0.0f);
+        tally();
+        for (unsigned i = 0; i < spells.size(); ++i) {
+            const auto &sp = spells[i];
+            if (spell_hit[i] <= 0 || (sp.exclusive && tile != position))
+                continue;
+            if (sp.kind == bc::ability_kind::aoe_damage) {
+                const int radius = int(sp.radius);
+                for (std::size_t k = 0; k < near_count; ++k) {
+                    if (distance(tile, near[k]->position) > sp.range + sp.radius)
+                        continue;
+                    for (int dx = -radius; dx <= radius; ++dx)
+                        for (int dy = -radius; dy <= radius; ++dy) {
+                            const vec2 centre{near[k]->position.x + dx, near[k]->position.y + dy};
+                            if (distance(tile, centre) > sp.range || !bc::map::is_in_bounds(centre) ||
+                                no_centre_tile[tile_index(centre)])
+                                continue;
+                            for (std::size_t j = 0; j < near_count; ++j)
+                                hurt[j] = distance(centre, near[j]->position) <= radius
+                                              ? spell_hit[i] * near[j]->mitigation
+                                              : 0.0f;
+                            tally();
+                        }
+                }
+                continue;
+            }
+            const float reach = sp.kind == bc::ability_kind::attack_reset ? float(range) : sp.range + sp.radius;
+            for (std::size_t k = 0; k < near_count; ++k) {
+                if (float(distance(tile, near[k]->position)) > reach)
+                    continue;
+                hurt.fill(0.0f);
+                hurt[k] = spell_hit[i] * near[k]->mitigation;
+                tally();
+            }
+        }
+    };
+    const auto score = [&](vec2 tile) {
+        Score s;
+        s.taken = most_taken(tile);
+        aims(tile, s);
+        const float dealt = s.dealt;
         int nearest = std::numeric_limits<int>::max();
         for (const auto &e : enemies)
-            if (e.health > 0 && distance(position, e.position) < nearest) {
-                nearest = distance(position, e.position);
-                closest = &e;
-            }
-        if (closest && nearest == 2 && closest->range <= 1 && closest->health >= closest->max_health * 0.5f) {
-            const vec2 step = step_away_tile();
-            if (step != position && move_step(step)) {
-                observe_fight();
-                combat(true, -1, true); // A ready reset still shoots.
-                return true;
+            if (e.health > 0)
+                nearest = std::min(nearest, distance(tile, e.position));
+        s.strike = nothing_ready || dealt > 0;
+        if (our_count > 0) {
+            int mate = std::numeric_limits<int>::max();
+            for (std::size_t k = 0; k < our_count; ++k)
+                mate = std::min(mate, distance(tile, ours_list[k].unit->position));
+            s.ally = -mate;
+        }
+        const auto [theirs, ours] = sides(tile);
+        s.ours = ours;
+        if (s.taken >= life || (s.taken > dealt && s.ours <= theirs))
+            s.safety = 0;
+        else if (theirs > s.ours)
+            s.safety = 1;
+        else
+            s.safety = 2;
+        // The longest reach from the nearest enemy while we strike from it,
+        // else closer to the victim.
+        s.reach = s.strike ? (nearest == std::numeric_limits<int>::max() ? 0 : nearest)
+                           : -distance(tile, victim.position);
+        return s;
+    };
+    // The fight is ours to play when an enemy in view can act on our tile,
+    // we can strike one from a tile we reach, one can act on a teammate in
+    // view (the bystander joins), or we outweigh the sides on its tile (the
+    // chase: its tile is safe for us, so the tiles toward it are); otherwise
+    // farming and travel go on. Ghosts weigh on the tiles but start no
+    // fight. Without the chase a wounded enemy walked off while we farmed
+    // and the teammate that followed it fought alone (00collision, r53-83).
+    bool engaged = false;
+    for (const auto &e : enemies) {
+        if (engaged)
+            break;
+        if (e.health <= 0 || e.channel || enemy_spawn_tile[tile_index(e.position)])
+            continue;
+        engaged = acts_on(e, position);
+        for (std::size_t j = 0; j < our_count && !engaged; ++j)
+            engaged = acts_on(e, ours_list[j].unit->position);
+        if (!engaged) {
+            const auto [theirs, ours] = sides(e.position);
+            engaged = ours > theirs;
+        }
+    }
+    vec2 stand = position;
+    Score best_score = score(position);
+    const Score here = best_score;
+    if (!on_capture && me.can_move()) {
+        blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
+        for (const vec2 tile : step_positions()) {
+            if (tile == position)
+                continue;
+            const Score s = score(tile);
+            engaged = engaged || (s.strike && !nothing_ready);
+            if (s > best_score) {
+                best_score = s;
+                stand = tile;
             }
         }
     }
-    if (range <= 1 && d > range) {
-        // Deliver available spell burst before a walk would consume the cast.
-        // The combo evaluator still chooses a basic/reset when already in range.
-        if (d <= ready_reach && combat(true))
-            return true;
-        if (!on_capture) {
-            moved = attack_dash(victim.position);
-            moved = advance_attack(victim.position) || moved;
-        }
-        if (moved)
-            observe_fight();
-    } else if (range > 1 && d > range) {
-        if (d <= ready_reach && combat(true))
-            return true;
-        // No walk in on a healthy victim: willow best girl's Vesper, 4 tiles
-        // from an enemy, steps closer in 35% of rounds (ours 52%): to a
-        // healthy one 27-36% (ours 39-56%), to a hurt one 50-63%.
-        if (!kill && victim.health >= victim.max_health * 0.5f)
-            return false;
-        if (!on_capture) {
-            moved = attack_dash(victim.position);
-            moved = advance_attack(victim.position) || moved;
-        }
-        if (moved)
+    engaged = engaged || (here.strike && !nothing_ready);
+    debug_block({
+        std::printf("MICRO r=%u id=%u type=%d engaged=%d here=%d/%d/%d stand=%d,%d %d/%d/%d taken=%.0f ours=%.0f\n",
+                    round, id(bc::self()), int(type), int(engaged), here.safety, here.kills, here.strike, stand.x,
+                    stand.y, best_score.safety, best_score.kills, best_score.strike, best_score.taken,
+                    best_score.ours);
+    });
+    if (!engaged)
+        return false;
+    // Outnumbered where we stand: the camps by these enemies wait out the
+    // sighting (camp choice).
+    if (here.safety < 2)
+        worker_track_sightings();
+    // No safe tile within a step and no kill: a group's reach and move cover
+    // every tile one step takes us to, so the step cannot leave it; the
+    // retreat (a step out of reach, else the escape home) takes over. Held
+    // to the best tile, our champion alone beside an enemy Heart of Ruin with
+    // four more coming struck from tiles of class 1 for four rounds and died
+    // (00lost-world r223-229).
+    if (best_score.safety < 2 && !best_score.kills && !kill && !finish)
+        return leave_fight(victim.position);
+    // A champion farming (it struck its camp in the last two rounds) farms
+    // on from a safe tile while no enemy is in its strike: willow best
+    // girl's farmers, the nearest enemy 4-6 tiles away, keep hitting their
+    // camp in 49% of rounds. Held by the micro instead, ours stopped
+    // clearing as soon as an enemy came near (captures by r300 8.8 to 7.5;
+    // 65% of the micro's turns had no strike from any tile in reach).
+    if (here.safety == 2 && !(here.strike && !nothing_ready) && target >= 0 &&
+        groups[target].attacked >= int(round) - 2)
+        return false;
+    if (stand != position) {
+        // A melee champion walks and strikes in one turn: it strikes what
+        // reaches it first, then steps (spells that exclude walking wait).
+        strike_before_step();
+        if (move_step(stand))
             observe_fight();
     }
     bool acted = combat(true);
+    // Holding with no champion to strike: a camp of our group in reach
+    // still is (farming's combat).
+    if (!acted && target >= 0 && me.is_alive())
+        acted = combat(false, target);
     if (acted && me.is_alive() && range <= 1 && me.can_move() && !on_capture)
-        moved = follow_through() || moved;
+        follow_through();
     // A kill can refresh cooldowns (Vendetta), and the follow-through can bring
     // the next enemy into reach: act again with what is left of the turn.
-    // Vendetta's damage to champions rose by a sixth.
     if (acted && me.is_alive() && range <= 1 && (me.can_attack() || me.can_cast())) {
         observe_fight();
         combat(true);
     }
-    // Melee retains movement after attacking. Chase after a kill and reposition
-    // out of splash clumps; ranged champions cannot walk after ordinary attacks.
-    if (!acted && !moved && me.can_move() && !on_capture)
-        moved = advance_attack(victim.position);
-    return acted || moved;
+    // The fight holds the turn: a tile held is the micro's choice, not
+    // farming's to walk off.
+    return true;
 }
 
 bool Bot::confront_hidden() {
@@ -357,9 +541,10 @@ bool Bot::confront_hidden() {
     };
     if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
         return out();
-    // The fight rule worker_skirmish() decides by (no opening or dive here).
+    // Our side against theirs at the bush, no factor (as worker_skirmish()
+    // weighs a tile's sides).
     const float theirs = std::max(enemy_power(at), reported_power(at)) + respawn_threat(position);
-    if (!fight_favourable(friendly_power(at), theirs, false, false))
+    if (friendly_power(at) < theirs)
         return out();
     // The unseen bush tile within a step nearest it that we would walk out
     // of alive.
@@ -423,27 +608,4 @@ bool Bot::worker_pursue() {
     if (runner.health > runner.max_health * policy::pursue_health * (1.0f + 0.5f * behind))
         return false;
     return advance_attack(runner.position);
-}
-
-bool Bot::fight_favourable(float ours, float theirs, bool opening, bool dive) const {
-    // A champion with no teammate within 6 fights the opening exchange of a
-    // contact at aggression and stays only while as strong as the enemy, one
-    // with a single teammate there at pair_aggression: willow best girl's
-    // lone champions hit in 34-78% of contacts and leave in 29-61% whatever
-    // the odds, dying in 0-6%; ours, staying at aggression up to 3 times
-    // their health against them, died in 10-32%.
-    int mates = 0;
-    for (const auto &a : allies)
-        mates += distance(position, a.position) <= 6;
-    const float stay = mates == 0 ? 1.0f : (mates == 1 ? policy::pair_aggression : policy::aggression);
-    // Alone after the opening, our own power against theirs: teammates that
-    // might arrive kept ours in fights against two or more until they died
-    // (13% of healthy lone contacts, willow best girl's 4-5%; its champions
-    // trade the opening and are out of reach by round 5 in half of them).
-    const float holding = mates == 0 && !opening && !dive ? own_power() : ours;
-    // Heart of Ruin stays in (policy::hor_fight_factor).
-    const float tank = type == bc::champion_type::heart_of_ruin ? policy::hor_fight_factor : 1.0f;
-    return holding * (opening || dive ? policy::aggression : stay) * tank *
-               (1.0f + policy::behind_fight_bonus * behind_pressure()) >=
-           theirs;
 }
