@@ -65,7 +65,9 @@ bool Bot::worker_skirmish() {
                 // The engine's damage for it, with Heart of Ruin's passive.
                 spell_burst = std::max(spell_burst, abilities[i].damage_amount());
         }
-    float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
+    const float burst = spell_burst +
+                        (bc::self().can_attack() && distance(position, victim.position) <= range ? basic_damage()
+                                                                                                  : 0.0f);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
     // A channelling victim (recalling or banking: not fighting back) our hit
     // and our teammates' still to come this round would finish holds us
@@ -78,7 +80,7 @@ bool Bot::worker_skirmish() {
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
     // full and their cooldowns read) plus a margin for our bag (a round of
-    // their hits per exit_bag_gems gems). The power test counts burst at a fifth
+    // their hits per prism_bag gems). The power test counts burst at a fifth
     // and the fixed retreat at 35% health came after it landed: one enemy
     // Marcella's spell took ours from 1226 to 307 in a round, 22 of our 72
     // deaths against one ladder team went from near-full health to dead in
