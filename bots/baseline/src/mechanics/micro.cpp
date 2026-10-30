@@ -986,6 +986,7 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         const std::uint32_t count = search_goals.positions_into(dash_landings);
         vec2 best{-1, -1};
         float best_score = 0;
+        int best_safety = -1;
         Bot::ExitCheck exits{*this};
         for (std::uint32_t k = 0; k < count; ++k) {
             const vec2 tile = dash_landings[k];
@@ -1003,15 +1004,20 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                     score += hit.extra;
                 twin_counted |= hit.twin;
             }
-            if (!hits || !(score > best_score))
-                continue; // Danger only lowers the score: this landing cannot win.
+            if (!hits)
+                continue;
             // A bruiser wants to be in the fight; only refuse a landing it
-            // would not survive, this round or before it could leave.
+            // would not survive, this round or before it could leave. Then,
+            // as the micro ranks a tile, a safe one (our side on it no weaker
+            // than theirs, sides_at()) before an outnumbered one, then what
+            // it hits (it was what it hits less 0.2 of the damage there).
             const float danger = incoming(tile);
             if (danger >= health && danger > incoming(position))
                 continue;
-            score -= danger * 0.2f;
-            if (score > best_score && !exits.lethal(tile)) {
+            const auto [theirs, ours] = sides_at(tile);
+            const int safety = theirs > ours ? 1 : 2;
+            if (std::tie(safety, score) > std::tie(best_safety, best_score) && !exits.lethal(tile)) {
+                best_safety = safety;
                 best_score = score;
                 best = tile;
             }

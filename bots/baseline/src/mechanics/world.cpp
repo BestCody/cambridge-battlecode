@@ -438,12 +438,10 @@ void Bot::initialise() {
     enemy_roster = bc::champions(bc::team::enemy);
     std::sort(enemy_roster.begin(), enemy_roster.end(),
               [](const auto &a, const auto &b) { return id(a) < id(b); });
-    // Their types are public without vision: the enemies' average is theirs
-    // (it was our own roster's).
-    float enemy_power_sum = 0;
+    // Their types are public without vision.
+    enemy_design_power.clear();
     for (const auto &e : enemy_roster)
-        enemy_power_sum += design_power(e.champion_name());
-    enemy_average_power = enemy_roster.empty() ? 0.0f : enemy_power_sum / float(enemy_roster.size());
+        enemy_design_power.push_back(design_power(e.champion_name()));
     enemy_respawn.assign(enemy_roster.size(), -1);
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
@@ -1974,20 +1972,28 @@ std::pair<float, float> Bot::sides_at(vec2 tile) const {
 }
 
 float Bot::respawn_threat(vec2 at) const {
-    if (enemy_respawn.empty() || enemy_average_power <= 0)
-        return 0;
-    int spawn_dist = 100000;
+    // A dead enemy back by next round that can act on the tile from its
+    // spawn by its next turn (its attack or damaging spell reach and a
+    // move, as acts_on() counts one), at its design's full health. It was
+    // every body back within 5 rounds, within 9 tiles of their spawn, cut
+    // by a tenth a tile.
+    int spawn_dist = std::numeric_limits<int>::max();
     for (auto p : enemy_spawn_tiles)
         spawn_dist = std::min(spawn_dist, distance(at, p));
-    if (spawn_dist > 9)
-        return 0; // Too far from their base for a fresh body to reach the fight.
-    float bodies = 0;
-    for (std::size_t i = 0; i < enemy_respawn.size(); ++i)
-        if (enemy_respawn[i] >= 0 && enemy_respawn[i] - int(round) <= 5)
-            bodies += 1;
-    if (bodies <= 0)
-        return 0;
-    // A respawn is a full-health body arriving from their spawn; discount it by
-    // how far away the fight is so a gank beside the base is priced correctly.
-    return bodies * enemy_average_power * (1.0f - float(spawn_dist) / 10.0f);
+    float p = 0;
+    for (std::size_t i = 0; i < enemy_respawn.size() && i < enemy_roster.size(); ++i) {
+        if (enemy_respawn[i] < 0 || enemy_respawn[i] - int(round) > 1)
+            continue;
+        const auto &c = enemy_roster[i];
+        const auto &kit = kit_of(c, c.champion_name());
+        int far = int(c.base_stats().base_attack_range);
+        for (const auto &spell : kit.spells)
+            if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
+                spell.kind == bc::ability_kind::aoe_damage ||
+                (spell.kind == bc::ability_kind::dash && spell.modifier > 0))
+                far = std::max(far, int(spell.range + spell.radius));
+        if (spawn_dist <= far + kit.move_speed)
+            p += enemy_design_power[i];
+    }
+    return p;
 }

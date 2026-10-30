@@ -547,7 +547,10 @@ bool Bot::confront_hidden() {
         debug_block({ std::printf("HIDDENACT r=%u id=%u out=%d\n", round, id(bc::self()), int(stepped)); });
         return stepped;
     };
-    if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
+    // A melee champion only: the step onto the bush shows the whole bush.
+    // Whether it lives through it is the walk-out test below (it was also
+    // 80% of its health or more).
+    if (range > 1 || !me.can_move())
         return out();
     // Our side against theirs at the bush, as the micro weighs a tile
     // (sides_at()), with teammates' reports and a respawn on the way.
