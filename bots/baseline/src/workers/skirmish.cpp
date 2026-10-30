@@ -67,14 +67,13 @@ bool Bot::worker_skirmish() {
         }
     float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
-    // A sliver of enemy health is a kill we can secure next turn. Finishing
-    // removes their damage and any carried gems, so do not recall out of a
-    // winning duel because the one-turn health math looks unfavourable. Only
-    // chase a *channeling* sliver (recalling/depositing): interrupting it is
-    // high-value and it is not fighting back, whereas a sliver still trading
-    // has teammates behind it that punish an over-extend.
-    bool nearly_dead = victim.health + victim.shield <= victim.max_health * 0.2f;
-    bool finish = nearly_dead && victim.channel;
+    // A channelling victim (recalling or banking: not fighting back) our hit
+    // and our teammates' still to come this round would finish holds us
+    // (the window, as stun_follow_up() counts it); one still trading has
+    // teammates behind it that punish an over-extend. It was any channelling
+    // victim under 20% of its health.
+    const bool finish = victim.channel &&
+                        victim.health + victim.shield <= burst * victim.mitigation + stun_follow_up(victim);
     // Too dangerous to stay, decided every round: our health and shields
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
@@ -141,19 +140,7 @@ bool Bot::worker_skirmish() {
                                                         spells[i].kind == bc::ability_kind::aoe_damage ||
                                                         spells[i].kind == bc::ability_kind::dash))))
             nothing_ready = false;
-    // Who can act on a tile by next turn: its attack or spell reach plus a
-    // move (none while a stun holds it).
-    const auto acts_on = [](const ObservedUnit &u, vec2 tile) {
-        const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
-        return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
-    };
-    const auto power_of = [&](const ObservedUnit &u, bool full) {
-        return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
-                          u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
-    };
-    // Each side's units once: enemies in view and out of sight (from their
-    // possible tile nearest us), at full health on their spawn, where they
-    // heal (enemy_power()); allies in view not channelling.
+    // Each side's units once, as sides_at() counts them, for every tile.
     struct Side {
         const ObservedUnit *unit;
         float power;
@@ -163,10 +150,10 @@ bool Bot::worker_skirmish() {
     for (const auto *list : {&enemies, &ghosts})
         for (const auto &e : *list)
             if (e.health > 0 && !e.channel && their_count < theirs_list.size())
-                theirs_list[their_count++] = {&e, power_of(e, enemy_spawn_tile[tile_index(e.position)])};
+                theirs_list[their_count++] = {&e, unit_power_of(e, enemy_spawn_tile[tile_index(e.position)])};
     for (const auto &a : allies)
         if (a.health > 0 && !a.channel && our_count < ours_list.size())
-            ours_list[our_count++] = {&a, power_of(a, false)};
+            ours_list[our_count++] = {&a, unit_power_of(a, false)};
     const float own = own_power(), life = health + self_shield();
     // Each ready spell's damage to a champion (reset: a second attack; dash:
     // the engine's figure), read once, and whether its hit stuns, as the
@@ -562,10 +549,10 @@ bool Bot::confront_hidden() {
     };
     if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
         return out();
-    // Our side against theirs at the bush, no factor (as worker_skirmish()
-    // weighs a tile's sides).
-    const float theirs = std::max(enemy_power(at), reported_power(at)) + respawn_threat(position);
-    if (friendly_power(at) < theirs)
+    // Our side against theirs at the bush, as the micro weighs a tile
+    // (sides_at()), with teammates' reports and a respawn on the way.
+    const auto [theirs_at, ours_at] = sides_at(at);
+    if (ours_at < std::max(theirs_at, reported_power(at)) + respawn_threat(position))
         return out();
     // The unseen bush tile within a step nearest it that we would walk out
     // of alive.

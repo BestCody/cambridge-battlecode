@@ -1655,7 +1655,7 @@ const Bot::ExitLanes &Bot::exit_packed() const {
         }
         packed.most = packed.hits = 0;
         std::size_t n = 0;
-        // Ghosts, as enemy_power() counts them; an unseen enemy's cooldowns
+        // Ghosts, as sides_at() counts them; an unseen enemy's cooldowns
         // are unknown, so its slots and dash count as ready. One on its spawn
         // strikes from there.
         for (const auto *list : {&enemies, &ghosts})
@@ -1900,41 +1900,6 @@ float Bot::own_power() const {
                       burst * bonus, 0, mitigation);
 }
 
-float Bot::friendly_power(vec2 at) const {
-    float p = own_power();
-    // Allies count if they can join before we fall (our health over the
-    // damage we take), and not while their reports put them in another fight.
-    const float taking = incoming(position);
-    const float lasting = taking > 0 ? health / taking : std::numeric_limits<float>::max();
-    for (std::size_t i = 0; i < allies.size(); ++i) {
-        const auto &a = allies[i];
-        int arrival = std::max(0, distance(at, a.position) - std::max(a.range, a.spell_reach));
-        // A stunned ally still counts (a stun costs it one action), without
-        // its burst while the stun has time left.
-        if (float(arrival) > lasting || a.channel)
-            continue;
-        const int fight = TeamMemory::fight_group(shared.get(ally_slot[i]), groups.size());
-        if (fight >= 0 && !same_fight(fight, at))
-            continue;
-        const float ally_burst = a.stunned && a.stun_time > 0 ? 0.0f : a.burst;
-        p += unit_power(a.health + a.shield + a.ready_shield, a.damage_rate, ally_burst, a.healing_rate,
-                        a.mitigation) *
-             0.9f / (1 + arrival * 0.4f);
-    }
-    // Teammates out of our sight under attack in this fight are in it, at
-    // their starting kit.
-    const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
-    for (unsigned s = 0; s < count; ++s) {
-        if (s == slot || (seen_slots >> s & 1) || !shared.attacked(s))
-            continue;
-        const unsigned code = shared.get(s);
-        if (TeamMemory::requested_force(code, groups.size()) &&
-            same_fight(TeamMemory::fight_group(code, groups.size()), at) && roster[s].is_alive())
-            p += roster_power[s] * 0.9f;
-    }
-    return p;
-}
-
 void Bot::track_enemy_respawns() {
     // Enemy death timers across turns, so an engagement beside their spawn can
     // price in a fresh body arriving at full strength. Needs no vision.
@@ -1986,40 +1951,26 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
            (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)]));
 }
 
-float Bot::enemy_power(vec2 at) const {
-    // Only enemies that can fight: not channelling, as friendly_power leaves
-    // out channelling allies. A stunned one counts without its burst (a stun
-    // costs it one action). Enemies out of sight count from their possible
-    // tile nearest us. One on its spawn fights from there and heals to full
-    // at the end of each of its turns there (docs/GameRules.md): it counts at
-    // full health, and as we do not strike it there, it reflects nothing.
-    // Left out, fights at their spawn's edge looked winnable: on
-    // 02treasure_box against DICTATOR_Sahur 9 of our 11 deaths began within 2
-    // tiles of their spawn, and 36% of their damage to our champions came
-    // from spawn tiles.
-    float p = 0;
+bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
+    const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
+    return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
+}
+
+float Bot::unit_power_of(const ObservedUnit &u, bool full) const {
+    return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
+                      u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
+}
+
+std::pair<float, float> Bot::sides_at(vec2 tile) const {
+    std::pair<float, float> s{0.0f, own_power()};
     for (const auto *list : {&enemies, &ghosts})
-        for (const auto &e : *list) {
-            if (e.channel)
-                continue;
-            int arrival = std::max(0, distance(at, e.position) - std::max(e.range, e.spell_reach));
-            if (arrival > 6)
-                continue;
-            const bool on_spawn = enemy_spawn_tile[tile_index(e.position)];
-            // Focus fire also multiplies a retaliator's damage: each attacker
-            // pays for its own hit, including the hit that kills the target.
-            float reflected = on_spawn ? 0.0f : e.retaliation();
-            if (reflected > 0)
-                for (const auto &a : allies)
-                    if (!a.stunned && !a.channel &&
-                        distance(a.position, e.position) <= std::max(a.range, a.spell_reach) + 1)
-                        reflected += e.retaliation();
-            p += unit_power((on_spawn ? e.max_health : e.health) + e.shield + e.ready_shield,
-                            e.damage_rate + reflected, e.stunned && e.stun_time > 0 ? 0.0f : e.burst,
-                            e.healing_rate, e.mitigation) /
-                 (1 + arrival * 0.3f);
-        }
-    return p;
+        for (const auto &e : *list)
+            if (e.health > 0 && !e.channel && acts_on(e, tile))
+                s.first += unit_power_of(e, enemy_spawn_tile[tile_index(e.position)]);
+    for (const auto &a : allies)
+        if (a.health > 0 && !a.channel && acts_on(a, tile))
+            s.second += unit_power_of(a, false);
+    return s;
 }
 
 float Bot::respawn_threat(vec2 at) const {

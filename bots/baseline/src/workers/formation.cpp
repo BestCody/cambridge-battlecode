@@ -93,9 +93,9 @@ bool Bot::worker_update_formation() {
                 }
             }
             // The squad that matches what we see: its power reaches theirs
-            // (as worker_skirmish() weighs a tile's sides, no factor).
+            // (their side on its tile, as the micro weighs one: sides_at()).
             const unsigned bodies = std::max(1u, unsigned(roster.size()));
-            const float squad = enemy_power(at) / std::max(1.0f, team_average_power());
+            const float squad = sides_at(at).first / std::max(1.0f, team_average_power());
             reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
         }
     }

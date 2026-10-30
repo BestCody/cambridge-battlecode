@@ -319,12 +319,7 @@ bool Bot::attack_combo(bool escaping) {
             }
         } else if (spell.kind == bc::ability_kind::shield) {
             a.shield = ability.shield_amount();
-            float danger = incoming(position);
-            a.support = std::min(a.shield, danger * std::max(1, spell.duration)) * 0.85f;
-            if (health < danger * 4)
-                a.support *= 2;
-            if (initial_shield > 0)
-                a.support *= 0.2f;
+            a.support = shield_value(a.shield, incoming(position), spell.duration, initial_shield);
             add(a);
         }
     }
@@ -395,14 +390,9 @@ bool Bot::attack_combo(bool escaping) {
             s.score -= policy::unused_cast_cost;
             return;
         }
-        if (a.shield > 0 && origin) {
-            float support = std::min(a.shield, pressure[origin] * std::max(1, spells[a.slot].duration)) * 0.85f;
-            if (health < pressure[origin] * 4)
-                support *= 2;
-            if (initial_shield > 0)
-                support *= 0.2f;
-            s.score += support;
-        } else
+        if (a.shield > 0 && origin)
+            s.score += shield_value(a.shield, pressure[origin], spells[a.slot].duration, initial_shield);
+        else
             s.score += a.support;
         if (a.slot >= 0)
             s.score -= policy::unused_cast_cost; // Prefer saving a cast if it adds no value.

@@ -848,7 +848,14 @@ bool Bot::take_hop() {
         return false;
     // The landing, else a tile beside it in reach: a hidden occupant blocks
     // a landing without spending the crystal. Not under fire that would
-    // take half our health over the channel (a stun ends it).
+    // kill us over the channel, where we stand (damage does not stop it, a
+    // stun does), with our bag's margin (a round of those hits per
+    // exit_bag_gems gems, as leaving weighs it); it was half our health,
+    // from the landing.
+    const float hits = incoming(position);
+    if (hits * (float(rules::settings().tp_crystal_time) + float(gems) / float(policy::exit_bag_gems)) >=
+        health + self_shield())
+        return false;
     auto crystal = me.consumables()[bc::consumable_type::tp_crystal];
     const auto beside = around(landing, 1) & around(position, float(reach)) & open_terrain;
     std::vector<vec2> landings{landing};
@@ -856,8 +863,7 @@ bool Bot::take_hop() {
         if (p != landing)
             landings.push_back(p);
     for (const vec2 destination : landings) {
-        if (blocked.is_set(destination) ||
-            incoming(destination) * rules::settings().tp_crystal_time >= health * 0.5f)
+        if (blocked.is_set(destination))
             continue;
         if (crystal.use(destination))
             return true;

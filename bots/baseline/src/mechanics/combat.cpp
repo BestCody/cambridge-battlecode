@@ -161,12 +161,9 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 best_target = -1;
             }
         } else if (s.kind == bc::ability_kind::shield) {
-            float danger = incoming(position);
-            float score = std::min(a.shield_amount(), danger * std::max(1, s.duration)) * 0.85f;
-            if (health < danger * 4)
-                score *= 2;
-            if (me.buffs().has_shield())
-                score *= 0.2f;
+            const auto buffs = me.buffs();
+            const float held = buffs.has_shield() ? buffs.get<bc::buff_shield>().value : 0.0f;
+            const float score = shield_value(a.shield_amount(), incoming(position), s.duration, held);
             if (score > best_score) {
                 best_score = score;
                 best_slot = slot_index;
@@ -358,6 +355,14 @@ float Bot::stun_follow_up(const ObservedUnit &e) const {
 float Bot::stun_value(const ObservedUnit &e, float left) const {
     const float window = stun_follow_up(e);
     return stun_prevented(e) + (left <= window ? kill_value() : window);
+}
+
+float Bot::shield_value(float shield, float danger, int turns, float held) const {
+    const float absorbable = danger * float(std::max(1, turns));
+    float value = std::max(0.0f, std::min(shield, absorbable) - std::min(held, absorbable));
+    if (danger >= health + held && danger < health + shield)
+        value += death_cost();
+    return value;
 }
 
 float Bot::kill_value() const {

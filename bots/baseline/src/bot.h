@@ -816,10 +816,20 @@ class Bot {
         float pool = -1, here = 0;
         bool lethal(vec2 tile);
     };
-    float friendly_power(vec2 at) const;
-    // Our own power alone (friendly_power without teammates).
+    // The sides on a tile, as XSquare's micro weighs them: each unit that
+    // can act on it by next turn (its attack or spell reach and a move; none
+    // while a stun holds it), undiscounted, at its power (unit_power(): full
+    // health on its spawn, where it heals; no burst while stunned). Theirs:
+    // enemies in view and out of sight (from their possible tile nearest
+    // us), not channelling; ours: we wherever we stand and allies in view,
+    // not channelling. It replaced friendly_power() and enemy_power(), which
+    // discounted units by their distance (0.9 / (1 + 0.4 arrival), / (1 +
+    // 0.3 arrival), none past 6).
+    bool acts_on(const ObservedUnit &u, vec2 tile) const;
+    float unit_power_of(const ObservedUnit &u, bool full) const;
+    std::pair<float, float> sides_at(vec2 tile) const;
+    // Our own power alone.
     float own_power() const;
-    float enemy_power(vec2 at) const;
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
     // The walk out of the group's reach under its fire (camp choice's), and
@@ -895,6 +905,12 @@ class Bot {
     float stun_prevented(const ObservedUnit &enemy) const;
     float stun_follow_up(const ObservedUnit &enemy) const;
     float stun_value(const ObservedUnit &enemy, float left) const;
+    // A shield's worth on the same scale: the damage it absorbs over its
+    // turns (`danger` a turn) beyond what the shield we hold (`held`)
+    // absorbs, as a new one replaces it; and our death when it turns a
+    // lethal next turn survivable. It replaced the absorbed damage x 0.85,
+    // x 2 below four turns of danger, x 0.2 while shielded.
+    float shield_value(float shield, float danger, int turns, float held) const;
     // Our own death, the same: one kill, theirs; carrying gems, more than any
     // kill of ours, as the killer takes the bag (a trade of our death for a
     // kill, against Ren's retaliation, is even only with nothing carried).
