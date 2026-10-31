@@ -142,7 +142,7 @@ def play(configs, opponents, fuels, args):
 
                             bot_a = relative_to_out(ROOT / "bots" / a)
                             bot_b = relative_to_out(ROOT / "bots" / b)
-                            map_path = relative_to_out(ROOT / "maps" / f"{game_map}.map26a")
+                            map_path = relative_to_out(ROOT / "maps" / "eval" / f"{game_map}.map26a")
                             rows.append(f"{bot_a} {bot_b} {map_path} {replay.name} --statistics {stats.name} --json")
                             expected.append((name, opponent, game_map, seat, stats))
             manifest = out / f"manifest-{fuel}.txt"
@@ -254,7 +254,7 @@ def main():
                         help="directory for statistics, replays and games.json")
     args = parser.parse_args()
 
-    pool_maps = sorted(p.stem for p in (ROOT / "maps").glob("*.map26a"))
+    pool_maps = sorted(p.stem for p in (ROOT / "maps" / "eval").glob("*.map26a"))
     wanted = [m for m in args.maps.split(",") if m]
     args.maps = [m for m in pool_maps if not wanted or short(m) in wanted or m in wanted]
     fuels = [int(f) for f in args.fuels.split(",")]

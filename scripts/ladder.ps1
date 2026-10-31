@@ -4,8 +4,9 @@
 # that matters is the per-map win rate. With a fixed pool a 7/9 record means at
 # most 2 losing maps can appear in any 5-map set, so no Bo5 can be lost.
 #
-# The pool is read from maps/*.map26a, so `cambc maps pull` is picked up
-# automatically -- the published pool changes during the competition.
+# The pool is read from maps/eval/*.map26a (maps/ga holds generated maps for
+# tuning). `cambc maps pull` writes new platform maps into maps/ itself: move
+# them into maps/eval -- the published pool changes during the competition.
 #
 # Usage (from any directory):
 #   pwsh scripts/ladder.ps1 -Build
@@ -27,7 +28,7 @@ Push-Location $root
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 if ($Maps.Count -eq 0) {
-    $Maps = @(Get-ChildItem (Join-Path $root 'maps') -Filter *.map26a | ForEach-Object { $_.BaseName })
+    $Maps = @(Get-ChildItem (Join-Path $root 'maps/eval') -Filter *.map26a | ForEach-Object { $_.BaseName })
     Write-Host "pool: $($Maps.Count) maps"
 }
 
@@ -47,9 +48,9 @@ foreach ($o in $Opponents) {
         foreach ($seat in @('A', 'B')) {
             $stat = Join-Path $Out "$Bot-vs-$o-$m-$seat.json"
             if ($seat -eq 'A') {
-                & cambc run $Bot $o --map $m --release --statistics $stat --json -o $Out 2>$null | Out-Null
+                & cambc run $Bot $o --map "eval/$m" --release --statistics $stat --json -o $Out 2>$null | Out-Null
             } else {
-                & cambc run $o $Bot --map $m --release --statistics $stat --json -o $Out 2>$null | Out-Null
+                & cambc run $o $Bot --map "eval/$m" --release --statistics $stat --json -o $Out 2>$null | Out-Null
             }
             $ours = "team$seat"
             $j = Get-Content $stat -Raw | ConvertFrom-Json

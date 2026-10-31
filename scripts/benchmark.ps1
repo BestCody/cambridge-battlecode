@@ -14,7 +14,7 @@
 param(
     [string]$Bot = 'test-bot',
     [string[]]$Opponent = @('starter-cpp'),
-    # Empty = every map in the current pool (maps/*.map26a). The published pool
+    # Empty = every map in the current pool (maps/eval/*.map26a). The published pool
     # changes during the competition, so it is read rather than hard-coded.
     [string[]]$Maps = @(),
     [string]$Out = (Join-Path $env:TEMP 'bench'),
@@ -37,7 +37,7 @@ $original = [System.IO.File]::ReadAllText($strategyPath, $utf8)
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 if ($Maps.Count -eq 0) {
-    $Maps = @(Get-ChildItem (Join-Path $root 'maps') -Filter *.map26a | ForEach-Object { $_.BaseName })
+    $Maps = @(Get-ChildItem (Join-Path $root 'maps/eval') -Filter *.map26a | ForEach-Object { $_.BaseName })
     Write-Host "pool: $($Maps.Count) maps"
 }
 
@@ -113,9 +113,9 @@ try {
                 foreach ($seat in @('A', 'B')) {
                     $stat = Join-Path $Out "$($label -replace ' ','_')-$o-$m-$seat.json"
                     if ($seat -eq 'A') {
-                        & cambc run $Bot $o --map $m --release --statistics $stat --json -o $Out 2>$null | Out-Null
+                        & cambc run $Bot $o --map "eval/$m" --release --statistics $stat --json -o $Out 2>$null | Out-Null
                     } else {
-                        & cambc run $o $Bot --map $m --release --statistics $stat --json -o $Out 2>$null | Out-Null
+                        & cambc run $o $Bot --map "eval/$m" --release --statistics $stat --json -o $Out 2>$null | Out-Null
                     }
                     $ours = "team$seat"
                     $j = Get-Content $stat -Raw | ConvertFrom-Json
