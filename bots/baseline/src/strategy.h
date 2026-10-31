@@ -196,6 +196,27 @@ inline constexpr float marcella_travel_hazard = 0.0f;
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
 inline constexpr float enemy_side_factor = 0.4f;
+// Camp choice values a group an enemy champion stands on this much more (a
+// contest we can win there takes its reward from them).
+inline constexpr float enemy_held_camp_bonus = 1.4f;
+// Camp choice values the capture we stand on and hold this much more, so a
+// holder stays until it pays.
+inline constexpr float held_capture_bonus = 5.0f;
+// An altar's risk for each enemy champion near it: this much, and
+// altar_enemy_strength_risk per point of its strength (worker_tribute()).
+inline constexpr float altar_enemy_risk = 6.0f;
+inline constexpr float altar_enemy_strength_risk = 0.05f;
+// A fight step's tile score: its walk times 10 plus the damage that can reach
+// it times this (attack_combo()'s step).
+inline constexpr float step_incoming_weight = 0.14f;
+// Ordinary camps farther than the map's natural camp spacing from every live
+// teammate claim lose this much value per extra tile (test-bot's cohesion):
+// the team stays within reach of each other. Only on maps whose spacing is at
+// most cohesion_max_spacing (dense ones). Hard groups are left to the party
+// plans. Off (0) until the GA tunes it: 0.03 everywhere was level (83/140),
+// +3 on dense maps and -3 on sparse.
+inline constexpr float cohesion_hazard = 0.0f;
+inline constexpr float cohesion_max_spacing = 40.0f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

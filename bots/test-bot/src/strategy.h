@@ -260,6 +260,13 @@ inline constexpr float marcella_travel_hazard = 0.0f;
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
 inline constexpr float enemy_side_factor = 0.4f;
+// An altar's risk for each enemy champion near it: this much, and
+// altar_enemy_strength_risk per point of its strength (worker_tribute()).
+inline constexpr float altar_enemy_risk = 6.0f;
+inline constexpr float altar_enemy_strength_risk = 0.05f;
+// A fight step's tile score: its walk times 10 plus the damage that can reach
+// it times this (attack_combo()'s step).
+inline constexpr float step_incoming_weight = 0.14f;
 // The team's elected detour runner counts an unclaimed live gold-bearing camp
 // whose full clear and capture fit inside a teammate's cooling reservation with
 // at least this enemy-side factor. The teammate remains the reservation; this

@@ -886,7 +886,7 @@ bool Bot::advance_attack(vec2 victim, int stand) {
     for (const vec2 tile : step_positions()) {
         if (field.get(tile) >= field.get(position))
             continue;
-        const float score = float(field.get(tile)) * 10 + incoming(tile) * 0.14f;
+        const float score = float(field.get(tile)) * 10 + incoming(tile) * policy::step_incoming_weight;
         if (score < best_score) {
             best_score = score;
             best = tile;

@@ -48,3 +48,4 @@ playground.txt
 /analysis/prism-banking-ab-*/ab_fixed-*.json
 /analysis/prism-banking-ab-*/ab_dynamic-*.json
 /analysis/prism-banking-ab-*/manifest-*.txt
+ga_runs/

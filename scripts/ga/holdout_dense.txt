@@ -1,0 +1,17 @@
+maps/eval/00lanes.map26a
+maps/eval/02fields.map26a
+maps/eval/01islands.map26a
+maps/eval/00collision.map26a
+maps/eval/02guardians.map26a
+maps/eval/00gemfight.map26a
+maps/eval/00breadcrumbs.map26a
+maps/eval/00packs.map26a
+maps/eval/01broken-curve.map26a
+maps/eval/02gift-wrapping.map26a
+maps/eval/00reverse-spiral.map26a
+maps/eval/01the-farm.map26a
+maps/eval/01shortcut.map26a
+maps/eval/00swirl.map26a
+maps/eval/00lost-world.map26a
+maps/eval/02treasure-box.map26a
+maps/eval/01yellow-brick-road.map26a

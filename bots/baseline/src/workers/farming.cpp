@@ -101,9 +101,14 @@ int Bot::worker_choose_group(int excluded) {
     static std::vector<std::uint8_t> claims, marks;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
+    static std::vector<int> claimed_groups;
+    claimed_groups.clear();
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (const int c = mate_claim(s); c >= 0)
+        if (const int c = mate_claim(s); c >= 0) {
             ++claims[c];
+            if constexpr (policy::cohesion_hazard > 0)
+                claimed_groups.push_back(c);
+        }
     // Each teammate's damage per round on camps (from its live strength and
     // focus in view, else its type's base) and, per camp, its claimants'
     // summed.
@@ -212,7 +217,7 @@ int Bot::worker_choose_group(int excluded) {
         // their count. factor: the score's multipliers on the value we add.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
         float *remaining, *splash, *pressure, *striker_work, *reach_share, *claims, *claim_rate, *claim_eta,
-            *front_range, *front_first, *front_visit, *front_count, *scores, *factor, *belief;
+            *front_range, *front_first, *front_visit, *front_count, *scores, *factor, *belief, *cohesion;
         // A cluster group's run (gather_run): the reward and the time its
         // members add, and whether the run scored above the group alone;
         // whether the clear is planned as a spell-range siege.
@@ -223,7 +228,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[23 * padded]);
+        lanes.floats.reset(new float[24 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane : {&lanes.gem, &lanes.enemy_side, &lanes.status, &lanes.respawn, &lanes.path,
                             &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won, &lanes.siege_won}) {
@@ -235,7 +240,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work, &lanes.reach_share,
                             &lanes.claim_rate, &lanes.claim_eta, &lanes.front_range, &lanes.front_first,
                             &lanes.front_visit, &lanes.front_count, &lanes.factor, &lanes.camp_count, &lanes.home,
-                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief}) {
+                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief, &lanes.cohesion}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -247,7 +252,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.pressure, lanes.claims, lanes.striker_work, lanes.reach_share, lanes.claim_rate,
                                lanes.claim_eta, lanes.front_range, lanes.front_first, lanes.front_visit,
                                lanes.front_count, lanes.factor, lanes.camp_count, lanes.home, lanes.reach,
-                               lanes.run_reward, lanes.run_time, lanes.belief})
+                               lanes.run_reward, lanes.run_time, lanes.belief, lanes.cohesion})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -337,6 +342,17 @@ int Bot::worker_choose_group(int excluded) {
             lanes.striker_work[i] = whole ? g.whole_work : g.live_work;
             lanes.reach_share[i] = g.reach_share;
             lanes.reach[i] = float(whole ? g.reach : g.live_reach);
+            // Tiles past the camp spacing to the nearest teammate's claim
+            // (none worked out while the penalty is off).
+            lanes.cohesion[i] = 0.0f;
+            if (policy::cohesion_hazard > 0 && opening.spacing <= policy::cohesion_max_spacing &&
+                !(whole ? g.hard : g.live_hard)) {
+                float nearest_claim = std::numeric_limits<float>::infinity();
+                for (const int claimed : claimed_groups)
+                    nearest_claim = std::min(nearest_claim, float(distance(g.centre, groups[claimed].centre)));
+                if (std::isfinite(nearest_claim))
+                    lanes.cohesion[i] = std::max(0.0f, nearest_claim - opening.spacing);
+            }
             splash[i] = g.splash;
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
@@ -735,8 +751,12 @@ int Bot::worker_choose_group(int excluded) {
             skip = wasm_v128_or(skip, wasm_v128_andnot(wasm_f32x4_lt(each_with, splat(100.0f)), is_held));
             // The score's multipliers, kept for the party plans.
             v128_t factor = wasm_f32x4_div(one, wasm_f32x4_add(one, wasm_f32x4_mul(ours_at, splat(travel_hazard))));
+            if constexpr (policy::cohesion_hazard > 0)
+                factor = wasm_f32x4_div(
+                    factor, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_v128_load(&lanes.cohesion[i]),
+                                                               splat(policy::cohesion_hazard))));
             factor = pick(wasm_f32x4_mul(factor, splat(enemy_side_mul)), factor, wasm_v128_load(&lanes.enemy_side[i]));
-            factor = pick(wasm_f32x4_mul(factor, splat(1.4f)), factor, enemy_here);
+            factor = pick(wasm_f32x4_mul(factor, splat(policy::enemy_held_camp_bonus)), factor, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).
             factor = pick(wasm_f32x4_mul(factor, splat(policy::worker_sighting_penalty)), factor,
@@ -749,7 +769,7 @@ int Bot::worker_choose_group(int excluded) {
                               wasm_f32x4_gt(claimants, zero));
             factor = pick(wasm_f32x4_mul(factor, splat(policy::worker_commit_bonus)), factor,
                           wasm_i32x4_eq(index, splat_int(current)));
-            factor = pick(wasm_f32x4_mul(factor, splat(5.0f)), factor, wasm_v128_and(is_held, is_here));
+            factor = pick(wasm_f32x4_mul(factor, splat(policy::held_capture_bonus)), factor, wasm_v128_and(is_held, is_here));
             wasm_v128_store(&lanes.factor[i], factor);
             wasm_v128_store(&lanes.scores[i], pick(splat(skipped), wasm_f32x4_mul(value, factor), skip));
         }

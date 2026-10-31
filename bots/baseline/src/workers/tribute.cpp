@@ -69,7 +69,7 @@ bool Bot::worker_tribute() {
         float risk = 0;
         for (const auto &e : enemies)
             if (distance(e.position, altar) <= 6)
-                risk += 6 + e.strength * 0.05f;
+                risk += policy::altar_enemy_risk + e.strength * policy::altar_enemy_strength_risk;
         bool locked = visible.is_set(altar) && bc::vision::has_altar_lock(altar) &&
                       bc::vision::altar_lock_at(altar).is_enemy();
         float value = d + risk + (locked ? rules::settings().altar_lock_hits : 0);
