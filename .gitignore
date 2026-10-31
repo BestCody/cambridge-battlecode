@@ -15,3 +15,41 @@ playground.txt
 /analysis/baseline-vs-test-80-new-micro*/*.repl26a
 /analysis/baseline-vs-test-80-new-micro*/current-*.json
 /analysis/baseline-vs-test-80-new-micro*/manifest-*.txt
+
+# Local replays and detailed statistics from the 140-game all-map evaluation.
+/analysis/baseline-vs-test-all-maps-140/*.repl26a
+/analysis/baseline-vs-test-all-maps-140/current-*.json
+/analysis/baseline-vs-test-all-maps-140/manifest-*.txt
+
+# Local replays and detailed statistics from the current 140-game all-map run.
+/analysis/baseline-vs-test-all-maps-140-current/*.repl26a
+/analysis/baseline-vs-test-all-maps-140-current/current-*.json
+/analysis/baseline-vs-test-all-maps-140-current/manifest-*.txt
+
+# Local A/B evaluation replays and detailed match statistics.
+/analysis/*-ab-all-maps-140/*.repl26a
+/analysis/*-ab-all-maps-140/*.json
+!/analysis/*-ab-all-maps-140/games.json
+/analysis/*-ab-all-maps-140/manifest-*.txt
+
+# Local map probes: retain summaries and the compact game index.
+/analysis/*-probe-*/*.repl26a
+/analysis/*-probe-*/*.json
+!/analysis/*-probe-*/games.json
+/analysis/*-probe-*/manifest-*.txt
+
+# Local replays and detailed statistics from the 4-million-fuel all-map evaluation.
+/analysis/baseline-vs-test-all-maps-140-fuel4m/*.repl26a
+/analysis/baseline-vs-test-all-maps-140-fuel4m/current-*.json
+/analysis/baseline-vs-test-all-maps-140-fuel4m/manifest-*.txt
+
+# Local match replays and detailed statistics from Prism banking evaluations.
+/analysis/baseline-vs-test-80-prism-*/*.repl26a
+/analysis/baseline-vs-test-80-prism-*/current-*.json
+/analysis/baseline-vs-test-80-prism-*/manifest-*.txt
+
+# Local replays and detailed statistics from the controlled Prism A/B test.
+/analysis/prism-banking-ab-*/*.repl26a
+/analysis/prism-banking-ab-*/ab_fixed-*.json
+/analysis/prism-banking-ab-*/ab_dynamic-*.json
+/analysis/prism-banking-ab-*/manifest-*.txt

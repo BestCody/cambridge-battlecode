@@ -22,6 +22,13 @@ namespace policy {
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
 inline constexpr float early_gold_value = 0.15f;
 inline constexpr float late_gold_value = 0.30f;
+// A/B the champion draft without changing the worker policy.
+inline constexpr bool baseline_roster = false;
+// Bank a valuable bag at a safe nearby altar before a skirmish can pull the
+// carrier away. A/B switch; the normal worker order applies when false.
+inline constexpr bool safe_carrier_banking = false;
+inline constexpr bool safe_carrier_clear_vision = false;
+inline constexpr unsigned safe_carrier_bag = 200;
 // A reported fight's squad size divides the enemy power by aggression times
 // our average champion power (worker_update_formation()).
 inline constexpr float aggression = 1.8f;
@@ -141,6 +148,12 @@ inline constexpr float siege_gem_weight = 2.0f;
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
 inline constexpr float siege_risk_weight = 0.06f;
+// On fortress-only gem maps, an optional opening phase buys gear from gold
+// camps before the full siege incentive activates.
+inline constexpr bool fortress_gear_phase = true;
+inline constexpr unsigned fortress_gear_rounds = 400;
+inline constexpr float fortress_early_gem_weight = 0.5f;
+inline constexpr float fortress_early_risk_weight = 1.0f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
 // Rounds an enemy out of sight is still counted after its last sighting
@@ -158,9 +171,24 @@ inline constexpr float worker_sighting_penalty = 0.2f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
-// Prism banks once it carries this many gems (willow best girl's Prism: median
-// bag 198).
+// A/B switch for Prism banking. evaluate.py can build both values from this
+// source so the fixed and dynamic policies play identical match schedules.
+inline constexpr bool prism_dynamic_banking = false;
+// A narrow A/B candidate: bank a useful Prism bag only near a safe altar
+// when the team is close to winning, preserving Focus during ordinary farming.
+inline constexpr bool prism_endgame_banking = false;
+inline constexpr unsigned prism_endgame_gap = 250;
+inline constexpr unsigned prism_endgame_bag = 120;
+// Prism keeps a large bag for its Focus passive while farming safely. A
+// smaller bag is worth banking when an altar is close, an enemy can engage,
+// or too little time remains to collect a full bag and submit it.
 inline constexpr unsigned prism_bag = 200;
+inline constexpr unsigned prism_nearby_bag = 160;
+inline constexpr unsigned prism_threatened_bag = 140;
+inline constexpr unsigned prism_threatened_altar_walk = 8;
+inline constexpr float prism_threatened_health = 0.75f;
+inline constexpr unsigned prism_late_bag = 120;
+inline constexpr unsigned prism_late_rounds = 100;
 // A champion that has lost this much health to enemy champions before its
 // first shard opens with its first emblem's Health version: on engine 2.0.0
 // willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
