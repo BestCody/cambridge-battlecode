@@ -184,6 +184,21 @@ void Bot::play_worker_turn() {
         worker_tribute();
         return;
     }
+    // A safe altar beside Prism is a chance to secure a useful bag before a
+    // skirmish draws it away. An enemy able to engage keeps the normal fight
+    // and escape decisions first.
+    const bool bank_dynamic = policy::prism_dynamic_banking && gems >= policy::prism_nearby_bag;
+    const bool bank_endgame = policy::prism_endgame_banking && gems >= policy::prism_endgame_bag &&
+                              gems + bc::global_submitted_gems(bc::team::ally) + policy::prism_endgame_gap >=
+                                  rules::settings().winning_gems;
+    const bool bank_carrier = policy::safe_carrier_banking && gems >= policy::safe_carrier_bag &&
+                              (!policy::safe_carrier_clear_vision || enemies.empty());
+    if ((((bank_dynamic || bank_endgame) && passive == bc::passive_type::gem_focus) || bank_carrier) &&
+        altar_walk().get(position) <= policy::bank_nearby && !attacked && incoming(position) == 0 &&
+        worker_tribute()) {
+        note_activity(Activity::bank);
+        return;
+    }
     worker_update_formation();
     // Try the fight once before banking; an unsafe tribute can then retreat
     // without running the skirmish micro a second time.

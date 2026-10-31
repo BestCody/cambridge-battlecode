@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,16 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FUELS = [92000, 96000, 100000, 104000, 108000]
+
+
+def remove_tree(path):
+    """Remove temporary builds even when Windows marks their folders read-only."""
+    def clear_readonly(func, name, error):
+        os.chmod(name, stat.S_IWRITE | stat.S_IREAD)
+        func(name)
+
+    if Path(path).exists():
+        shutil.rmtree(path, onerror=clear_readonly)
 
 
 def patch(text, name, value):
@@ -87,7 +98,7 @@ def prepare_bot(name, source, assignments):
         cambc("build", source)
         return source
     target = ROOT / "bots" / f"_eval_{name}"
-    shutil.rmtree(target, ignore_errors=True)
+    remove_tree(target)
     shutil.copytree(ROOT / "bots" / source, target, ignore=shutil.ignore_patterns(".cambc", "compile_commands.json"))
     strategy = target / "src" / "strategy.h"
     text = strategy.read_text()
@@ -101,7 +112,7 @@ def prepare_bot(name, source, assignments):
 def play(configs, opponents, fuels, args):
     """Run every match through cambc run-batch, which builds once and parallelises."""
     out = Path(args.out)
-    shutil.rmtree(out, ignore_errors=True)
+    remove_tree(out)
     out.mkdir(parents=True)
     bots, temporary = {}, []
     try:
@@ -164,7 +175,7 @@ def play(configs, opponents, fuels, args):
         return games
     finally:
         for name in temporary:
-            shutil.rmtree(ROOT / "bots" / name, ignore_errors=True)
+            remove_tree(ROOT / "bots" / name)
 
 
 def team_totals(result, team):

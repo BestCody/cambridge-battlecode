@@ -70,7 +70,9 @@ int Bot::worker_choose_group(int excluded) {
         if (const int g = standing_on(e.position); g >= 0)
             marks[g] |= enemy_on;
     const int here = group_at(position);
-    const float gem_weight = gem_reward_weight(opening), gem_risk = gem_risk_weight(opening);
+    const bool gearing = policy::fortress_gear_phase && fortress_gems(opening) && round < policy::fortress_gear_rounds;
+    const float gem_weight = gearing ? policy::fortress_early_gem_weight : gem_reward_weight(opening);
+    const float gem_risk = gearing ? policy::fortress_early_risk_weight : gem_risk_weight(opening);
     const float behind = behind_pressure();
     const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;
     const float camp_risk = policy::camp_risk_weight * (1.0f - policy::behind_risk_relief * behind);
@@ -387,7 +389,7 @@ int Bot::worker_choose_group(int excluded) {
     const std::array<Spell, 2> kit = spells;
     // Cluster runs. A short trip's capture ends in a recall home
     // (home_after_capture()), which every version that kept farming instead
-    // lost 5-9 games of 80 to; but a row of gem or gold clusters a tile or
+    // lost to; but a row of gem or gold clusters a tile or
     // two apart (each its own group and capture) was then taken one per
     // trip. A cluster group's run is the clusters taken after it on the same
     // trip: next, the nearest cluster group linked to the last member
