@@ -75,6 +75,10 @@ bool Bot::worker_skirmish() {
     // victim under 20% of its health.
     const bool finish = victim.channel &&
                         victim.health + victim.shield <= burst * victim.mitigation + stun_follow_up(victim);
+    // A fight we were only circling (note_pingpong()) waits for a kill, a
+    // finish or a hit on us.
+    if (committed() && !kill && !finish && !hit)
+        return false;
     // Too dangerous to stay, decided every round: our health and shields
     // reach no further than the damage the enemies deal us before we are
     // out of their reach from here (exit_damage(), their ready bursts at
@@ -718,6 +722,8 @@ bool Bot::leave_fight(vec2 victim) {
 }
 
 bool Bot::worker_pursue() {
+    if (committed())
+        return false;
     // willow best girl's champions follow a hurt runner until it dies (their
     // Heart of Ruin chased an Issac seven rounds, from 45% to its death, and
     // 56% of their kills were of champions running 4+ tiles); ours stopped as

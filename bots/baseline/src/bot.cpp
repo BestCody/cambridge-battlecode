@@ -40,6 +40,7 @@ void Bot::take_turn() {
     }
     try {
         play_worker_turn();
+        note_pingpong();
         worker_priority();
         fake_recall();
     } catch (const ChampionGone &) {
