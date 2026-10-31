@@ -30,23 +30,38 @@ bool Bot::worker_tribute() {
     }
     // Every trip banks, as willow best girl's champions do: whatever we carry
     // on the way out from spawn (the altar nearest it, from there), and at
-    // once when an altar is a few steps away. Prism, whose focus grows with
-    // the gems it carries, keeps them and banks a big bag (theirs: 0.7 banks
-    // a game, median 198 gems, the first around round 500).
+    // once when an altar is a few steps away. Ordinary maps keep Prism's old
+    // Focus bag: applying fragile banking everywhere cost two wins. On no-gold
+    // maps it cannot normally gain Health, so a safe Prism banks early while a
+    // recently fighting one keeps a combat bag up to a bounded forced cap.
     const auto &spawn = own_spawn;
-    const bool keeps = passive == bc::passive_type::gem_focus;
+    const bool prism = passive == bc::passive_type::gem_focus;
+    const float durable_health =
+        stats.base_health + float(policy::prism_health_shards) * stats.health_growth;
+    const bool durable_prism = prism && max_health >= durable_health;
+    const bool fragile_prism = prism && !durable_prism && !map_has_gold;
+    const bool keeps = prism && !fragile_prism;
     // The altar we were walled off from lately is no nearby altar.
     const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&
                         std::size_t(stuck_altar) < altar_routes.size() &&
                         int(altar_routes[stuck_altar].get(position)) <= closest;
     const bool trip =
         !keeps && (spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled));
-    // A holder banks its share or full bag once its capture has paid.
-    const bool full = keeps && gems >= policy::prism_bag && !holding;
-    // The Prism banks only a full bag, a win or at the deadline: willow best
-    // girl's banks 0.1-0.2 times a game and carries 82-114 gems from round
-    // 400 (same maps); ours, banking its share near victory and with
-    // captures beside altars, banked 0.8 times and carried 35-68.
+    // A holder banks only after its capture pays. The small fragile limit is
+    // used only out of recent enemy contact; enough gems always force banking
+    // before the risk grows to the ordinary Focus bag.
+    const bool safe_fragile_bank =
+        fragile_prism && int(round) - enemy_sighted > policy::prism_bank_danger_memory;
+    const bool full = prism && !holding &&
+                      (fragile_prism
+                           ? gems >= policy::prism_fragile_forced_bag ||
+                                 (safe_fragile_bank && gems >= policy::prism_fragile_bag)
+                           : gems >= policy::prism_bag);
+    // A durable or ordinary-map Prism otherwise banks only a full bag, a win
+    // or at the deadline: willow best girl's banks 0.1-0.2 times a game and carries
+    // 82-114 gems from round 400 (same maps); ours, banking its share near
+    // victory and with captures beside altars, banked 0.8 times and carried
+    // 35-68.
     if (!banking && !win && !deadline && !trip && !full && (keeps || (!capture_combo && !(share && !holding))))
         return false;
     if (!banking)

@@ -494,6 +494,7 @@ void Bot::initialise() {
         for (std::size_t i = 0; i + 5 <= count;) {
             const auto handle = static_cast<bc::handle_camp_group_t>(words[i]);
             const auto gold = words[i + 1], gems = words[i + 2];
+            map_has_gold = map_has_gold || gold > 0;
             const auto respawn = static_cast<std::int32_t>(words[i + 3]);
             const auto size = words[i + 4];
             i += 5;

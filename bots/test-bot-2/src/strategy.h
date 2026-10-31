@@ -158,9 +158,15 @@ inline constexpr float worker_sighting_penalty = 0.2f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
-// Prism banks once it carries this many gems (willow best girl's Prism: median
-// bag 198).
+// Prism normally banks this full bag (willow best girl's median: 198). On a
+// no-gold map, before one full Health emblem's growth, it banks a small bag
+// while the enemy has not been seen recently, but keeps enough gems for combat
+// until the forced cap: gemcombat4 is fight-heavy, gemcombat5 is not.
 inline constexpr unsigned prism_bag = 200;
+inline constexpr unsigned prism_fragile_bag = 30;
+inline constexpr unsigned prism_fragile_forced_bag = 100;
+inline constexpr unsigned prism_health_shards = 5;
+inline constexpr int prism_bank_danger_memory = 20;
 // A champion that has lost this much health to enemy champions before its
 // first shard opens with its first emblem's Health version: on engine 2.0.0
 // willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at

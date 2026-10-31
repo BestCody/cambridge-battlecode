@@ -1109,23 +1109,31 @@ int Bot::claimed_by(const ObservedUnit &ally) const {
 
 bool Bot::capture_outranked(const CampGroup &g) const {
     // A visible ally on the capture that claims it holds it instead of us
-    // when it outranks us (outranks()). Every holder ranks the same way, so
-    // exactly one stays.
+    // when it outranks us (outranks()); a nearby claiming Prism also prompts a
+    // handoff. Every holder applies the same rank, so exactly one stays.
     const bool on = g.tiles().is_set(position);
+    const int group = int(&g - groups.data());
     for (const auto &ally : allies) {
-        if (ally.health <= 0 || !g.tiles().is_set(ally.position))
+        if (ally.health <= 0)
+            continue;
+        const int claim = claimed_by(ally);
+        // A non-Prism holder hands the capture to a nearby Prism claiming it,
+        // including one-tile regions where Prism cannot step on first.
+        const bool prism_handoff = on && type != bc::champion_type::prism &&
+                                   ally.type == bc::champion_type::prism && claim == group &&
+                                   distance(ally.position, g.centre) <= 3;
+        if (!g.tiles().is_set(ally.position) && !prism_handoff)
             continue;
         // Only an ally that claims the camp means to hold it; one crossing
         // the tiles or retreating over them leaves the next turn.
         // ... or, on the tiles while we are not, reports a fight (a holder
         // asking for help; a fighter on our own tiles is a passer-by).
-        if (claimed_by(ally) != int(&g - groups.data()) && !(!on && reports_fight(ally)))
+        if (claim != group && !(!on && reports_fight(ally)))
             continue;
         // One riding its capture's recall home cannot step off: it holds the
-        // capture, and stepping on only halves its reward. Three in four of
-        // our shared captures (19% of all, willow best girl's 2%) were one of
-        // ours stepping onto a holder recalling with it.
-        if (ally.channel || outranks(ally, !on))
+        // capture, and stepping on only halves its reward. Otherwise Prism's
+        // explicit type priority chooses the sole holder.
+        if (ally.channel || prism_handoff || outranks(ally, !on))
             return true;
     }
     return false;
@@ -1133,15 +1141,19 @@ bool Bot::capture_outranked(const CampGroup &g) const {
 
 bool Bot::capture_deferred(const CampGroup &g) const {
     // A teammate claiming the group that rides its capture's recall home or
-    // outranks us (outranks(): on the tiles, or within 3 with the bigger
-    // bag) holds it from the start:
+    // outranks us (Prism first, then the bigger bag) holds it from the start:
     // two on the tiles split the reward (a fifth of our captures, willow
     // best girl's 2%).
     const int group = int(&g - groups.data());
     for (const auto &ally : allies)
-        if (ally.health > 0 && claimed_by(ally) == group && distance(ally.position, g.centre) <= 3 &&
-            (ally.channel || (g.tiles().is_set(ally.position) ? outranks(ally, true) : ally.gems > int(gems))))
-            return true;
+        if (ally.health > 0 && claimed_by(ally) == group && distance(ally.position, g.centre) <= 3) {
+            const bool ally_prism = ally.type == bc::champion_type::prism;
+            const bool self_prism = type == bc::champion_type::prism;
+            const bool nearby_outranks =
+                ally_prism != self_prism ? ally_prism : ally.gems > int(gems);
+            if (ally.channel || (g.tiles().is_set(ally.position) ? outranks(ally, true) : nearby_outranks))
+                return true;
+        }
     return false;
 }
 
@@ -1153,12 +1165,14 @@ int Bot::capture_payout(const CampGroup &g) const {
 }
 
 bool Bot::outranks(const ObservedUnit &ally, bool arriving) const {
-    // The holder order of capture_outranked(): the bigger bag (the Prism
-    // carries the team's gems), then one already on the tiles, then the
-    // lower id. willow best girl's holder is the first of the party on in
-    // 84-86% of party captures; a type rank after the bag let our Vesper
-    // hold over Marcella and the HoR (its capture gold 957 a game on the
-    // same maps to willow's 468, the HoR's item health r300 172 to 290).
+    // When Prism is present it owns the capture: carried gems are Focus for it,
+    // whereas another holder would normally bank them soon. Among champions
+    // of the same priority keep the old order: bigger bag, current holder,
+    // then lower id.
+    const bool ally_prism = ally.type == bc::champion_type::prism;
+    const bool self_prism = type == bc::champion_type::prism;
+    if (ally_prism != self_prism)
+        return ally_prism;
     return ally.gems != int(gems) ? ally.gems > int(gems) : arriving || id(ally.champion()) < id(bc::self());
 }
 

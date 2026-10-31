@@ -384,6 +384,9 @@ class Bot {
     std::uint64_t turn_start_fuel = 0;
     std::uint64_t search_job_cost = 0; // The last map-wide search's work.
     std::uint64_t camp_count = 0;
+    // Whether any camp group can award gold. No-gold maps cannot normally
+    // raise Prism's maximum health, so its gem bag needs a different policy.
+    bool map_has_gold = false;
     std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
