@@ -131,7 +131,11 @@ void Bot::play_worker_turn() {
         tribute_taken += taken_last;
         ++tribute_turns;
         const float rate = tribute_taken / float(tribute_turns);
-        if (health < rate * (wins ? 1.0f : float(me.remaining_channel_time() + 1))) {
+        // Also once the enemies we know of could kill us before the channel
+        // ends (channel_danger()): a long channel cannot fight back, and the
+        // damage taken so far shows them only once they are striking.
+        const int left = int(me.remaining_channel_time()) + 1;
+        if (health < rate * (wins ? 1.0f : float(left)) || (policy::channel_safety && !wins && channel_danger(left) >= health)) {
             me.cancel_submit_gems();
             retreating = true;
             worker_escape();
@@ -208,6 +212,26 @@ void Bot::play_worker_turn() {
     if (target >= 0)
         note_activity(distance(position, groups[target].centre) <= range + 3 ? Activity::farm
                                                                              : Activity::travel);
+}
+
+void Bot::note_pingpong() {
+    // Back where the turn before last ended, with nothing struck either way
+    // (a melee attack leaves the attack spent; a ranged one is the turn's
+    // only action, so it did not walk), pingpong_turns times in a row:
+    // commit to the objective (committed()).
+    if (!bc::self().is_alive())
+        return;
+    const bool struck = !bc::self().can_attack() && (range <= 1 || !walked);
+    if (position == before_end && position != last_end && !struck && !hit) {
+        if (++pingpong >= policy::pingpong_turns) {
+            objective_until = int(round) + policy::pingpong_commit;
+            pingpong = 0;
+        }
+    } else {
+        pingpong = 0;
+    }
+    before_end = last_end;
+    last_end = position;
 }
 
 void Bot::fake_recall() {

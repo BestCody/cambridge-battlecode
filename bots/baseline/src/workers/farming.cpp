@@ -258,8 +258,18 @@ int Bot::worker_choose_group(int excluded) {
             const auto gem_value = g.unit.gem_value();
             lanes.gem[i] = gem_value > 0 ? -1 : 0;
             lanes.enemy_side[i] = g.enemy_distance < g.home_distance ? -1 : 0;
-            lanes.gem_reward[i] = gem_value * gem_weight;
-            lanes.gold[i] = float(g.unit.gold_value());
+            // An evaluation seed (policy::eval_seed) jitters each group's
+            // reward by up to 1%: a different game from the same bot.
+            float jitter = 1;
+            if constexpr (policy::eval_seed != 0) {
+                std::uint32_t h = (policy::eval_seed * 2654435761u) ^ (std::uint32_t(i) * 40503u + slot * 9973u);
+                h ^= h >> 15;
+                h *= 2246822519u;
+                h ^= h >> 13;
+                jitter = 1.0f + 0.02f * (float(h % 1000u) / 1000.0f - 0.5f);
+            }
+            lanes.gem_reward[i] = gem_value * gem_weight * jitter;
+            lanes.gold[i] = float(g.unit.gold_value()) * jitter;
             lanes.camp_count[i] = float(g.camps.size());
             lanes.home[i] = float(g.home_distance);
             // The farthest two camps apart (Chebyshev): the larger of the
@@ -1513,6 +1523,16 @@ bool Bot::home_after_capture(const CampGroup &g) const {
     // An emblem's gold: home to buy it, power for the rest of the game.
     if (bc::self().gold_count() >= policy::home_capture_gold)
         return true;
+    // A bag worth banking (bank_bag(), with this capture's gems) at an open
+    // altar (altar_open()) ends a run: home on this recall when banking from
+    // spawn is the shorter way there; otherwise the recall is cancelled and
+    // the bag walks to one (worker_tribute()).
+    if (altar_field_ready) {
+        const unsigned bag = gems + unsigned(g.unit.gem_value());
+        const int walk = open_altar_walk();
+        if (walk != bc::distance_field::unreachable && bag > 0 && float(bag) >= bank_bag(walk))
+            return walk > recall_turns + spawn_altar_walk();
+    }
     // A cluster run (worker_choose_group()) with its next member open goes
     // on: the run was planned to end in this recall after its last capture.
     // Returning false makes the next turn cancel this recall; each capture

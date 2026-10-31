@@ -32,14 +32,20 @@ bool Bot::worker_tribute() {
     // on the way out from spawn (the altar nearest it, from there), and at
     // once when an altar is a few steps away.
     const auto &spawn = own_spawn;
-    // The altar we were walled off from lately is no nearby altar.
-    const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&
-                        std::size_t(stuck_altar) < altar_routes.size() &&
-                        int(altar_routes[stuck_altar].get(position)) <= closest;
+    // Altars left out lately (altar_open()) are no nearby altar.
+    const int open_walk = open_altar_walk();
+    const bool walled = open_walk > closest;
     const bool trip = spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled);
+    // A bag worth its walk to an open altar is banked (bank_bag()), once its
+    // capture has paid.
+    const bool full =
+        !holding && open_walk != bc::distance_field::unreachable && float(gems) >= bank_bag(open_walk);
     // A holder banks its share once its capture has paid.
-    if (!banking && !win && !deadline && !trip && !capture_combo && !(share && !holding))
+    if (!banking && !win && !deadline && !trip && !full && !capture_combo && !(share && !holding))
         return false;
+    if constexpr (policy::diagnostic)
+        if (!banking && full && !trip && !win && !deadline)
+            std::printf("BAG r=%u gems=%u walk=%d asked=%.1f\n", round, gems, open_walk, bank_bag(open_walk));
     if (!banking)
         bank_stalls = 0;
     banking = true;
@@ -54,8 +60,8 @@ bool Bot::worker_tribute() {
     vec2 selected{-1, -1};
     int selected_index = -1;
     for (std::size_t index = 0; index < altars.size(); ++index) {
-        // One we were walled off from lately waits (not for a winning bag).
-        if (int(index) == stuck_altar && int(round) < stuck_altar_until && !win && !deadline)
+        // One left out lately waits (not for a winning bag).
+        if (!altar_open(index) && !win && !deadline)
             continue;
         auto altar = altars[index];
         float d = index < altar_routes.size() ? altar_routes[index].get(position) : distance(position, altar);
@@ -113,12 +119,16 @@ bool Bot::worker_tribute() {
         }
         // Damage cannot cancel this channel. Stuns and a lethal burst can.
         float hazard = incoming(position);
+        // Nor can we act while it lasts: the enemies we know of must not be
+        // able to kill us before it ends (channel_danger()).
+        const bool lasts = win || !policy::channel_safety || channel_danger(channel_duration(gems)) < health;
         // At the start, the damage our last turn took, for the whole channel
         // (the turns of it then measure what comes).
-        if (health > taken_last * float(channel_duration(gems) + 1) || win || hazard == 0) {
+        if (win || (lasts && (health > taken_last * float(channel_duration(gems) + 1) || hazard == 0))) {
             if constexpr (policy::diagnostic)
                 if (capture_combo)
                     std::printf("CAPTURE_TRIBUTE r=%u gems=%u group=%d\n", round, gems, target);
+            bank_waits = 0;
             me.submit_gems(selected);
             return true;
         }
@@ -126,14 +136,28 @@ bool Bot::worker_tribute() {
         // (play_worker_turn()).
         if (skirmish_declined != int(round) && worker_skirmish())
             return true;
+        // Nothing strikes us yet, but enemies would reach the channel: wait
+        // beside the altar a while for them to go, then leave it out.
+        if (hazard == 0) {
+            if (++bank_waits <= policy::bank_wait_turns)
+                return true;
+            bank_waits = 0;
+            close_altar(std::size_t(selected_index), policy::bank_wait_block);
+            banking = false;
+            return false;
+        }
         retreating = true;
         return worker_escape();
     }
     // Walled off from the altar (camp bodies sealing its route): ours stood
     // beside a monolith pair 15+ rounds with a bag. Leave it out a while.
     if (bank_stalls >= policy::stuck_turns && !win && !deadline) {
-        stuck_altar = selected_index;
-        stuck_altar_until = int(round) + policy::stuck_rounds;
+        // For longer each time it walls us off (guardians' camps wall in its
+        // one altar until they are cleared).
+        if (altar_walled_times.size() < altars.size())
+            altar_walled_times.resize(altars.size(), 0);
+        const int times = altar_walled_times[selected_index]++;
+        close_altar(std::size_t(selected_index), policy::stuck_rounds << std::min(times, 3));
         bank_stalls = 0;
         banking = false;
         return false;
@@ -145,6 +169,66 @@ bool Bot::worker_tribute() {
     bank_stalls = position == bank_from && me.can_attack() && me.can_cast() ? bank_stalls + 1 : 0;
     ward_ahead(selected);
     return true;
+}
+
+float Bot::bank_bag(int walk) const {
+    const auto &settings = rules::settings();
+    const float progress = std::min(1.0f, float(round) / float(std::max(1u, settings.max_rounds)));
+    const float urgency = std::max(policy::bag_urgency_floor, 1.0f - policy::bag_time_urgency * progress -
+                                                                  policy::bag_behind_urgency * behind_pressure());
+    return (policy::bag_gems + policy::bag_gems_per_step * float(std::min(walk, policy::bag_walk_cap))) * urgency;
+}
+
+bool Bot::altar_open(std::size_t i) const {
+    return i >= altar_closed_until.size() || int(round) >= altar_closed_until[i];
+}
+
+void Bot::close_altar(std::size_t i, int rounds) {
+    if (altar_closed_until.size() < altars.size())
+        altar_closed_until.resize(altars.size(), -1);
+    if (i < altar_closed_until.size())
+        altar_closed_until[i] = int(round) + rounds;
+}
+
+int Bot::open_altar_walk() const {
+    // Until every altar's route is built, the field to them all.
+    if (altar_routes.size() < altars.size())
+        return altar_field_ready ? int(altar_field.get(position)) : int(bc::distance_field::unreachable);
+    int best = bc::distance_field::unreachable;
+    for (std::size_t i = 0; i < altars.size(); ++i)
+        if (altar_open(i))
+            best = std::min(best, int(altar_routes[i].get(position)));
+    return best;
+}
+
+float Bot::channel_danger(int turns) const {
+    // Each enemy in view or remembered that can reach us before the channel
+    // ends (at its move speed, from its reach) deals its burst and then its
+    // rate for the turns left. One channelling (recalling, banking) stays.
+    float danger = 0;
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &e : *list) {
+            if (e.health <= 0 || e.channel)
+                continue;
+            const int speed = std::max(1, e.move_speed);
+            const int gap = std::max(0, distance(e.position, position) - std::max(e.range, e.spell_reach));
+            const int arrival = (gap + speed - 1) / speed;
+            if (arrival < turns)
+                danger += e.burst + e.damage_rate * float(turns - arrival);
+        }
+    return danger * mitigation;
+}
+
+int Bot::spawn_altar_walk() const {
+    // Unreachable until the altar field is built (altar_walk()).
+    if (!altar_field_ready)
+        return bc::distance_field::unreachable;
+    if (spawn_bank_walk < 0) {
+        spawn_bank_walk = bc::distance_field::unreachable;
+        for (const auto p : own_spawn.positions())
+            spawn_bank_walk = std::min(spawn_bank_walk, int(altar_field.get(p)));
+    }
+    return spawn_bank_walk;
 }
 
 void Bot::note_altar_locks() {

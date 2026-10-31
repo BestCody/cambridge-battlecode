@@ -130,6 +130,53 @@ inline constexpr float worker_sighting_penalty = 0.2f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
+// ... and once the bag is worth the walk (bank_bag()): bag_gems plus
+// bag_gems_per_step for each step to the nearest altar (up to bag_walk_cap).
+// Without it a healthy champion among many gem camps never went home: it
+// carried its gems from group to group until it died with them, and the
+// game ended 0 gems tributed. The bag asked shrinks linearly as the game
+// goes on (by bag_time_urgency at the round limit) and as we fall behind in
+// the gem race (by bag_behind_urgency fully behind), to no less than
+// bag_urgency_floor of it: what we have done so far has not been banking.
+inline constexpr float bag_gems = 40;
+inline constexpr float bag_gems_per_step = 1.5f;
+inline constexpr int bag_walk_cap = 30;
+inline constexpr float bag_time_urgency = 0.6f;
+inline constexpr float bag_behind_urgency = 0.5f;
+inline constexpr float bag_urgency_floor = 0.2f;
+// A tribute starts only when the enemies we know of (in view and
+// remembered) cannot kill us before its channel ends, and a channel under
+// way is cancelled once they could (channel_danger()): a bag's channel is a
+// turn per 10 gems, and half the gems taken from us were taken beside an
+// altar, bags of 500-2,000 mid-channel. Turned away, a champion waits
+// beside the altar bank_wait_turns, then leaves it out for bank_wait_block
+// rounds. A walled-off altar is left out for stuck_rounds, doubled each
+// time it walls us off again (up to 8 times as long): on guardians, whose
+// one altar the guardian camps wall in, the bag rule walked back to it
+// every 40 rounds and banked nothing.
+inline constexpr int bank_wait_turns = 8;
+inline constexpr int bank_wait_block = 40;
+// Off: tributes start and run as before channel_danger() (evaluation switch).
+inline constexpr bool channel_safety = true;
+// A walk with its dash ready routes over holes the dash crosses (move_to()).
+inline constexpr bool dash_over_holes = true;
+// Evaluation only: a nonzero seed jitters camp rewards by up to 1% so the same
+// bot plays different games (cambc has no match seed). Always 0 when shipped.
+inline constexpr unsigned eval_seed = 0;
+// Enemy reach counts a ready dash (incoming(), acts_on()): Vendetta strikes
+// from four tiles (dash two, step one, range one), not two. On collision one
+// Vendetta took 12 of ours for no deaths, catching farmers we read as safe.
+inline constexpr bool dash_threat = true;
+// A champion back on the tile it left a turn ago, having neither struck nor
+// been struck, pingpong_turns times in a row commits to its objective (its
+// camp, its bank, its walk) for pingpong_commit rounds: no fight it was only
+// circling, no chase, no reinforcing, unless it is struck or has a kill or a
+// finish. Each turn decided afresh flipped on position thresholds: the micro
+// stepped in and leave_fight() or the bank stepped back (our Willow 24 rounds
+// beside an altar with 32 gems), farming and reinforcing alternated (our
+// Heart of Ruin, 00quarry r390-397), the micro alone swapped two tiles.
+inline constexpr int pingpong_turns = 3;
+inline constexpr int pingpong_commit = 10;
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 200;

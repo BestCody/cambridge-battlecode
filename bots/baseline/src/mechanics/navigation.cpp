@@ -153,8 +153,21 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         return false;
     auto &field = move_field;
     auto &visited = search_visited;
+    // With our dash ready the walk goes over the holes it crosses: the dash
+    // (cast_mobility()) lands past one, saving the steps around it.
+    bool over_holes = false;
+    if (use_dash && policy::dash_over_holes && int(round) >= holes_off_until)
+        for (auto a : me.abilities())
+            if (a.is_dash() && ready(a, me.can_cast()) && !(walked && describe(a).exclusive))
+                over_holes = true;
+    const auto route_blocked = [&]() -> const bc::bitboard & {
+        if (!over_holes)
+            return blocked;
+        subtract_into(hole_blocked, blocked, dash_holes);
+        return hole_blocked;
+    };
     subtract_into(search_goals, goals, blocked);
-    field.compute_to(blocked, search_goals, origin_at(position), visited);
+    field.compute_to(route_blocked(), search_goals, origin_at(position), visited);
     // With a crystal, the way there may be a hop (not when urgent: its
     // channel holds us still for three turns).
     if (!urgent && !walking_to_hop && carrying_crystal()) {
@@ -171,8 +184,11 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         field.compute_to(temporary, goals & ~temporary, around(position, 0), visited);
         breaking_through = field.get(position) != bc::distance_field::unreachable;
     }
-    if (field.get(position) == bc::distance_field::unreachable)
+    if (field.get(position) == bc::distance_field::unreachable) {
+        if (over_holes)
+            holes_off_until = int(round) + 8;
         return false;
+    }
     if (breaking_through && !urgent) {
         // Only through a group we clear alone on this visit (visit_clears()).
         // Through one whose walk out a visit could pay, our banking
@@ -192,7 +208,10 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
             return true;
     }
     bool moved = false;
-    if (use_dash)
+    // A route over a hole keeps the dash for the crossing: spent on the way
+    // there, the walk around (no dash) pointed back, and our Heart of Ruin
+    // dashed toward a hole and walked away from it every 8 rounds.
+    if (use_dash && (!over_holes || !(around(position, 1) & dash_holes).is_empty()))
         moved = cast_mobility(field, urgent, engaged_group);
     if (moved) {
         // A dash can reveal previously hidden camps and champions. Their tiles
@@ -244,8 +263,10 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         if (move_step(best))
             return true;
         subtract_into(search_goals, goals, blocked);
-        field.compute_to(blocked, search_goals, origin_at(position), visited);
+        field.compute_to(route_blocked(), search_goals, origin_at(position), visited);
     }
+    if (over_holes && !moved)
+        holes_off_until = int(round) + 8;
     return moved;
 }
 
@@ -970,6 +991,20 @@ int Bot::follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_d
     }
     if (hop_plan.landing.x < 0)
         return -1;
+    // Only a hop that gets us there sooner: the landing's walk (the field
+    // move_to() just built for these goals; one further than ours is not
+    // reached) plus the channel and the walk to its take-off, under ours.
+    // A plan made again after we walked past its landing hopped us back:
+    // our Ryth walked a road east, turned back and hopped west every 12
+    // rounds for 850 rounds with 7 gems (00road-of-riches).
+    if (walk != bc::distance_field::unreachable) {
+        const int there = move_field.get(hop_plan.landing);
+        const int takeoff = std::max(0, distance(position, hop_plan.landing) - reach);
+        if (there == bc::distance_field::unreachable || there + channel + takeoff >= walk) {
+            hop_plan.landing = {-1, -1};
+            return -1;
+        }
+    }
     if (distance(position, hop_plan.landing) > reach) {
         walking_to_hop = true;
         const bool moved = move_to(around(hop_plan.landing, float(reach)) & open_terrain, hop_plan.landing, false,
