@@ -384,9 +384,20 @@ class Bot {
     std::uint64_t turn_start_fuel = 0;
     std::uint64_t search_job_cost = 0; // The last map-wide search's work.
     std::uint64_t camp_count = 0;
+    // Whether any camp group can award gold. No-gold maps cannot normally
+    // raise Prism's maximum health, so its gem bag needs a different policy.
+    bool map_has_gold = false;
     std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
+    // A fight support commitment: Willow holds it after a direct response, and
+    // any champion retains it through a faster recall route. A pending recall
+    // becomes ready on spawn; a ready commitment follows continuing sightings.
+    int reinforce_commitment = -1;
+    bool reinforce_commitment_ready = false;
+    // Willow's visible protected ally. It remains until that ally leaves enemy
+    // danger, avoiding target changes between camp wounds and a real fight.
+    int willow_guard_slot = -1;
     // The group camp choice planned a spell-range siege of (-1: none), for
     // worker_farm() to stand as planned.
     int siege_group = -1;
@@ -605,7 +616,9 @@ class Bot {
     int recall_turns = 5;
     std::vector<bc::champion> enemy_roster;
     std::vector<int> enemy_respawn;
-    float enemy_average_power = 0;
+    // Each enemy's power at its design's full health (enemy_roster's order):
+    // a body that respawns.
+    std::vector<float> enemy_design_power;
     LifeSnapshot last_life;
     // Shards this champion has bought, by item type, for its build order.
     std::array<unsigned, static_cast<unsigned>(bc::item_type::count)> bought{};
@@ -755,6 +768,16 @@ class Bot {
     void observe_fight();
     void publish(unsigned claim);
     float incoming(vec2 tile, int engaged_group = -1, bool include_camps = true) const;
+    float incoming_enemies(vec2 tile) const;
+    // incoming() at many tiles with nothing changing between the calls:
+    // begin_scan() starts a scan, and incoming_scan(tile) gives incoming(tile)
+    // with each camp's tile-independent tests made once for the scan.
+    void begin_scan();
+    float incoming_scan(vec2 tile) const;
+    mutable std::vector<std::uint32_t> scan_stamp;
+    mutable std::vector<int> scan_near;
+    mutable std::vector<float> scan_hit;
+    std::uint32_t scan_serial = 0;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round

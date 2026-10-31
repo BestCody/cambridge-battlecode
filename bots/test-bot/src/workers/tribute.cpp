@@ -30,36 +30,38 @@ bool Bot::worker_tribute() {
     }
     // Every trip banks, as willow best girl's champions do: whatever we carry
     // on the way out from spawn (the altar nearest it, from there), and at
-    // once when an altar is a few steps away. Prism keeps a large bag for
-    // Focus unless the chance to bank safely or the risk of losing it changes.
+    // once when an altar is a few steps away. Ordinary maps keep Prism's old
+    // Focus bag: applying fragile banking everywhere cost two wins. On no-gold
+    // maps it cannot normally gain Health, so a safe Prism banks early while a
+    // recently fighting one keeps a combat bag up to a bounded forced cap.
     const auto &spawn = own_spawn;
-    const bool keeps = passive == bc::passive_type::gem_focus;
+    const bool prism = passive == bc::passive_type::gem_focus;
+    const float durable_health =
+        stats.base_health + float(policy::prism_health_shards) * stats.health_growth;
+    const bool durable_prism = prism && max_health >= durable_health;
+    const bool fragile_prism = prism && !durable_prism && !map_has_gold;
+    const bool keeps = prism && !fragile_prism;
     // The altar we were walled off from lately is no nearby altar.
     const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&
                         std::size_t(stuck_altar) < altar_routes.size() &&
                         int(altar_routes[stuck_altar].get(position)) <= closest;
     const bool trip =
         !keeps && (spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled));
-    // A holder waits for its capture. Otherwise Prism's target falls when an
-    // altar is nearby, a visible enemy can engage next turn, or the game is
-    // nearing its end. The normal skirmish and escape decisions still handle
-    // an enemy already in contact before a distant trip to bank begins.
-    unsigned prism_target = policy::prism_bag;
-    if (keeps && policy::prism_dynamic_banking) {
-        if (closest <= policy::bank_nearby && !walled)
-            prism_target = std::min(prism_target, policy::prism_nearby_bag);
-        if (closest <= int(policy::prism_threatened_altar_walk) &&
-            health < max_health * policy::prism_threatened_health &&
-            std::any_of(enemies.begin(), enemies.end(),
-                        [&](const ObservedUnit &enemy) { return enemy_threatens(enemy, position); }))
-            prism_target = std::min(prism_target, policy::prism_threatened_bag);
-        if (int(rules::settings().max_rounds - round) <= int(policy::prism_late_rounds))
-            prism_target = std::min(prism_target, policy::prism_late_bag);
-    }
-    if (keeps && policy::prism_endgame_banking && remaining <= int(policy::prism_endgame_gap) &&
-        closest <= policy::bank_nearby && !walled && incoming(position) == 0)
-        prism_target = std::min(prism_target, policy::prism_endgame_bag);
-    const bool full = keeps && gems >= prism_target && !holding;
+    // A holder banks only after its capture pays. The small fragile limit is
+    // used only out of recent enemy contact; enough gems always force banking
+    // before the risk grows to the ordinary Focus bag.
+    const bool safe_fragile_bank =
+        fragile_prism && int(round) - enemy_sighted > policy::prism_bank_danger_memory;
+    const bool full = prism && !holding &&
+                      (fragile_prism
+                           ? gems >= policy::prism_fragile_forced_bag ||
+                                 (safe_fragile_bank && gems >= policy::prism_fragile_bag)
+                           : gems >= policy::prism_bag);
+    // A durable or ordinary-map Prism otherwise banks only a full bag, a win
+    // or at the deadline: willow best girl's banks 0.1-0.2 times a game and carries
+    // 82-114 gems from round 400 (same maps); ours, banking its share near
+    // victory and with captures beside altars, banked 0.8 times and carried
+    // 35-68.
     if (!banking && !win && !deadline && !trip && !full && (keeps || (!capture_combo && !(share && !holding))))
         return false;
     if (!banking)
@@ -91,6 +93,11 @@ bool Bot::worker_tribute() {
         }
     }
     if (selected.x < 0) {
+        banking = false;
+        return false;
+    }
+    // A holder banks only where the tribute starts beside its capture.
+    if (holding && !win && !deadline && distance(position, selected) > rules::settings().submit_gems_range) {
         banking = false;
         return false;
     }

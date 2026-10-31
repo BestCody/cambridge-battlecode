@@ -1,5 +1,6 @@
 // Worker camp choice and farming.
 #include "../bot.h"
+#include <tuple>
 #include <wasm_simd128.h>
 
 int Bot::worker_choose_group(int excluded) {
@@ -20,6 +21,13 @@ int Bot::worker_choose_group(int excluded) {
             ++alive_allies;
         }
     const auto living = [&](unsigned s) { return s < 64 && (alive >> s & 1); };
+    // Exactly one living non-Prism may take an opportunistic enemy-side gold
+    // detour while teammates reserve a cooling camp. A stable roster order
+    // prevents the whole team from making the same locally attractive trip.
+    bool cooling_detour_runner = type != bc::champion_type::prism;
+    for (unsigned s = 0; cooling_detour_runner && s < slot; ++s)
+        if (living(s) && opening.roster_types[s] != bc::champion_type::prism)
+            cooling_detour_runner = false;
     const bool depleted = float(alive_allies) <= float(roster.size()) * policy::depleted_alive_fraction;
     // Per group, from one pass over the claims and the units in view:
     // teammates' claims (each claimant can supply the next clear's damage, so
@@ -31,9 +39,20 @@ int Bot::worker_choose_group(int excluded) {
     static std::vector<float> partner_arrival;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
+    static std::vector<int> claimed_groups;
+    claimed_groups.clear();
+    // The latest cooling camp already reserved by a teammate. Its remaining
+    // cooldown is an opportunity window for a short live-camp detour.
+    int cooling_reservation = -1;
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (const int c = mate_claim(s); c >= 0)
+        if (const int c = mate_claim(s); c >= 0) {
             ++claims[c];
+            claimed_groups.push_back(c);
+            if (groups[std::size_t(c)].status == CampGroup::cooling &&
+                (cooling_reservation < 0 ||
+                 groups[std::size_t(c)].respawn > groups[std::size_t(cooling_reservation)].respawn))
+                cooling_reservation = c;
+        }
     // Each teammate's damage per round on camps (from its live strength and
     // focus in view, else its type's base) and, per camp, its claimants'
     // summed.
@@ -70,9 +89,7 @@ int Bot::worker_choose_group(int excluded) {
         if (const int g = standing_on(e.position); g >= 0)
             marks[g] |= enemy_on;
     const int here = group_at(position);
-    const bool gearing = policy::fortress_gear_phase && fortress_gems(opening) && round < policy::fortress_gear_rounds;
-    const float gem_weight = gearing ? policy::fortress_early_gem_weight : gem_reward_weight(opening);
-    const float gem_risk = gearing ? policy::fortress_early_risk_weight : gem_risk_weight(opening);
+    const float gem_weight = gem_reward_weight(opening), gem_risk = gem_risk_weight(opening);
     const float behind = behind_pressure();
     const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;
     const float camp_risk = policy::camp_risk_weight * (1.0f - policy::behind_risk_relief * behind);
@@ -114,7 +131,8 @@ int Bot::worker_choose_group(int excluded) {
         // camp rates, the healing a clear gets and, for a hard group nobody
         // claims, the wait for a partner.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
-        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait;
+        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait,
+            *cohesion;
         // A hard group's party (its claimants, else the nearest free
         // teammate): its camp rate besides ours; the camp's strikes its stuns
         // take away, per round (ours too); its shields now and per round
@@ -135,7 +153,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[12 * padded]);
-        lanes.floats.reset(new float[25 * padded]);
+        lanes.floats.reset(new float[26 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
@@ -149,7 +167,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.claim_rate, &lanes.heal, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
-                            &lanes.party_heal, &lanes.run_reward, &lanes.run_time}) {
+                            &lanes.party_heal, &lanes.run_reward, &lanes.run_time, &lanes.cohesion}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -162,7 +180,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
                                lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.run_reward,
-                               lanes.run_time})
+                               lanes.run_time, lanes.cohesion})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -254,6 +272,12 @@ int Bot::worker_choose_group(int excluded) {
             splash[i] = g.splash;
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
+            float nearest_claim = std::numeric_limits<float>::infinity();
+            for (const int claimed : claimed_groups)
+                nearest_claim = std::min(nearest_claim, float(distance(g.centre, groups[claimed].centre)));
+            lanes.cohesion[i] = std::isfinite(nearest_claim)
+                                    ? std::max(0.0f, nearest_claim - opening.spacing)
+                                    : 0.0f;
         }
         for (std::size_t i = 0; i < count; ++i)
             lanes.sighted[i] = i < enemy_seen_near.size() &&
@@ -295,8 +319,9 @@ int Bot::worker_choose_group(int excluded) {
                 if (code >= 1 && code <= groups.size()) {
                     const auto &h = groups[code - 1];
                     where = h.centre;
-                    if (h.status == CampGroup::capture)
-                        busy = float(std::max(0, capture_payout(h) - int(round)));
+                    if (h.status == CampGroup::capture) // Its holding's timer; unknown counts from now.
+                        busy = float(std::max(0, (h.holding_since >= 0 ? h.holding_since : int(round)) +
+                                                     capture_time - int(round)));
                     else if (h.status == CampGroup::alive && h.health < h.max_health)
                         busy = h.health / std::max(1.0f, mate_rate[s]) + float(capture_time + 1);
                 } else if (code == TeamMemory::recall)
@@ -312,7 +337,9 @@ int Bot::worker_choose_group(int excluded) {
                 party = 1u << nearest;
                 partner_arrival[i] = soonest;
                 lanes.partner_wait[i] = std::max(0.0f, soonest - float(lanes.path[i]));
-            }
+            } else if (!party && groups[i].attacked < int(round) - rules::settings().camp_sleep_time - 1)
+                // Nobody free to come, and unstruck: worker_farm() would wait to the end.
+                lanes.partner_wait[i] = float(int(rules::settings().max_rounds) - int(round));
             float rate = 0, stun = own_stun, shield = own_shield, shield_rate = own_shield_rate,
                   tank = camp_mitigation * mitigation, party_health = health, party_spare = spare, heal = own_heal;
             for (unsigned s = 0; s < kits; ++s) {
@@ -371,6 +398,12 @@ int Bot::worker_choose_group(int excluded) {
         }
     const float gold_weight =
         gold_value * gold_bonus * (type == bc::champion_type::willow ? policy::willow_gold_factor : 1.0f);
+    // Remaining time in the team's latest cooling reservation. A detour below
+    // is eligible only when its own full duration fits in this idle window.
+    const float cooling_window =
+        cooling_reservation >= 0
+            ? float(std::max(0, groups[std::size_t(cooling_reservation)].respawn - int(round)))
+            : 0.0f;
     // The Prism farms the safe gem groups (policy::prism_safe_gem_factor).
     const float safe_gem_factor = type == bc::champion_type::prism ? policy::prism_safe_gem_factor : 1.0f;
     // Marcella walks to the bigger groups (policy::marcella_travel_hazard).
@@ -389,7 +422,7 @@ int Bot::worker_choose_group(int excluded) {
     const std::array<Spell, 2> kit = spells;
     // Cluster runs. A short trip's capture ends in a recall home
     // (home_after_capture()), which every version that kept farming instead
-    // lost to; but a row of gem or gold clusters a tile or
+    // lost 5-9 games of 80 to; but a row of gem or gold clusters a tile or
     // two apart (each its own group and capture) was then taken one per
     // trip. A cluster group's run is the clusters taken after it on the same
     // trip: next, the nearest cluster group linked to the last member
@@ -707,8 +740,25 @@ int Bot::worker_choose_group(int excluded) {
             }
             value = wasm_f32x4_div(
                 value, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_add(travel, waiting), splat(travel_hazard))));
-            value = pick(wasm_f32x4_mul(value, splat(enemy_side_mul)), value,
-                         wasm_v128_load(&lanes.enemy_side[i]));
+            // Keep ordinary farmers in neighbouring camp regions without
+            // putting another crowding charge on hard groups' planned parties.
+            const v128_t isolation = pick(zero, wasm_v128_load(&lanes.cohesion[i]), hard);
+            value = wasm_f32x4_div(
+                value, wasm_f32x4_add(one, wasm_f32x4_mul(isolation, splat(policy::cohesion_hazard))));
+            const v128_t enemy_side = wasm_v128_load(&lanes.enemy_side[i]);
+            v128_t cooling_gold_detour =
+                cooling_detour_runner
+                    ? wasm_v128_and(enemy_side, wasm_f32x4_gt(wasm_v128_load(&lanes.gold[i]), zero))
+                    : no_bits;
+            cooling_gold_detour = wasm_v128_and(
+                cooling_gold_detour, wasm_f32x4_eq(claimants, zero));
+            cooling_gold_detour = wasm_v128_andnot(cooling_gold_detour, is_cooling);
+            cooling_gold_detour = wasm_v128_and(
+                cooling_gold_detour, wasm_f32x4_lt(duration, splat(cooling_window)));
+            const v128_t side_factor = pick(
+                splat(std::max(enemy_side_mul, policy::cooling_detour_enemy_side_factor)),
+                splat(enemy_side_mul), cooling_gold_detour);
+            value = pick(wasm_f32x4_mul(value, side_factor), value, enemy_side);
             value = pick(wasm_f32x4_mul(value, splat(safe_gem_factor)), value, wasm_v128_load(&lanes.safe_gems[i]));
             // No visit affords the walk out: no plan at all. The single clear
             // kept a tiny score and won once the groups near were down: our
@@ -1095,23 +1145,31 @@ int Bot::claimed_by(const ObservedUnit &ally) const {
 
 bool Bot::capture_outranked(const CampGroup &g) const {
     // A visible ally on the capture that claims it holds it instead of us
-    // when it outranks us (outranks()). Every holder ranks the same way, so
-    // exactly one stays.
+    // when it outranks us (outranks()); a nearby claiming Prism also prompts a
+    // handoff. Every holder applies the same rank, so exactly one stays.
     const bool on = g.tiles().is_set(position);
+    const int group = int(&g - groups.data());
     for (const auto &ally : allies) {
-        if (ally.health <= 0 || !g.tiles().is_set(ally.position))
+        if (ally.health <= 0)
+            continue;
+        const int claim = claimed_by(ally);
+        // A non-Prism holder hands the capture to a nearby Prism claiming it,
+        // including one-tile regions where Prism cannot step on first.
+        const bool prism_handoff = on && type != bc::champion_type::prism &&
+                                   ally.type == bc::champion_type::prism && claim == group &&
+                                   distance(ally.position, g.centre) <= 3;
+        if (!g.tiles().is_set(ally.position) && !prism_handoff)
             continue;
         // Only an ally that claims the camp means to hold it; one crossing
         // the tiles or retreating over them leaves the next turn.
         // ... or, on the tiles while we are not, reports a fight (a holder
         // asking for help; a fighter on our own tiles is a passer-by).
-        if (claimed_by(ally) != int(&g - groups.data()) && !(!on && reports_fight(ally)))
+        if (claim != group && !(!on && reports_fight(ally)))
             continue;
         // One riding its capture's recall home cannot step off: it holds the
-        // capture, and stepping on only halves its reward. Three in four of
-        // our shared captures (19% of all, willow best girl's 2%) were one of
-        // ours stepping onto a holder recalling with it.
-        if (ally.channel || outranks(ally, !on))
+        // capture, and stepping on only halves its reward. Otherwise Prism's
+        // explicit type priority chooses the sole holder.
+        if (ally.channel || prism_handoff || outranks(ally, !on))
             return true;
     }
     return false;
@@ -1119,15 +1177,19 @@ bool Bot::capture_outranked(const CampGroup &g) const {
 
 bool Bot::capture_deferred(const CampGroup &g) const {
     // A teammate claiming the group that rides its capture's recall home or
-    // outranks us (outranks(): on the tiles, or within 3 with the bigger
-    // bag) holds it from the start:
+    // outranks us (Prism first, then the bigger bag) holds it from the start:
     // two on the tiles split the reward (a fifth of our captures, willow
     // best girl's 2%).
     const int group = int(&g - groups.data());
     for (const auto &ally : allies)
-        if (ally.health > 0 && claimed_by(ally) == group && distance(ally.position, g.centre) <= 3 &&
-            (ally.channel || (g.tiles().is_set(ally.position) ? outranks(ally, true) : ally.gems > int(gems))))
-            return true;
+        if (ally.health > 0 && claimed_by(ally) == group && distance(ally.position, g.centre) <= 3) {
+            const bool ally_prism = ally.type == bc::champion_type::prism;
+            const bool self_prism = type == bc::champion_type::prism;
+            const bool nearby_outranks =
+                ally_prism != self_prism ? ally_prism : ally.gems > int(gems);
+            if (ally.channel || (g.tiles().is_set(ally.position) ? outranks(ally, true) : nearby_outranks))
+                return true;
+        }
     return false;
 }
 
@@ -1139,12 +1201,14 @@ int Bot::capture_payout(const CampGroup &g) const {
 }
 
 bool Bot::outranks(const ObservedUnit &ally, bool arriving) const {
-    // The holder order of capture_outranked(): the bigger bag (the Prism
-    // carries the team's gems), then one already on the tiles, then the
-    // lower id. willow best girl's holder is the first of the party on in
-    // 84-86% of party captures; a type rank after the bag let our Vesper
-    // hold over Marcella and the HoR (its capture gold 957 a game on the
-    // same maps to willow's 468, the HoR's item health r300 172 to 290).
+    // When Prism is present it owns the capture: carried gems are Focus for it,
+    // whereas another holder would normally bank them soon. Among champions
+    // of the same priority keep the old order: bigger bag, current holder,
+    // then lower id.
+    const bool ally_prism = ally.type == bc::champion_type::prism;
+    const bool self_prism = type == bc::champion_type::prism;
+    if (ally_prism != self_prism)
+        return ally_prism;
     return ally.gems != int(gems) ? ally.gems > int(gems) : arriving || id(ally.champion()) < id(bc::self());
 }
 
@@ -1213,41 +1277,100 @@ std::span<const Bot::ClusterLink> Bot::cluster_links_of(int g) {
     // field is built, checked as fields come. Nearest first.
     bool order = false;
     if (link_first[g] < 0) {
-        // Each linked group's entry this build, by the build's stamp.
+        // Only camps of other cluster groups within the group's bounding
+        // box widened by the reach can be in reach of one of its camps:
+        // those are found in one pass, four camps a step, and each is
+        // measured against the group's camps. Each linked group is listed
+        // in the order of its first camp pair in reach (by the group's camp,
+        // then camp order), at the nearest such pair's gap.
+        const int reach = rules::settings().capture_time;
+        const auto &own = groups[g].camps;
+        int low_x = std::numeric_limits<int>::max(), high_x = std::numeric_limits<int>::min();
+        int low_y = low_x, high_y = high_x;
+        for (const auto &c : own) {
+            low_x = std::min(low_x, c.position.x);
+            high_x = std::max(high_x, c.position.x);
+            low_y = std::min(low_y, c.position.y);
+            high_y = std::max(high_y, c.position.y);
+        }
+        struct Found {
+            int group;
+            std::size_t first_camp, first_tile;
+            int apart;
+        };
+        static std::vector<Found> found;
         static std::vector<std::uint32_t> entry_stamp, entry;
         static std::uint32_t stamp = 0;
         entry_stamp.resize(groups.size());
         entry.resize(groups.size());
         ++stamp;
-        const std::size_t first = cluster_links.size();
-        const v128_t reach = wasm_i32x4_splat(rules::settings().capture_time);
-        alignas(16) std::int32_t gaps[4];
-        for (const auto &c : groups[g].camps) {
-            const v128_t x = wasm_i32x4_splat(c.position.x), y = wasm_i32x4_splat(c.position.y);
+        found.clear();
+        const std::size_t own_lane = std::size_t(own.data() - camp_pool.data());
+        const v128_t wide_reach = wasm_i32x4_splat(reach);
+        if (!own.empty()) {
+            const v128_t lx = wasm_i32x4_splat(low_x - reach), hx = wasm_i32x4_splat(high_x + reach);
+            const v128_t ly = wasm_i32x4_splat(low_y - reach), hy = wasm_i32x4_splat(high_y + reach);
             for (std::size_t k = 0; k < camp_lanes; k += 4) {
-                const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
-                                                    wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&camp_y[k]))));
-                unsigned hits = wasm_i32x4_bitmask(wasm_i32x4_le(apart, reach));
-                if (hits)
-                    wasm_v128_store(gaps, apart);
-                for (; hits; hits &= hits - 1) {
-                    const unsigned lane = unsigned(__builtin_ctz(hits));
-                    const int other = camp_group[k + lane];
+                const v128_t x = wasm_v128_load(&camp_x[k]), y = wasm_v128_load(&camp_y[k]);
+                const v128_t in = wasm_v128_and(wasm_v128_and(wasm_i32x4_ge(x, lx), wasm_i32x4_le(x, hx)),
+                                                wasm_v128_and(wasm_i32x4_ge(y, ly), wasm_i32x4_le(y, hy)));
+                for (unsigned bits = wasm_i32x4_bitmask(in); bits; bits &= bits - 1) {
+                    const std::size_t j = k + unsigned(__builtin_ctz(bits));
+                    const int other = camp_group[j];
                     if (other == g || !cluster_group[other])
                         continue;
-                    // Another camp pair of groups already linked: the nearer
-                    // tiles count.
-                    if (entry_stamp[other] == stamp) {
-                        auto &link = cluster_links[entry[other]];
-                        link.apart = std::min(link.apart, gaps[lane]);
-                    } else {
+                    // The group's camps are lanes own_lane on, in its camp
+                    // order: four at a time, the rest one by one.
+                    const v128_t tx = wasm_i32x4_splat(camp_x[j]), ty = wasm_i32x4_splat(camp_y[j]);
+                    std::size_t first_camp = own.size();
+                    v128_t low = wasm_i32x4_splat(std::numeric_limits<std::int32_t>::max());
+                    std::size_t ci = 0;
+                    for (; ci + 4 <= own.size(); ci += 4) {
+                        const v128_t d =
+                            wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(tx, wasm_v128_load(&camp_x[own_lane + ci]))),
+                                           wasm_i32x4_abs(wasm_i32x4_sub(ty, wasm_v128_load(&camp_y[own_lane + ci]))));
+                        const v128_t in = wasm_i32x4_le(d, wide_reach);
+                        if (!wasm_v128_any_true(in))
+                            continue;
+                        if (first_camp == own.size())
+                            first_camp = ci + unsigned(__builtin_ctz(unsigned(wasm_i32x4_bitmask(in))));
+                        low = wasm_i32x4_min(low, d);
+                    }
+                    low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 2, 3, 0, 1));
+                    low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 1, 0, 3, 2));
+                    int apart = wasm_i32x4_extract_lane(low, 0);
+                    const vec2 tile{camp_x[j], camp_y[j]};
+                    for (; ci < own.size(); ++ci)
+                        if (const int d = distance(own[ci].position, tile); d <= reach) {
+                            first_camp = std::min(first_camp, ci);
+                            apart = std::min(apart, d);
+                        }
+                    if (first_camp == own.size())
+                        continue;
+                    if (entry_stamp[other] != stamp) {
                         entry_stamp[other] = stamp;
-                        entry[other] = std::uint32_t(cluster_links.size());
-                        cluster_links.push_back({other, gaps[lane], false});
+                        entry[other] = std::uint32_t(found.size());
+                        found.push_back({other, first_camp, j, apart});
+                    } else {
+                        auto &f = found[entry[other]];
+                        if (first_camp < f.first_camp) {
+                            f.first_camp = first_camp;
+                            f.first_tile = j;
+                        }
+                        f.apart = std::min(f.apart, apart);
                     }
                 }
             }
         }
+        // Listed by first pair (camp order is the tiles' order within one).
+        for (std::size_t e = 1; e < found.size(); ++e)
+            for (std::size_t f = e; f > 0 && std::tie(found[f].first_camp, found[f].first_tile) <
+                                                 std::tie(found[f - 1].first_camp, found[f - 1].first_tile);
+                 --f)
+                std::swap(found[f], found[f - 1]);
+        const std::size_t first = cluster_links.size();
+        for (const auto &f : found)
+            cluster_links.push_back({f.group, f.apart, false});
         link_first[g] = std::int32_t(first);
         link_count[g] = std::uint16_t(cluster_links.size() - first);
         link_checked[g] = walk_cursor + 1; // Its walks are checked below.

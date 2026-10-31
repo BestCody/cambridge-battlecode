@@ -419,7 +419,8 @@ void Bot::initialise() {
         // from its identity, which needs no vision either. The SDK already
         // holds every design; building another reloads it.
         const auto drafted =
-            s < opening.roster_types.size() ? opening.roster_types[s] : roster[s].champion_name();
+            s < std::min<std::size_t>(opening.body_count, opening.roster_types.size()) ? opening.roster_types[s]
+                                                                                       : roster[s].champion_name();
         const auto index = static_cast<std::size_t>(drafted);
         std::optional<bc::champion> loaded;
         const auto &immutable =
@@ -437,12 +438,10 @@ void Bot::initialise() {
     enemy_roster = bc::champions(bc::team::enemy);
     std::sort(enemy_roster.begin(), enemy_roster.end(),
               [](const auto &a, const auto &b) { return id(a) < id(b); });
-    // Their types are public without vision: the enemies' average is theirs
-    // (it was our own roster's).
-    float enemy_power_sum = 0;
+    // Their types are public without vision.
+    enemy_design_power.clear();
     for (const auto &e : enemy_roster)
-        enemy_power_sum += design_power(e.champion_name());
-    enemy_average_power = enemy_roster.empty() ? 0.0f : enemy_power_sum / float(enemy_roster.size());
+        enemy_design_power.push_back(design_power(e.champion_name()));
     enemy_respawn.assign(enemy_roster.size(), -1);
     for (unsigned i = 0; i < roster.size(); ++i)
         if (roster[i] == me)
@@ -494,6 +493,7 @@ void Bot::initialise() {
         for (std::size_t i = 0; i + 5 <= count;) {
             const auto handle = static_cast<bc::handle_camp_group_t>(words[i]);
             const auto gold = words[i + 1], gems = words[i + 2];
+            map_has_gold = map_has_gold || gold > 0;
             const auto respawn = static_cast<std::int32_t>(words[i + 3]);
             const auto size = words[i + 4];
             i += 5;
@@ -922,11 +922,24 @@ float Bot::camp_reach_damage() const {
     // Groups far from us are passed by their centre (a group spans a few
     // tiles; the longest camp reach is 5).
     float damage = 0;
-    for (const auto &g : groups)
-        if (g.status == CampGroup::alive && distance(position, g.centre) <= 10)
+    const auto group_damage = [&](const CampGroup &g) {
+        if (g.status == CampGroup::alive)
             for (const auto &c : g.camps)
                 if (c.health > 0 && distance(position, c.position) <= int(c.stats.base_attack_range))
                     damage += std::max(c.read_strength, float(c.stats.base_strength));
+    };
+    // The centres within 10, four groups a step, in group order.
+    const std::size_t count = groups.size(), whole = count & ~std::size_t{3};
+    const v128_t x = wasm_i32x4_splat(position.x), y = wasm_i32x4_splat(position.y), near = wasm_i32x4_splat(10);
+    for (std::size_t i = 0; i < whole; i += 4) {
+        const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&group_cx[i]))),
+                                        wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&group_cy[i]))));
+        for (unsigned lanes = wasm_i32x4_bitmask(wasm_i32x4_le(d, near)); lanes; lanes &= lanes - 1)
+            group_damage(groups[i + unsigned(__builtin_ctz(lanes))]);
+    }
+    for (std::size_t i = whole; i < count; ++i)
+        if (distance(position, groups[i].centre) <= 10)
+            group_damage(groups[i]);
     return damage * camp_mitigation * mitigation; // As incoming() takes camp hits.
 }
 
@@ -1258,6 +1271,14 @@ void Bot::observe_group(std::size_t i) {
     // Totals in locals (nothing below reads the group's own).
     float health = 0, pressure = 0, toughest = 1;
     bool quiet = asleep_known && readings_stand;
+    // Whether any camp's health changed: a group alive before keeps living
+    // facts made from these same healths (refresh_live() follows every
+    // other change of them while it lives), so with none they stand.
+    bool changed = !was_alive;
+    // The group's records listed so far, from its first slot (camps.count()
+    // and camps.next_slot() as each record is listed).
+    const std::uint32_t first_here = camps.first_slot(int(i));
+    std::size_t listed_here = 0;
     for (auto &c : g.camps) {
         c.quiet_view = camp_in_view[c.tile];
         if (const int index = c.tile; c.quiet_view) {
@@ -1267,33 +1288,41 @@ void Bot::observe_group(std::size_t i) {
             bc::detail::camp_state info;
             bool seen_camp = true;
             // Read the round before (camps fall asleep only rounds after the
-            // last hit), and not earlier this turn, when we may have hit it.
+            // last hit), and not earlier this turn, when we may have hit it:
+            // the reading stands as kept.
             if (asleep && c.read_asleep && int(round) - c.read_round == 1 && readings_stand) {
                 info.health = c.read_health;
                 info.max_health = c.read_max_health;
                 info.strength = c.read_strength;
-            } else
+            } else {
                 seen_camp = camp_living[index] && read_camp(c.unit, info);
+                if (seen_camp) {
+                    c.read_asleep = asleep;
+                    c.read_health = info.health;
+                    c.read_max_health = info.max_health;
+                    c.read_strength = info.strength;
+                }
+            }
             if (seen_camp) {
                 c.read_round = int(round);
-                c.read_asleep = asleep;
-                c.read_health = info.health;
-                c.read_max_health = info.max_health;
-                c.read_strength = info.strength;
                 // Each slot holds the last observation's record until this one
                 // reaches it: one of this camp is brought up to date in place
                 // (only a reading and the buffs differ), else made anew.
-                const std::size_t slot = camps.count(int(i));
-                const std::uint32_t listed = camps.next_slot(int(i));
+                const std::size_t slot = listed_here;
+                const std::uint32_t listed = first_here + std::uint32_t(listed_here++);
+                float now;
                 if (slot < last.size() && last[slot].position == c.position) {
                     last[slot].reread_camp(info, asleep);
                     camps.keep_next(int(i));
-                    c.health = last[slot].health;
+                    now = last[slot].health;
                 } else
-                    c.health = camps.emplace(int(i), c, info, asleep).health;
+                    now = camps.emplace(int(i), c, info, asleep).health;
+                changed = changed || now != c.health;
+                c.health = now;
                 list_threat(listed);
             } else {
                 c.read_round = -10;
+                changed = changed || c.health != 0;
                 c.health = 0;
             }
             quiet = quiet && asleep && seen_camp;
@@ -1305,7 +1334,8 @@ void Bot::observe_group(std::size_t i) {
     }
     g.health = health;
     g.pressure = pressure;
-    g.refresh_live();
+    if (changed)
+        g.refresh_live();
     g.quiet = quiet ? int(round) : -10;
     g.quiet_records = camps.count(int(i));
     // Splash accelerates only the health shared by surviving targets.
@@ -1498,7 +1528,7 @@ float Bot::group_heal(int group) const {
     return rate;
 }
 
-float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
+__attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
@@ -1563,6 +1593,11 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
             damage += wasm_f32x4_extract_lane(cast, 3);
         }
     }
+    return damage;
+}
+
+float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
+    float damage = incoming_enemies(tile);
     if (!include_camps)
         return damage * mitigation;
     const auto threat = [&](std::size_t k) {
@@ -1598,6 +1633,61 @@ float Bot::incoming(vec2 tile, int engaged_group, bool include_camps) const {
             threat(k + unsigned(__builtin_ctz(lanes)));
     }
     return damage * mitigation;
+}
+
+float Bot::incoming_scan(vec2 tile) const {
+    // incoming(tile) while nothing changes between calls (one serial): each
+    // camp's tests that do not depend on the tile (alive, awake, its hit,
+    // the nearest unit) made on its first hit and kept for the serial. The
+    // camps' hits are added as incoming() adds them, in threat order.
+    float damage = incoming_enemies(tile);
+    const v128_t x = wasm_i16x8_splat(std::int16_t(tile.x)), y = wasm_i16x8_splat(std::int16_t(tile.y));
+    for (std::size_t k = 0; k < threat_lanes; k += 8) {
+        const v128_t dx = wasm_i16x8_abs(wasm_i16x8_sub(x, wasm_v128_load(&threat_x[k])));
+        const v128_t dy = wasm_i16x8_abs(wasm_i16x8_sub(y, wasm_v128_load(&threat_y[k])));
+        const v128_t hit = wasm_i16x8_le(wasm_i16x8_max(dx, dy), wasm_v128_load(&threat_reach[k]));
+        if (!wasm_v128_any_true(hit))
+            continue;
+        for (unsigned lanes = wasm_i16x8_bitmask(hit); lanes; lanes &= lanes - 1) {
+            const std::size_t t = k + unsigned(__builtin_ctz(lanes));
+            if (scan_stamp[t] != scan_serial) {
+                scan_stamp[t] = scan_serial;
+                scan_near[t] = std::numeric_limits<int>::min(); // Strikes nobody.
+                const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
+                if (c.health <= 0)
+                    continue;
+                const auto &g = groups[c.group];
+                if (g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
+                    (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
+                    continue;
+                scan_near[t] = threat_target(t);
+                scan_hit[t] = c.strength * camp_mitigation;
+            }
+            const int nearest = scan_near[t];
+            if (nearest == std::numeric_limits<int>::min())
+                continue;
+            const int d = std::max(std::abs(tile.x - int(threat_x[t])), std::abs(tile.y - int(threat_y[t])));
+            if (nearest < d)
+                continue;
+            if (nearest == d)
+                damage += scan_hit[t] / float(1 + threat_ties[t]);
+            else
+                damage += scan_hit[t];
+        }
+    }
+    return damage * mitigation;
+}
+
+void Bot::begin_scan() {
+    if (scan_stamp.size() < threat_lanes) {
+        scan_stamp.resize(threat_lanes, 0);
+        scan_near.resize(threat_lanes);
+        scan_hit.resize(threat_lanes);
+    }
+    if (++scan_serial == 0) {
+        std::fill(scan_stamp.begin(), scan_stamp.end(), 0);
+        scan_serial = 1;
+    }
 }
 
 const Bot::ExitLanes &Bot::exit_packed() const {
@@ -1962,20 +2052,28 @@ float Bot::enemy_power(vec2 at) const {
 }
 
 float Bot::respawn_threat(vec2 at) const {
-    if (enemy_respawn.empty() || enemy_average_power <= 0)
-        return 0;
-    int spawn_dist = 100000;
+    // A dead enemy back by next round that can act on the tile from its
+    // spawn by its next turn (its attack or damaging spell reach and a
+    // move, as acts_on() counts one), at its design's full health. It was
+    // every body back within 5 rounds, within 9 tiles of their spawn, cut
+    // by a tenth a tile.
+    int spawn_dist = std::numeric_limits<int>::max();
     for (auto p : enemy_spawn_tiles)
         spawn_dist = std::min(spawn_dist, distance(at, p));
-    if (spawn_dist > 9)
-        return 0; // Too far from their base for a fresh body to reach the fight.
-    float bodies = 0;
-    for (std::size_t i = 0; i < enemy_respawn.size(); ++i)
-        if (enemy_respawn[i] >= 0 && enemy_respawn[i] - int(round) <= 5)
-            bodies += 1;
-    if (bodies <= 0)
-        return 0;
-    // A respawn is a full-health body arriving from their spawn; discount it by
-    // how far away the fight is so a gank beside the base is priced correctly.
-    return bodies * enemy_average_power * (1.0f - float(spawn_dist) / 10.0f);
+    float p = 0;
+    for (std::size_t i = 0; i < enemy_respawn.size() && i < enemy_roster.size(); ++i) {
+        if (enemy_respawn[i] < 0 || enemy_respawn[i] - int(round) > 1)
+            continue;
+        const auto &c = enemy_roster[i];
+        const auto &kit = kit_of(c, c.champion_name());
+        int far = int(c.base_stats().base_attack_range);
+        for (const auto &spell : kit.spells)
+            if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
+                spell.kind == bc::ability_kind::aoe_damage ||
+                (spell.kind == bc::ability_kind::dash && spell.modifier > 0))
+                far = std::max(far, int(spell.range + spell.radius));
+        if (spawn_dist <= far + kit.move_speed)
+            p += enemy_design_power[i];
+    }
+    return p;
 }

@@ -78,7 +78,8 @@ void Bot::play_worker_turn() {
         hidden.reset();
         buy_equipment();
         retreating = banking = false;
-        target = -1;
+        target = reinforce_commitment = willow_guard_slot = -1;
+        reinforce_commitment_ready = false;
         cluster_run.clear();
         return;
     }
@@ -138,6 +139,12 @@ void Bot::play_worker_turn() {
         return;
     }
     const bool at_spawn = own_spawn_tile[tile_index(position)];
+    if (reinforce_commitment >= 0 && !reinforce_commitment_ready) {
+        if (at_spawn)
+            reinforce_commitment_ready = true;
+        else
+            reinforce_commitment = -1; // The support recall was interrupted.
+    }
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
         recall_tile = {-1, -1};
@@ -182,21 +189,6 @@ void Bot::play_worker_turn() {
     if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems) {
         banking = true;
         worker_tribute();
-        return;
-    }
-    // A safe altar beside Prism is a chance to secure a useful bag before a
-    // skirmish draws it away. An enemy able to engage keeps the normal fight
-    // and escape decisions first.
-    const bool bank_dynamic = policy::prism_dynamic_banking && gems >= policy::prism_nearby_bag;
-    const bool bank_endgame = policy::prism_endgame_banking && gems >= policy::prism_endgame_bag &&
-                              gems + bc::global_submitted_gems(bc::team::ally) + policy::prism_endgame_gap >=
-                                  rules::settings().winning_gems;
-    const bool bank_carrier = policy::safe_carrier_banking && gems >= policy::safe_carrier_bag &&
-                              (!policy::safe_carrier_clear_vision || enemies.empty());
-    if ((((bank_dynamic || bank_endgame) && passive == bc::passive_type::gem_focus) || bank_carrier) &&
-        altar_walk().get(position) <= policy::bank_nearby && !attacked && incoming(position) == 0 &&
-        worker_tribute()) {
-        note_activity(Activity::bank);
         return;
     }
     worker_update_formation();

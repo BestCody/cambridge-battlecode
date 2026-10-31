@@ -22,13 +22,6 @@ namespace policy {
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
 inline constexpr float early_gold_value = 0.15f;
 inline constexpr float late_gold_value = 0.30f;
-// A/B the champion draft without changing the worker policy.
-inline constexpr bool baseline_roster = false;
-// Bank a valuable bag at a safe nearby altar before a skirmish can pull the
-// carrier away. A/B switch; the normal worker order applies when false.
-inline constexpr bool safe_carrier_banking = false;
-inline constexpr bool safe_carrier_clear_vision = false;
-inline constexpr unsigned safe_carrier_bag = 200;
 // A reported fight's squad size divides the enemy power by aggression times
 // our average champion power (worker_update_formation()).
 inline constexpr float aggression = 1.8f;
@@ -148,12 +141,6 @@ inline constexpr float siege_gem_weight = 2.0f;
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
 inline constexpr float siege_risk_weight = 0.06f;
-// On fortress-only gem maps, an optional opening phase buys gear from gold
-// camps before the full siege incentive activates.
-inline constexpr bool fortress_gear_phase = true;
-inline constexpr unsigned fortress_gear_rounds = 400;
-inline constexpr float fortress_early_gem_weight = 0.5f;
-inline constexpr float fortress_early_risk_weight = 1.0f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
 // Rounds an enemy out of sight is still counted after its last sighting
@@ -171,24 +158,15 @@ inline constexpr float worker_sighting_penalty = 0.2f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
-// A/B switch for Prism banking. evaluate.py can build both values from this
-// source so the fixed and dynamic policies play identical match schedules.
-inline constexpr bool prism_dynamic_banking = false;
-// A narrow A/B candidate: bank a useful Prism bag only near a safe altar
-// when the team is close to winning, preserving Focus during ordinary farming.
-inline constexpr bool prism_endgame_banking = false;
-inline constexpr unsigned prism_endgame_gap = 250;
-inline constexpr unsigned prism_endgame_bag = 120;
-// Prism keeps a large bag for its Focus passive while farming safely. A
-// smaller bag is worth banking when an altar is close, an enemy can engage,
-// or too little time remains to collect a full bag and submit it.
+// Prism normally banks this full bag (willow best girl's median: 198). On a
+// no-gold map, before one full Health emblem's growth, it banks a small bag
+// while the enemy has not been seen recently, but keeps enough gems for combat
+// until the forced cap: gemcombat4 is fight-heavy, gemcombat5 is not.
 inline constexpr unsigned prism_bag = 200;
-inline constexpr unsigned prism_nearby_bag = 160;
-inline constexpr unsigned prism_threatened_bag = 140;
-inline constexpr unsigned prism_threatened_altar_walk = 8;
-inline constexpr float prism_threatened_health = 0.75f;
-inline constexpr unsigned prism_late_bag = 120;
-inline constexpr unsigned prism_late_rounds = 100;
+inline constexpr unsigned prism_fragile_bag = 30;
+inline constexpr unsigned prism_fragile_forced_bag = 100;
+inline constexpr unsigned prism_health_shards = 5;
+inline constexpr int prism_bank_danger_memory = 20;
 // A champion that has lost this much health to enemy champions before its
 // first shard opens with its first emblem's Health version: on engine 2.0.0
 // willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
@@ -210,8 +188,8 @@ inline constexpr int lock_range = 2;
 // Camp choice prices a clear longer than our health lasts as trips home, not
 // as the risk of dying (camps never regenerate, and a team's clear shares the
 // camps' hits); visit_risk caps the risk of each such visit. With no contest
-// factor on camps nearer the enemy, it won head to head and against
-// db11: monolith captures late in the game rose fivefold.
+// factor on camps nearer the enemy, it won 48 of 80 head to head and 78 of 80
+// against db11 (75): monolith captures late in the game rose fivefold.
 inline constexpr float visit_risk = 0.25f;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
@@ -246,11 +224,6 @@ inline constexpr float plan_hazard = 0.02f;
 // so the gems near them are worth the more. 0 disables the scarcity term.
 inline constexpr int altar_walk_cap = 20;
 inline constexpr float scarce_altar_weight = 0.5f;
-// A hit from an enemy out of sight (note_hidden_hit()) is stepped in on only
-// by a melee champion at hidden_step_health of its health or more: the step
-// onto the bush shows the whole bush, and a hit from one can be bait for a
-// group's burst.
-inline constexpr float hidden_step_health = 0.8f;
 // A heal waits for a teammate missing heal_trigger of a full heal (3 x
 // Focus for Willow): willow best girl's Willow never heals one missing
 // under 200 health (none of its casts in either sample; full heal 360) and
@@ -267,8 +240,16 @@ inline constexpr float willow_follow = 2.0f;
 // 150-400 to willow best girl's 40): relative to the walk, ours weighed gems 2-3
 // times, gold 4-6, monster health 2.5-3 and teammates' groups 1.5-1.8
 // times as much as willow best girl's choices (a logit of its new targets,
-// both samples), and walked past near groups to far ones.
-inline constexpr float travel_hazard = 0.1f;
+// both samples), and walked past near groups to far ones. Travel already enters
+// duration and plan_hazard, so 0.10 charged distant groups too strongly a third
+// time; 0.07 keeps that safety discount nonzero while raising the full 70-map,
+// two-seat result from 60/140 to 76/140 against baseline at 100000 fuel.
+inline constexpr float travel_hazard = 0.07f;
+// Ordinary camps farther than the map's natural camp spacing from every live
+// teammate claim lose this much value per excess tile. Same-camp crowding
+// still spreads champions onto neighbouring groups; this only discourages
+// isolated trips that leave nobody within reinforcement distance. 0 disables.
+inline constexpr float cohesion_hazard = 0.03f;
 // Marcella's in place of travel_hazard: willow best girl's Marcella weighs
 // a group's walk the least of its types (logit -2.39; ours -2.94) and takes
 // one-elk groups in 41% of its new targets on the same maps (ours 26%).
@@ -279,6 +260,12 @@ inline constexpr float marcella_travel_hazard = 0.0f;
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
 inline constexpr float enemy_side_factor = 0.4f;
+// The team's elected detour runner counts an unclaimed live gold-bearing camp
+// whose full clear and capture fit inside a teammate's cooling reservation with
+// at least this enemy-side factor. The teammate remains the reservation; this
+// champion need not return before the respawn. Recent sightings and every
+// normal travel/risk term still apply, so only the idle window is relaxed.
+inline constexpr float cooling_detour_enemy_side_factor = 0.8f;
 // The Prism's camp choice counts a safe gem group (harmless clusters only)
 // prism_safe_gem_factor times: willow best girl's Prism takes one in 39-40%
 // of its new targets when one is up (ours 22%) and keeps its bag for the

@@ -4,7 +4,6 @@
 #include <cambc.h>
 #include <cstdint>
 #include <span>
-#include "../strategy.h"
 
 // The fixed draft. Archived alternatives are in docs/design-notes.md.
 namespace compositions {
@@ -26,16 +25,10 @@ struct Entry {
 // picks, Prism joins at 4 and Willow at 5. Vendetta took Vesper's place when
 // Vesper's strength fell from 55 to 45.
 inline constexpr Mask core_picks = roster(Pick::heart_of_ruin, Pick::marcella, Pick::vendetta);
-inline constexpr std::array test_rosters{
+inline constexpr std::array rosters{
     Entry{"HeartOfRuin/Marcella/Vendetta", core_picks},
     Entry{"HeartOfRuin/Marcella/Vendetta/Prism", Mask(core_picks | bit(Pick::prism))},
     Entry{"HeartOfRuin/Marcella/Vendetta/Prism/Willow", Mask(core_picks | roster(Pick::prism, Pick::willow))}};
-inline constexpr Mask baseline_core = roster(Pick::heart_of_ruin, Pick::marcella, Pick::vesper_vale);
-inline constexpr std::array baseline_rosters{
-    Entry{"HeartOfRuin/Marcella/Vesper", baseline_core},
-    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta", Mask(baseline_core | bit(Pick::vendetta))},
-    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta/Ryth", Mask(baseline_core | roster(Pick::vendetta, Pick::ryth))}};
-inline constexpr auto rosters = policy::baseline_roster ? baseline_rosters : test_rosters;
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 
 // The roster for this pick count, or the largest one for an unsupported count.

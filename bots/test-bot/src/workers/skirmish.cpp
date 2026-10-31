@@ -1,6 +1,7 @@
 // Worker skirmish decisions against enemy champions.
 #include "../bot.h"
 #include <tuple>
+#include <wasm_simd128.h>
 
 bool Bot::worker_skirmish() {
     profiling::Scope scope(profiling::Stage::skirmish);
@@ -156,6 +157,58 @@ bool Bot::worker_skirmish() {
     for (const auto &a : allies)
         if (a.health > 0 && !a.channel && our_count < ours_list.size())
             ours_list[our_count++] = {&a, unit_power_of(a, false)};
+    // Willow protects one ally exposed to champion damage, never one whose
+    // missing health came only from a stationary camp. Keep the current guard
+    // while it remains threatened; switch only for a newly lethal target.
+    const ObservedUnit *guarded = nullptr;
+    int heal_range = 0, guard_enemy_distance = std::numeric_limits<int>::max();
+    float heal_need = 0;
+    if (type == bc::champion_type::willow) {
+        for (const auto &spell : spells)
+            if (spell.kind == bc::ability_kind::heal) {
+                heal_range = std::max(heal_range, int(spell.range));
+                heal_need = std::max(heal_need, policy::heal_trigger * focus * spell.modifier);
+            }
+        const ObservedUnit *current = nullptr, *best_guard = nullptr;
+        float best_urgency = -1;
+        bool current_lethal = false, best_lethal = false;
+        for (std::size_t i = 0; i < allies.size(); ++i) {
+            const auto &ally = allies[i];
+            if (ally.health <= 0 || ally.channel)
+                continue;
+            const int mate_slot = i < ally_slot.size() ? int(ally_slot[i]) : -1;
+            float danger = incoming(ally.position, -1, false) * ally.mitigation /
+                           std::max(0.01f, mitigation);
+            // Its own report can see a threat just outside Willow's vision.
+            if (mate_slot >= 0 && shared.attacked(unsigned(mate_slot)))
+                danger = std::max(danger, heal_need);
+            const float projected_missing =
+                ally.max_health - ally.health + std::max(0.0f, danger - ally.shield - ally.ready_shield);
+            if (danger <= 0 || projected_missing < heal_need)
+                continue;
+            const float life_left = ally.health + ally.shield + ally.ready_shield;
+            const float urgency = danger / std::max(1.0f, life_left);
+            const bool lethal = danger >= life_left;
+            if (mate_slot == willow_guard_slot) {
+                current = &ally;
+                current_lethal = lethal;
+            }
+            if (!best_guard || urgency > best_urgency) {
+                best_guard = &ally;
+                best_urgency = urgency;
+                best_lethal = lethal;
+            }
+        }
+        guarded = current && !(best_lethal && !current_lethal) ? current : best_guard;
+        if (guarded) {
+            const std::size_t i = std::size_t(guarded - allies.data());
+            willow_guard_slot = i < ally_slot.size() ? int(ally_slot[i]) : -1;
+            for (const auto &enemy : enemies)
+                if (enemy.health > 0)
+                    guard_enemy_distance = std::min(guard_enemy_distance, distance(guarded->position, enemy.position));
+        } else
+            willow_guard_slot = -1;
+    }
     const float own = own_power(), life = health + self_shield();
     // Each ready spell's damage to a champion (reset: a second attack; dash:
     // the engine's figure), read once, and whether its hit stuns, as the
@@ -186,14 +239,72 @@ bool Bot::worker_skirmish() {
     }
     // The sides that can act on a tile by next turn: theirs, then ours (we
     // count wherever we stand).
+    // Each side's tiles and acts_on() reach, four to a vector (a padding
+    // lane has no reach), and the tile of each enemy alive and of each unit
+    // of ours (padding far off), for the scans of every tile.
+    struct SideLanes {
+        alignas(16) std::int32_t x[16], y[16], reach[16];
+    };
+    SideLanes their_lanes, our_lanes;
+    constexpr std::int32_t far_off = 1 << 28; // Beyond every reach and every real distance.
+    // The nearest of the tiles in the lanes (never a padding lane's when any is real).
+    const auto nearest_of = [](const std::int32_t *xs, const std::int32_t *ys, std::size_t n, vec2 tile) {
+        const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y);
+        v128_t low = wasm_i32x4_splat(std::numeric_limits<std::int32_t>::max());
+        for (std::size_t k = 0; k < n; k += 4)
+            low = wasm_i32x4_min(low, wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&xs[k]))),
+                                                     wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&ys[k])))));
+        low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 2, 3, 0, 1));
+        low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 1, 0, 3, 2));
+        return int(wasm_i32x4_extract_lane(low, 0));
+    };
+    const auto fill_lanes = [&](SideLanes &l, const std::array<Side, 16> &list, std::size_t n) {
+        for (std::size_t k = 0; k < 16; ++k) {
+            if (k < n) {
+                const auto &u = *list[k].unit;
+                l.x[k] = u.position.x;
+                l.y[k] = u.position.y;
+                l.reach[k] = std::max(u.range, u.spell_reach) + (u.stunned && u.stun_time > 0 ? 0 : u.move_speed);
+            } else if (k % 4) {
+                l.x[k] = l.y[k] = far_off;
+                l.reach[k] = -1;
+            } else
+                break;
+        }
+    };
+    fill_lanes(their_lanes, theirs_list, their_count);
+    fill_lanes(our_lanes, ours_list, our_count);
+    // The tiles of the enemies alive, for each tile's nearest (kept buffers,
+    // padded to fours).
+    static std::vector<std::int32_t> alive_tiles;
+    if (alive_tiles.size() < 2 * (enemies.size() + 4))
+        alive_tiles.resize(2 * (enemies.size() + 4));
+    std::int32_t *const alive_x = alive_tiles.data(), *const alive_y = alive_x + enemies.size() + 4;
+    std::size_t alive_count = 0;
+    for (const auto &e : enemies)
+        if (e.health > 0) {
+            alive_x[alive_count] = e.position.x;
+            alive_y[alive_count++] = e.position.y;
+        }
+    for (std::size_t k = alive_count; k % 4; ++k)
+        alive_x[k] = alive_y[k] = far_off;
+    // The bits of the units acting on the tile, as acts_on() tests each.
+    const auto acting = [](const SideLanes &l, std::size_t n, vec2 tile) {
+        const v128_t x = wasm_i32x4_splat(tile.x), y = wasm_i32x4_splat(tile.y);
+        std::uint32_t bits = 0;
+        for (std::size_t k = 0; k < n; k += 4) {
+            const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&l.x[k]))),
+                                            wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&l.y[k]))));
+            bits |= std::uint32_t(wasm_i32x4_bitmask(wasm_i32x4_le(d, wasm_v128_load(&l.reach[k])))) << k;
+        }
+        return bits;
+    };
     const auto sides = [&](vec2 tile) {
         std::pair<float, float> s{0.0f, own};
-        for (std::size_t k = 0; k < their_count; ++k)
-            if (acts_on(*theirs_list[k].unit, tile))
-                s.first += theirs_list[k].power;
-        for (std::size_t k = 0; k < our_count; ++k)
-            if (acts_on(*ours_list[k].unit, tile))
-                s.second += ours_list[k].power;
+        for (std::uint32_t m = acting(their_lanes, their_count, tile); m; m &= m - 1)
+            s.first += theirs_list[__builtin_ctz(m)].power;
+        for (std::uint32_t m = acting(our_lanes, our_count, tile); m; m &= m - 1)
+            s.second += ours_list[__builtin_ctz(m)].power;
         return s;
     };
     // The enemies a tile we reach can strike, once: alive, off their spawn,
@@ -237,13 +348,16 @@ bool Bot::worker_skirmish() {
     // range key a melee champion that struck before its step, every step
     // tile alike, stepped out of reach toward a teammate: 67% of the micro's
     // 13.5 hit-and-runs a game, 97% ending out of every enemy's reach.
+    // For a guarded Willow only, kills are followed by lower predicted damage,
+    // heal range and a backline relative to the enemy before ordinary damage.
     struct Score {
         int safety = 0, kills = 0, strike = 0;
-        float dealt = 0, taken = 0, ours = 0;
-        int in_range = 0, ally = 0, reach = 0;
+        float dealt = 0, taken = 0, ours = 0, guard_safety = 0;
+        int support = 0, backline = 0, in_range = 0, ally = 0, reach = 0;
         bool operator>(const Score &o) const {
-            return std::tie(safety, kills, dealt, in_range, ally, reach, ours) >
-                   std::tie(o.safety, o.kills, o.dealt, o.in_range, o.ally, o.reach, o.ours);
+            return std::tie(safety, kills, guard_safety, support, backline, dealt, in_range, ally, reach, ours) >
+                   std::tie(o.safety, o.kills, o.guard_safety, o.support, o.backline, o.dealt, o.in_range, o.ally,
+                            o.reach, o.ours);
         }
     };
     // What we deal from a tile this turn, as XSquare's sage scores one: the
@@ -259,27 +373,63 @@ bool Bot::worker_skirmish() {
     // attack from every tile it walks to.
     std::array<float, 16> hurt{};
     std::array<bool, 16> held{}; // Stunned by the aim's spell.
+    // Each enemy's life and our basic hit on it, once.
+    std::array<float, 16> life_of{}, basic_on_k{};
+    for (std::size_t k = 0; k < near_count; ++k) {
+        life_of[k] = near[k]->health + near[k]->shield;
+        basic_on_k[k] = basic * near[k]->mitigation;
+    }
     const auto aims = [&](vec2 tile, bool walks, Score &s) {
         const bool attacks = attack_ready && (range <= 1 || !walks);
+        // The enemies the basic attack reaches from the tile, a bit each.
+        std::uint32_t basic_mask = 0;
+        if (attacks)
+            for (std::size_t k = 0; k < near_count; ++k)
+                if (distance(tile, near[k]->position) <= range)
+                    basic_mask |= 1u << k;
+        // Every aim of the ready attack (none, or one enemy in range) with
+        // this spell aim: each enemy's terms unstruck once, then each struck
+        // enemy's own; the sum in the same order (the struck enemy's terms in
+        // its place), so every total is the same float.
         const auto tally = [&]() {
-            for (int basic_on = -1; basic_on < int(near_count); ++basic_on) {
-                if (basic_on >= 0 && (!attacks || distance(tile, near[basic_on]->position) > range))
-                    continue;
-                int kills = 0;
-                float dealt = 0;
-                for (std::size_t k = 0; k < near_count; ++k) {
-                    const auto &e = *near[k];
-                    const float life_k = e.health + e.shield;
-                    const bool struck = int(k) == basic_on;
-                    const float d = hurt[k] + (struck ? basic * e.mitigation : 0.0f);
-                    kills += d > 0 && d >= life_k;
-                    dealt += std::min(d, life_k);
-                    if ((held[k] || (struck && enhanced)) && stunnable[k] && d < life_k)
-                        dealt += spared[k] + (life_k - d <= window[k] ? stun_kill : window[k]);
+            // Written for every enemy before any read: never zero-filled.
+            std::array<float, 16> plain, extra, before;
+            std::array<bool, 16> stunned;
+            std::array<int, 16> killed;
+            int base_kills = 0;
+            float dealt = 0;
+            for (std::size_t k = 0; k < near_count; ++k) {
+                const float life_k = life_of[k], d = hurt[k];
+                killed[k] = d > 0 && d >= life_k;
+                base_kills += killed[k];
+                plain[k] = std::min(d, life_k);
+                stunned[k] = held[k] && stunnable[k] && d < life_k;
+                extra[k] = stunned[k] ? spared[k] + (life_k - d <= window[k] ? stun_kill : window[k]) : 0.0f;
+                before[k] = dealt;
+                dealt += plain[k];
+                if (stunned[k])
+                    dealt += extra[k];
+            }
+            if (std::tie(base_kills, dealt) > std::tie(s.kills, s.dealt)) {
+                s.kills = base_kills;
+                s.dealt = dealt;
+            }
+            for (std::uint32_t m = basic_mask; m; m &= m - 1) {
+                const std::size_t b = std::size_t(__builtin_ctz(m));
+                const float life_b = life_of[b], d = hurt[b] + basic_on_k[b];
+                const int kills = base_kills - killed[b] + (d > 0 && d >= life_b);
+                float total = before[b];
+                total += std::min(d, life_b);
+                if ((held[b] || enhanced) && stunnable[b] && d < life_b)
+                    total += spared[b] + (life_b - d <= window[b] ? stun_kill : window[b]);
+                for (std::size_t k = b + 1; k < near_count; ++k) {
+                    total += plain[k];
+                    if (stunned[k])
+                        total += extra[k];
                 }
-                if (std::tie(kills, dealt) > std::tie(s.kills, s.dealt)) {
+                if (std::tie(kills, total) > std::tie(s.kills, s.dealt)) {
                     s.kills = kills;
-                    s.dealt = dealt;
+                    s.dealt = total;
                 }
             }
         };
@@ -292,6 +442,11 @@ bool Bot::worker_skirmish() {
                 continue;
             if (sp.kind == bc::ability_kind::aoe_damage) {
                 const int radius = int(sp.radius);
+                // An aim's hurt and stuns follow from the enemies its area
+                // covers alone: each set is tallied once, and none (the
+                // unaimed tally above) is not tallied again.
+                std::array<std::uint32_t, 64> tallied;
+                std::size_t tallied_count = 0;
                 for (std::size_t k = 0; k < near_count; ++k) {
                     if (distance(tile, near[k]->position) > sp.range + sp.radius)
                         continue;
@@ -301,8 +456,21 @@ bool Bot::worker_skirmish() {
                             if (distance(tile, centre) > sp.range || !bc::map::is_in_bounds(centre) ||
                                 no_centre_tile[tile_index(centre)])
                                 continue;
+                            std::uint32_t covered = 0;
+                            for (std::size_t j = 0; j < near_count; ++j)
+                                if (distance(centre, near[j]->position) <= radius)
+                                    covered |= 1u << j;
+                            if (!covered)
+                                continue;
+                            bool seen = false;
+                            for (std::size_t t = 0; t < tallied_count && !seen; ++t)
+                                seen = tallied[t] == covered;
+                            if (seen)
+                                continue;
+                            if (tallied_count < tallied.size())
+                                tallied[tallied_count++] = covered;
                             for (std::size_t j = 0; j < near_count; ++j) {
-                                const bool in = distance(centre, near[j]->position) <= radius;
+                                const bool in = covered >> j & 1;
                                 hurt[j] = in ? spell_hit[i] * near[j]->mitigation : 0.0f;
                                 held[j] = in && stuns[i];
                             }
@@ -330,31 +498,35 @@ bool Bot::worker_skirmish() {
     bool strikes_first = false;
     if (range <= 1)
         for (const auto &e : enemies)
-            strikes_first = strikes_first || (e.health > 0 && distance(position, e.position) <= range);
+            strikes_first = strikes_first || (e.health > 0 && !enemy_spawn_tile[tile_index(e.position)] &&
+                                              distance(position, e.position) <= range);
     Score struck_here;
     if (strikes_first)
         aims(position, true, struck_here);
+    // Nothing changes while the tiles are scored: one scan of incoming().
+    begin_scan();
     const auto score = [&](vec2 tile) {
         Score s;
         // The most it can take next turn (incoming(): every enemy that can hit
         // it does, one ability a turn; the camps; our mitigation).
-        s.taken = incoming(tile);
+        s.taken = incoming_scan(tile);
         if (strikes_first && tile != position) {
             s.kills = struck_here.kills;
             s.dealt = struck_here.dealt;
         } else
             aims(tile, tile != position, s);
         const float dealt = s.dealt;
-        int nearest = std::numeric_limits<int>::max();
-        for (const auto &e : enemies)
-            if (e.health > 0)
-                nearest = std::min(nearest, distance(tile, e.position));
+        const int nearest =
+            alive_count ? nearest_of(alive_x, alive_y, alive_count, tile) : std::numeric_limits<int>::max();
         s.strike = nothing_ready || dealt > 0;
-        if (our_count > 0) {
-            int mate = std::numeric_limits<int>::max();
-            for (std::size_t k = 0; k < our_count; ++k)
-                mate = std::min(mate, distance(tile, ours_list[k].unit->position));
+        if (guarded) {
+            const int mate = distance(tile, guarded->position);
+            s.support = mate <= heal_range;
+            s.guard_safety = -s.taken;
+            s.backline = nearest - guard_enemy_distance;
             s.ally = -mate;
+        } else if (our_count > 0) {
+            s.ally = -nearest_of(our_lanes.x, our_lanes.y, our_count, tile);
         }
         const auto [theirs, ours] = sides(tile);
         s.ours = ours;
@@ -520,6 +692,8 @@ bool Bot::confront_hidden() {
             observe_fight();
             if (!enemies.empty()) {
                 debug_block({ std::printf("HIDDENACT r=%u id=%u ward-found %zu\n", round, id(bc::self()), enemies.size()); });
+                ghost_update = -1; // Ghosts again from the ward's view: one shown is no ghost.
+                track_ghosts();
                 drop_hidden();
                 return worker_skirmish();
             }
@@ -549,7 +723,10 @@ bool Bot::confront_hidden() {
         debug_block({ std::printf("HIDDENACT r=%u id=%u out=%d\n", round, id(bc::self()), int(stepped)); });
         return stepped;
     };
-    if (range > 1 || health < max_health * policy::hidden_step_health || !me.can_move())
+    // A melee champion only: the step onto the bush shows the whole bush.
+    // Whether it lives through it is the walk-out test below (it was also
+    // 80% of its health or more).
+    if (range > 1 || !me.can_move())
         return out();
     // Our side against theirs at the bush, as the micro weighs a tile
     // (sides_at()), with teammates' reports and a respawn on the way.
