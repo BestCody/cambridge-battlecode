@@ -208,7 +208,7 @@ int Bot::worker_choose_group(int excluded) {
         // their count. factor: the score's multipliers on the value we add.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
         float *remaining, *splash, *pressure, *striker_work, *reach_share, *claims, *claim_rate, *claim_eta,
-            *front_range, *front_first, *front_visit, *front_count, *scores, *factor;
+            *front_range, *front_first, *front_visit, *front_count, *scores, *factor, *belief;
         // A cluster group's run (gather_run): the reward and the time its
         // members add, and whether the run scored above the group alone;
         // whether the clear is planned as a spell-range siege.
@@ -219,7 +219,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[22 * padded]);
+        lanes.floats.reset(new float[23 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane : {&lanes.gem, &lanes.enemy_side, &lanes.status, &lanes.respawn, &lanes.path,
                             &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won, &lanes.siege_won}) {
@@ -231,7 +231,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work, &lanes.reach_share,
                             &lanes.claim_rate, &lanes.claim_eta, &lanes.front_range, &lanes.front_first,
                             &lanes.front_visit, &lanes.front_count, &lanes.factor, &lanes.camp_count, &lanes.home,
-                            &lanes.reach, &lanes.run_reward, &lanes.run_time}) {
+                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -243,7 +243,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.pressure, lanes.claims, lanes.striker_work, lanes.reach_share, lanes.claim_rate,
                                lanes.claim_eta, lanes.front_range, lanes.front_first, lanes.front_visit,
                                lanes.front_count, lanes.factor, lanes.camp_count, lanes.home, lanes.reach,
-                               lanes.run_reward, lanes.run_time})
+                               lanes.run_reward, lanes.run_time, lanes.belief})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -295,6 +295,22 @@ int Bot::worker_choose_group(int excluded) {
             walk = group_hops[i];
         return std::min(walk, hop_rounds(groups[i].centre));
     };
+    // Teammates' claims since our last choice: one that changed has ended
+    // (claim_ended: the round we saw it end).
+    static std::vector<int> claim_ended;
+    static std::array<int, TeamMemory::slots> last_claim = [] {
+        std::array<int, TeamMemory::slots> none{};
+        none.fill(-1);
+        return none;
+    }();
+    if (claim_ended.size() != groups.size())
+        claim_ended.assign(groups.size(), std::numeric_limits<int>::min());
+    for (unsigned s = 0; s < TeamMemory::slots; ++s) {
+        const int c = s < roster.size() ? mate_claim(s) : -1;
+        if (last_claim[s] >= 0 && last_claim[s] != c && std::size_t(last_claim[s]) < claim_ended.size())
+            claim_ended[std::size_t(last_claim[s])] = int(round);
+        last_claim[s] = c;
+    }
     const auto gather = [&] {
         std::int32_t *__restrict status = lanes.status, *__restrict respawn = lanes.respawn,
                                  *__restrict path = lanes.path, *__restrict siege = lanes.siege_open,
@@ -326,6 +342,15 @@ int Bot::worker_choose_group(int excluded) {
                                        int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory
                                    ? -1
                                    : 0;
+        // A group out of view, last seen alive before a teammate's claim on
+        // it ended, is taken with policy::claimed_dead_share until its respawn
+        // would be past (counted from the claim's end).
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto &g = groups[i];
+            const bool doubtful = g.status == CampGroup::alive && g.seen < int(round) && claim_ended[i] > g.seen &&
+                                  int(round) - claim_ended[i] < g.unit.max_respawn_timer() + capture_time + 1;
+            lanes.belief[i] = doubtful ? 1.0f - policy::claimed_dead_share : 1.0f;
+        }
         // The claimants, as one party: their summed camp rate, arriving at
         // their rate-weighted walk (walk_bound(): from where each is in view,
         // else from the group, to within the camps' reach and 3, where
@@ -669,12 +694,23 @@ int Bot::worker_choose_group(int excluded) {
             // claimant as if it cleared it alone (a crowding cost then sent
             // the fourth and fifth elsewhere), and a big group, worth little
             // to one champion, was never begun.
+            // A group found taken on arrival ends the plan there: its reward
+            // counts with the chance it is there (belief), its time is the
+            // walk and, if it is, the rest.
+            const v128_t belief = wasm_v128_load(&lanes.belief[i]);
+            const auto believed = [&](v128_t time, v128_t walk) {
+                walk = wasm_f32x4_pmin(walk, time);
+                return wasm_f32x4_add(walk, wasm_f32x4_mul(belief, wasm_f32x4_sub(time, walk)));
+            };
+            const v128_t kept = wasm_f32x4_mul(belief, reward);
+            const v128_t time_kept = believed(time_with, travel);
             const v128_t with_value =
-                wasm_f32x4_div(wasm_f32x4_div(reward, wasm_f32x4_pmax(one, time_with)),
-                               wasm_f32x4_add(one, wasm_f32x4_mul(time_with, splat(policy::plan_hazard))));
+                wasm_f32x4_div(wasm_f32x4_div(kept, wasm_f32x4_pmax(one, time_kept)),
+                               wasm_f32x4_add(one, wasm_f32x4_mul(time_kept, splat(policy::plan_hazard))));
+            const v128_t time_kept_without = believed(time_without, wasm_v128_load(&lanes.claim_eta[i]));
             const v128_t without_value = wasm_v128_and(
-                claimed, wasm_f32x4_div(wasm_f32x4_div(reward, wasm_f32x4_pmax(one, time_without)),
-                                        wasm_f32x4_add(one, wasm_f32x4_mul(time_without, splat(policy::plan_hazard)))));
+                claimed, wasm_f32x4_div(wasm_f32x4_div(kept, wasm_f32x4_pmax(one, time_kept_without)),
+                                        wasm_f32x4_add(one, wasm_f32x4_mul(time_kept_without, splat(policy::plan_hazard)))));
             v128_t value = wasm_f32x4_sub(with_value, without_value);
             value = pick(zero, value, wasm_f32x4_gt(time_with, splat(rounds_left)));
             // A cluster group's run (gather_run) is one plan: the group's
@@ -682,9 +718,11 @@ int Bot::worker_choose_group(int excluded) {
             // better of the two stands; with no run it is the group's own.
             {
                 const v128_t run_duration = wasm_f32x4_add(time_with, wasm_v128_load(&lanes.run_time[i]));
-                v128_t run = wasm_f32x4_div(wasm_f32x4_add(reward, wasm_v128_load(&lanes.run_reward[i])),
-                                            wasm_f32x4_pmax(one, run_duration));
-                run = wasm_f32x4_div(run, wasm_f32x4_add(one, wasm_f32x4_mul(run_duration, splat(policy::plan_hazard))));
+                const v128_t run_kept = believed(run_duration, travel);
+                v128_t run = wasm_f32x4_div(
+                    wasm_f32x4_mul(belief, wasm_f32x4_add(reward, wasm_v128_load(&lanes.run_reward[i]))),
+                    wasm_f32x4_pmax(one, run_kept));
+                run = wasm_f32x4_div(run, wasm_f32x4_add(one, wasm_f32x4_mul(run_kept, splat(policy::plan_hazard))));
                 run = pick(splat(skipped), run, wasm_v128_or(wasm_f32x4_gt(run_duration, splat(rounds_left)), claimed));
                 wasm_v128_store(&lanes.run_won[i], wasm_f32x4_gt(run, value));
                 value = wasm_f32x4_pmax(value, run);
@@ -797,8 +835,12 @@ int Bot::worker_choose_group(int excluded) {
             const float start = g.status == CampGroup::cooling ? std::max(0.0f, float(g.respawn - now)) : 0.0f;
             const float settle = float(capture_time + 1) + lanes.altar[i];
             const float reward = lanes.gem_reward[i] + gold_weight * lanes.gold[i];
+            const float our_walk = float(std::max(0, lanes.path[i] - our_range)) * travel_scale;
+            const float belief = lanes.belief[i];
             const auto plan_value = [&](float time) {
-                return reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
+                const float walk = std::min(our_walk, time);
+                time = walk + belief * (time - walk);
+                return belief * reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
             };
             const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             // No plan here ends its clear before `start` and a round a camp
@@ -1163,19 +1205,53 @@ void Bot::worker_farm() {
     // is in sight from a tile in range, even where that route leaves the
     // range. Switching goals as range or sight came and went sent champions
     // back and forth between two tiles for up to 145 rounds.
-    bool sighted = false;
+    // Strikable: a living camp in sight and in our range from here. One in
+    // sight out of range and one in range out of sight (in a bush) left
+    // nothing to strike, yet ended the closing in: 26 rounds at 00quarry's
+    // mirrored gold clusters.
+    bool sighted = false, strikable = false;
     for (const auto &c : g.camps)
-        sighted = sighted || (c.health > 0 && visible.is_set(c.position));
-    // Closing in ends once a camp of the group is in sight from a tile in
-    // range, or once we struck one last turn: a ranged champion striking
-    // from outside the remembered range was otherwise sent beside the camps.
+        if (c.health > 0 && visible.is_set(c.position)) {
+            sighted = true;
+            strikable = strikable || distance(position, c.position) <= range;
+        }
+    // Closing in ends once a camp of the group is in sight and in range from
+    // here, or once we struck one last turn: a ranged champion striking from
+    // outside the remembered range was otherwise sent beside the camps.
     const bool in_range = goals.is_set(position);
-    if (unseen_group != target || (sighted && (in_range || g.attacked >= int(round) - 1)))
+    if (unseen_group != target || (sighted && (strikable || g.attacked >= int(round) - 1)))
         unseen_group = -1;
-    if (!sighted && in_range)
+    if (!strikable && in_range)
         unseen_group = target;
     if (unseen_group == target) {
         auto beside = around(nearest->position, 1);
+        // A camp in a bush is seen only from inside its bush (the rules: the
+        // bush you stand in is clear to your own sight): beside it from out
+        // of the bush it never came into view, and ours stood there 40-150
+        // rounds (00quarry's gold cluster at 28,10). Close in on its bush
+        // patch within our range.
+        if (bush_tile[tile_index(nearest->position)]) {
+            static std::vector<vec2> frontier;
+            bc::bitboard patch;
+            frontier.assign(1, nearest->position);
+            patch.set(nearest->position);
+            const float reach = float(std::max(1, range));
+            while (!frontier.empty()) {
+                const vec2 p = frontier.back();
+                frontier.pop_back();
+                for (const vec2 step : {vec2{1, 0}, vec2{-1, 0}, vec2{0, 1}, vec2{0, -1}}) {
+                    const vec2 q{p.x + step.x, p.y + step.y};
+                    if (q.x < 0 || q.y < 0 || q.x >= map_width || q.y >= map_height || patch.is_set(q) ||
+                        !bush_tile[tile_index(q)] || float(distance(q, nearest->position)) > reach)
+                        continue;
+                    patch.set(q);
+                    frontier.push_back(q);
+                }
+            }
+            subtract(patch, blocked);
+            if (!patch.is_empty())
+                beside = std::move(patch);
+        }
         subtract(beside, blocked);
         if (!beside.is_empty()) {
             goals = std::move(beside);

@@ -732,6 +732,21 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     const int walk = hop_goal[std::size_t(tile_index(position))];
     if (float(walk - channel) <= threshold)
         return;
+    // Landings only in the region of what we head for (hop_lands_in_reach()):
+    // a goal tile no walk joins to it (a walled pocket in attack range by
+    // distance) is no landing.
+    {
+        bool any = false;
+        for (int dy = -1; dy <= 1 && !any; ++dy)
+            for (int dx = -1; dx <= 1 && !any; ++dx) {
+                const vec2 p{hop_plan.toward.x + dx, hop_plan.toward.y + dy};
+                any = p.x >= 0 && p.y >= 0 && p.x < w && p.y < h && walk_region[std::size_t(p.y * w + p.x)];
+            }
+        if (any)
+            for (std::size_t t = 0; t < tiles; ++t)
+                if (hop_goal[t] != far && !hop_lands_in_reach({int(t % std::size_t(w)), int(t / std::size_t(w))}))
+                    hop_goal[t] = far;
+    }
     const int span = int(std::min(std::floor(float(walk - channel) - threshold) + 1.0f, float(far - 1)));
     hop_from_field.compute(static_blocked, around(position, 0), search_visited, std::uint16_t(span));
     hop_from_field.export_linear_buffer(std::span(hop_from.get(), tiles));
@@ -840,6 +855,25 @@ int Bot::follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_d
     return -1;
 }
 
+bool Bot::hop_lands_in_reach(vec2 landing) const {
+    // In the walking region of the tile the hop heads for or one beside it
+    // (a group's centre can be a wall, a camp's tile is open): a walled pocket
+    // in attack range of a group by distance alone was landed in, the camps
+    // out of sight and no walk out (00quadrants: a Vesper stood 262 rounds).
+    const std::uint16_t region = walk_region[std::size_t(tile_index(landing))];
+    if (!region)
+        return false;
+    const vec2 toward = hop_plan.toward;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+            const vec2 p{toward.x + dx, toward.y + dy};
+            if (p.x >= 0 && p.y >= 0 && p.x < map_width && p.y < map_height &&
+                walk_region[std::size_t(tile_index(p))] == region)
+                return true;
+        }
+    return false;
+}
+
 bool Bot::take_hop() {
     const vec2 landing = hop_plan.landing;
     const int reach = rules::crystal_range;
@@ -863,7 +897,7 @@ bool Bot::take_hop() {
         if (p != landing)
             landings.push_back(p);
     for (const vec2 destination : landings) {
-        if (blocked.is_set(destination))
+        if (blocked.is_set(destination) || !hop_lands_in_reach(destination))
             continue;
         if (crystal.use(destination))
             return true;

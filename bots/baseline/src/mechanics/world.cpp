@@ -451,6 +451,38 @@ void Bot::initialise() {
     map_width = bc::map::width();
     map_height = bc::map::height();
     const auto tiles = std::size_t(map_width) * std::size_t(map_height);
+    {
+        // Walking regions: a flood over open terrain, eight ways (read from
+        // one export: a test per tile is an engine call).
+        std::vector<std::uint8_t> bits(bc::bitboard::linear_buffer_size());
+        open_terrain.export_linear_buffer(std::span(bits.data(), bits.size()));
+        const auto open = [&](std::size_t t) { return bits[t >> 3] >> (t & 7) & 1; };
+        walk_region.assign(tiles, 0);
+        std::vector<int> stack;
+        std::uint16_t label = 0;
+        for (std::size_t start = 0; start < tiles; ++start) {
+            if (walk_region[start] || !open(start))
+                continue;
+            walk_region[start] = ++label;
+            stack.assign(1, int(start));
+            while (!stack.empty()) {
+                const int t = stack.back();
+                stack.pop_back();
+                const int x = t % map_width, y = t / map_width;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= map_width || ny >= map_height)
+                            continue;
+                        const std::size_t n = std::size_t(ny) * std::size_t(map_width) + std::size_t(nx);
+                        if (!walk_region[n] && open(n)) {
+                            walk_region[n] = label;
+                            stack.push_back(int(n));
+                        }
+                    }
+            }
+        }
+    }
     altars = bc::map::altars().positions();
     altar_goals = altar_goals_of(altars, static_blocked);
     const auto search_start = turn_work();

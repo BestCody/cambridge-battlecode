@@ -653,6 +653,11 @@ class Bot {
     // be centred on (walls, holes and altars), and the two spawns.
     std::unique_ptr<std::uint16_t[]> tile_group;
     TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile, own_spawn_tile;
+    // Each open tile's walking region (tiles joined by steps; 0: blocked),
+    // labelled once: terrain never changes. A crystal hop lands only in the
+    // region of what it heads for (hop_lands_in_reach()).
+    std::vector<std::uint16_t> walk_region;
+    bool hop_lands_in_reach(vec2 landing) const;
     // Camps in view, refreshed by each observation (with the sleeping ones
     // when asleep_known, and the living ones); unseen ward placements.
     TileBits camp_in_view, camp_asleep, camp_living, unseen_tile;

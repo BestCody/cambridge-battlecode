@@ -166,6 +166,11 @@ inline constexpr float dash_travel_scale = 0.8f;
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
 inline constexpr float plan_hazard = 0.02f;
+// A group out of view that we last saw alive before a teammate's claim on
+// it ended was dead at our choice claimed_dead_share of the time, until its
+// respawn could be past (47-48% of 2,297 such choices in two logged runs of
+// 140 games; with no teammate's claim since our sight, 6-7%).
+inline constexpr float claimed_dead_share = 0.47f;
 // Camp choice adds a group's walk to the nearest altar, up to altar_walk_cap
 // tiles, to its duration at 0.25 rounds a tile, and a gem group's at
 // scarce_altar_weight / (altar count) more: with few altars every gem is
