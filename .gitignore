@@ -11,11 +11,6 @@ notes
 /print_dont_int*.zip
 playground.txt
 
-# Local match replays and detailed statistics from the 80-game micro evaluation.
-/analysis/baseline-vs-test-80-new-micro*/*.repl26a
-/analysis/baseline-vs-test-80-new-micro*/current-*.json
-/analysis/baseline-vs-test-80-new-micro*/manifest-*.txt
-
 # Local replays and detailed statistics from the 140-game all-map evaluation.
 /analysis/baseline-vs-test-all-maps-140/*.repl26a
 /analysis/baseline-vs-test-all-maps-140/current-*.json

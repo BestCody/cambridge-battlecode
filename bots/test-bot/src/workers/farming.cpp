@@ -389,7 +389,7 @@ int Bot::worker_choose_group(int excluded) {
     const std::array<Spell, 2> kit = spells;
     // Cluster runs. A short trip's capture ends in a recall home
     // (home_after_capture()), which every version that kept farming instead
-    // lost 5-9 games of 80 to; but a row of gem or gold clusters a tile or
+    // lost to; but a row of gem or gold clusters a tile or
     // two apart (each its own group and capture) was then taken one per
     // trip. A cluster group's run is the clusters taken after it on the same
     // trip: next, the nearest cluster group linked to the last member
