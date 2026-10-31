@@ -20,63 +20,63 @@ namespace policy {
 // choice of gold-only groups (20% of their captures before round 300, 15% to
 // round 800, 30% after, counted from the round dumps); 0.65 / 0.10 gave ours
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
-inline constexpr float early_gold_value = 0.15f;
-inline constexpr float late_gold_value = 0.30f;
+inline constexpr float early_gold_value = 0.20518f;
+inline constexpr float late_gold_value = 0.2796f;
 // A reported fight's squad size divides the enemy power by aggression times
 // our average champion power (worker_update_formation()).
-inline constexpr float aggression = 1.8f;
+inline constexpr float aggression = 3.0f;
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
-inline constexpr float pursue_health = 0.6f;
+inline constexpr float pursue_health = 0.55887f;
 // A champion heads home below this share of its health: willow best girl's
 // turn for home (by recall in 88-89% of trips) most often at 25-35% (20-26%
 // of its trips) and seldom at 35-45% (7-10%); ours, leaving at 45%, turned
 // at 35-45% in 23-25% and at 25-35% in 13-14%.
-inline constexpr float retreat_health = 0.35f;
+inline constexpr float retreat_health = 0.27999f;
 // While an enemy champion can hit us, home only below this share: willow
 // best girl's champions in contact start for home most at 28-35% of their
 // health (12-14 retreats per 100 contact rounds, 6-8 at 35-45%), the same
 // line as its trips home; how the fight stands (ahead or behind, a teammate
 // beside) splits it differently in its two samples. Ours, at 28%, left at
 // 28-35% in 8 of 100.
-inline constexpr float fight_retreat_health = 0.35f;
+inline constexpr float fight_retreat_health = 0.48164f;
 // Awake camps this strong (golems 120, monoliths 200) of groups we do not farm
 // keep us out of their reach (mark_camp_zones()).
 inline constexpr float avoided_camp_strength = 100;
 // After a capture with no enemy near, the holder recalls on the capture tile
 // (the recall lands in the round of the reward) when below this share of its
 // health, and shops all its gold at home.
-inline constexpr float home_capture_health = 0.80f;
+inline constexpr float home_capture_health = 0.84066f;
 // ... and, healthy, when it left spawn fewer than this many rounds before the
 // recall starts (the reward 5 rounds later then comes under 30): willow best
 // girl's champions went home after 58-86% of healthy captures within 30
 // rounds of leaving spawn and after 2-18% of later ones (theirs Prism, which
 // keeps its gems, 47% and 2%; ours 2-4% either way), so short trips out to
 // the groups near home end in a recall home and the next one starts there.
-inline constexpr int short_trip_rounds = 25;
+inline constexpr int short_trip_rounds = 17;
 // ... and, healthy or far out, carrying an emblem's gold (five shards) to
 // spend: the trip home buys it.
-inline constexpr unsigned home_capture_gold = 150;
+inline constexpr unsigned home_capture_gold = 168;
 // Camp choice divides a group's score by 1 + camp_risk_weight * risk (the camp
 // damage a clear costs past what we can spare): willow best girl swaps
 // wolves for one-elk groups (strike rounds r0-300: wolves 112 vs ours 148,
 // one elk 120 vs 74) and weighs monster health half as much as ours did
 // at 4 (logit -0.32/-0.35 vs -0.61).
-inline constexpr float camp_risk_weight = 2.0f;
+inline constexpr float camp_risk_weight = 1.4192f;
 // The Willow's camp choice counts gold willow_gold_factor times: willow
 // best girl's Willow's target logit weighs log gold -0.18/-0.38 (both
 // samples), ours +0.34 - it leaves the gold groups to the others.
 // Not 0: with every gem group out of plan, gold-only groups tied at 0
 // and the lowest index won at any distance.
-inline constexpr float willow_gold_factor = 0.02f;
+inline constexpr float willow_gold_factor = 0.38079f;
 // A retreat's recall counts enemies as chasing for this many of its turns:
 // willow best girl's back line completes recalls with an enemy 3-8 tiles
 // off (its Vesper 2.8 a game, ours 1.0 when we assumed a full chase).
 inline constexpr int recall_chase_turns = 3;
 // Turns of a walk to a target or an altar that make no step (walled off by
 // camp bodies) before it is left out for stuck_rounds.
-inline constexpr int stuck_turns = 3;
-inline constexpr int stuck_rounds = 40;
+inline constexpr int stuck_turns = 6;
+inline constexpr int stuck_rounds = 98;
 // Hard camps (golems and monoliths: hard_camp_health or more) are cleared by a
 // party: whoever claims one first waits out of the camps' reach until a
 // teammate claiming it too is there, then they strike together. Alone a golem
@@ -86,9 +86,9 @@ inline constexpr int stuck_rounds = 40;
 // a game and monoliths 2. The wait for the partner is in the group's score
 // (camp choice), so a claimant whose partner is too far away chooses again.
 inline constexpr float hard_camp_health = 5000;
-inline constexpr float casualty_margin = 0.12f;
-inline constexpr int replan_period = 4;
-inline constexpr float unused_cast_cost = 0.01f;
+inline constexpr float casualty_margin = 0.092278f;
+inline constexpr int replan_period = 3;
+inline constexpr float unused_cast_cost = 0.05899f;
 // Camp choice divides a group's score by 1 + partner_penalty * c(c+1)/2 for
 // the c teammates already claiming it (whose help it also counts as faster
 // clearing): each further one costs more. willow
@@ -100,12 +100,12 @@ inline constexpr float unused_cast_cost = 0.01f;
 // one group (2.2 a gem group); 0.4 per teammate gave 62/23/5/9%, 1.7, but
 // 21% of opening clears with 4+ (theirs 9%) and a third of their captures of
 // small gem-only groups (theirs 3.7-5.9 by round 300, ours 1.4).
-inline constexpr float partner_penalty = 1.0f;
+inline constexpr float partner_penalty = 0.65847f;
 // Squad assembly: converging on surviving allies is the real regroup.
-inline constexpr float depleted_rally_bonus = 3.0f;
+inline constexpr float depleted_rally_bonus = 4.2989f;
 // Fraction of the team that must still be alive for the squad to count as
 // assembled. Below it the rally bias turns on. 0.0 disables regrouping entirely.
-inline constexpr float depleted_alive_fraction = 0.5f;
+inline constexpr float depleted_alive_fraction = 0.43748f;
 // Decisions never depend on the fuel left, so the same game plays the same at
 // any fuel budget.
 // Walking distance a camp choice first searches to, before groups have their
@@ -136,24 +136,24 @@ inline constexpr bool profile = false;
 inline constexpr float cheap_camp_health = 6000.0f;
 inline constexpr float cheap_camp_strength = 120.0f;
 // Multiplier on a camp group's gem reward on a fortress-gem map. 1.0 = normal.
-inline constexpr float siege_gem_weight = 2.0f;
+inline constexpr float siege_gem_weight = 1.9114f;
 // Divisor on the risk penalty for gem-bearing camps on a fortress-gem map.
 // 1.0 = normal; below 1 accepts a losing exchange because the alternative is a
 // guaranteed 0-gem defeat.
-inline constexpr float siege_risk_weight = 0.06f;
+inline constexpr float siege_risk_weight = 0.071662f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
-inline constexpr int worker_danger_margin = 1;
+inline constexpr int worker_danger_margin = 2;
 // Rounds an enemy out of sight is still counted after its last sighting
 // (safety.cpp's ghosts): after two a walking enemy can be two tiles from
 // where it was seen, the margin of every reach check, and the tiles it could
 // be on say little. Measured: a ghost two rounds old is near its enemy two
 // times in three, one four rounds old one time in three, and kept while
 // updated (the old rule) four fifths of them were phantoms.
-inline constexpr int ghost_lifetime = 2;
+inline constexpr int ghost_lifetime = 1;
 // Camps near a recently seen enemy are worth worker_sighting_penalty of their
 // value for worker_sighting_memory rounds.
-inline constexpr int worker_sighting_memory = 20;
-inline constexpr float worker_sighting_penalty = 0.2f;
+inline constexpr int worker_sighting_memory = 31;
+inline constexpr float worker_sighting_penalty = 0.43925f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
@@ -162,78 +162,78 @@ inline constexpr int bank_nearby = 3;
 // no-gold map, before one full Health emblem's growth, it banks a small bag
 // while the enemy has not been seen recently, but keeps enough gems for combat
 // until the forced cap: gemcombat4 is fight-heavy, gemcombat5 is not.
-inline constexpr unsigned prism_bag = 200;
-inline constexpr unsigned prism_fragile_bag = 30;
-inline constexpr unsigned prism_fragile_forced_bag = 100;
-inline constexpr unsigned prism_health_shards = 5;
-inline constexpr int prism_bank_danger_memory = 20;
+inline constexpr unsigned prism_bag = 397;
+inline constexpr unsigned prism_fragile_bag = 39;
+inline constexpr unsigned prism_fragile_forced_bag = 40;
+inline constexpr unsigned prism_health_shards = 6;
+inline constexpr int prism_bank_danger_memory = 45;
 // A champion that has lost this much health to enemy champions before its
 // first shard opens with its first emblem's Health version: on engine 2.0.0
 // willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
 // 500 or more and Hunter-Focus in 38 of 47 under 250, its Marcella
 // Prospector-Health in 31 of 47 at 500 or more. Its Vendetta and Willow do
 // not switch.
-inline constexpr float health_treasure_damage = 500;
+inline constexpr float health_treasure_damage = 759.88f;
 // A champion that lost this much health to enemy champions over the last
 // 100-150 rounds starts its build's next Health emblem when it starts a new
 // one (next_item()): willow best girl's Health share of new emblems is
 // 61-64% after 800-1199 and 71-77% after more (30-31% under 150).
-inline constexpr float health_pull_damage = 800;
+inline constexpr float health_pull_damage = 790.77f;
 // Altar locks, as willow best girl places them (about 4 a game): a champion
 // buys one at spawn when an altar wants one (lock_wanted(): the home altars,
 // or one an enemy banked at within lock_memory rounds) and places it when it
 // passes within lock_range of one.
-inline constexpr int lock_memory = 100;
-inline constexpr int lock_range = 2;
+inline constexpr int lock_memory = 300;
+inline constexpr int lock_range = 3;
 // Camp choice prices a clear longer than our health lasts as trips home, not
 // as the risk of dying (camps never regenerate, and a team's clear shares the
 // camps' hits); visit_risk caps the risk of each such visit. With no contest
 // factor on camps nearer the enemy, it won 48 of 80 head to head and 78 of 80
 // against db11 (75): monolith captures late in the game rose fivefold.
-inline constexpr float visit_risk = 0.25f;
+inline constexpr float visit_risk = 0.38715f;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
-inline constexpr float worker_commit_bonus = 1.08f;
+inline constexpr float worker_commit_bonus = 1.2098f;
 // Weight of the rounds spent waiting for a respawning camp in camp choice's
 // duration, against the rounds spent travelling and clearing. willow best
 // girl farms a small territory: 72% of its clears before round 400 are of
 // groups it cleared before, 8 tiles from the last (ours at 3: 55%, 10 tiles,
 // and twice its long gaps between clears), so waiting counts as plain time.
-inline constexpr float respawn_wait_weight = 1.0f;
+inline constexpr float respawn_wait_weight = 2.0318f;
 // Camp choice clears a camp at the team's summed camp rate (ours and its
 // claimants') times team_clear_share.
 // With a helper the camps strike the tank: a ranged champion takes
 // ranged_helped_loss of the camps' damage and a melee one, the tank,
 // melee_helped_loss. A champion with a dash walks dash_travel_scale of the
 // steps.
-inline constexpr float team_clear_share = 0.85f;
-inline constexpr float ranged_helped_loss = 0.15f;
-inline constexpr float melee_helped_loss = 1.5f;
-inline constexpr float dash_travel_scale = 0.8f;
+inline constexpr float team_clear_share = 0.8744f;
+inline constexpr float ranged_helped_loss = 0.075565f;
+inline constexpr float melee_helped_loss = 0.5f;
+inline constexpr float dash_travel_scale = 0.89444f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
 // short by a fight, a death or a respawn. willow best girl captures clusters
 // first (median round 16-38, in 52-57% of the games that have them) and
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
-inline constexpr float plan_hazard = 0.02f;
+inline constexpr float plan_hazard = 0.024487f;
 // Camp choice adds a group's walk to the nearest altar, up to altar_walk_cap
 // tiles, to its duration at 0.25 rounds a tile, and a gem group's at
 // scarce_altar_weight / (altar count) more: with few altars every gem is
 // tributed at the same tiles, where the enemy waits and locks cost the most,
 // so the gems near them are worth the more. 0 disables the scarcity term.
-inline constexpr int altar_walk_cap = 20;
-inline constexpr float scarce_altar_weight = 0.5f;
+inline constexpr int altar_walk_cap = 12;
+inline constexpr float scarce_altar_weight = 0.53139f;
 // A heal waits for a teammate missing heal_trigger of a full heal (3 x
 // Focus for Willow): willow best girl's Willow never heals one missing
 // under 200 health (none of its casts in either sample; full heal 360) and
 // lands 310-324 a cast, ours healed teammates missing under 150 in 37% of
 // its casts (72 each), spending the 8-round cooldown for little.
-inline constexpr float heal_trigger = 0.55f;
+inline constexpr float heal_trigger = 0.20214f;
 // The Willow's camp choice counts the group its Prism claims willow_follow
 // times: willow best girl's Willow is nearest its Prism 35-37% of the time
 // (ours 27-30% farming spread) and heals as much spread as clumped.
-inline constexpr float willow_follow = 2.0f;
+inline constexpr float willow_follow = 3.0254f;
 // Camp choice also divides a group's score by 1 + travel_hazard * (travel +
 // waiting) (the walk there and the wait for its respawn, in rounds; with the
 // walk alone ours stood beside dead groups 140 rounds a game in rounds
@@ -244,42 +244,42 @@ inline constexpr float willow_follow = 2.0f;
 // duration and plan_hazard, so 0.10 charged distant groups too strongly a third
 // time; 0.07 keeps that safety discount nonzero while raising the full 70-map,
 // two-seat result from 60/140 to 76/140 against baseline at 100000 fuel.
-inline constexpr float travel_hazard = 0.07f;
+inline constexpr float travel_hazard = 0.22872f;
 // Ordinary camps farther than the map's natural camp spacing from every live
 // teammate claim lose this much value per excess tile. Same-camp crowding
 // still spreads champions onto neighbouring groups; this only discourages
 // isolated trips that leave nobody within reinforcement distance. 0 disables.
-inline constexpr float cohesion_hazard = 0.03f;
+inline constexpr float cohesion_hazard = 0.038191f;
 // Marcella's in place of travel_hazard: willow best girl's Marcella weighs
 // a group's walk the least of its types (logit -2.39; ours -2.94) and takes
 // one-elk groups in 41% of its new targets on the same maps (ours 26%).
-inline constexpr float marcella_travel_hazard = 0.0f;
+inline constexpr float marcella_travel_hazard = 0.080841f;
 // A group nearer the enemy spawn than ours (walking) scores
 // enemy_side_factor of its value: willow best girl's choices avoid the
 // enemy half more than ours did (logit -0.7..-0.9 against -0.5, ours
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
-inline constexpr float enemy_side_factor = 0.4f;
+inline constexpr float enemy_side_factor = 0.62795f;
 // An altar's risk for each enemy champion near it: this much, and
 // altar_enemy_strength_risk per point of its strength (worker_tribute()).
-inline constexpr float altar_enemy_risk = 6.0f;
-inline constexpr float altar_enemy_strength_risk = 0.05f;
+inline constexpr float altar_enemy_risk = 8.7053f;
+inline constexpr float altar_enemy_strength_risk = 0.10641f;
 // A fight step's tile score: its walk times 10 plus the damage that can reach
 // it times this (attack_combo()'s step).
-inline constexpr float step_incoming_weight = 0.14f;
+inline constexpr float step_incoming_weight = 0.12977f;
 // The team's elected detour runner counts an unclaimed live gold-bearing camp
 // whose full clear and capture fit inside a teammate's cooling reservation with
 // at least this enemy-side factor. The teammate remains the reservation; this
 // champion need not return before the respawn. Recent sightings and every
 // normal travel/risk term still apply, so only the idle window is relaxed.
-inline constexpr float cooling_detour_enemy_side_factor = 0.8f;
+inline constexpr float cooling_detour_enemy_side_factor = 0.96307f;
 // The Prism's camp choice counts a safe gem group (harmless clusters only)
 // prism_safe_gem_factor times: willow best girl's Prism takes one in 39-40%
 // of its new targets when one is up (ours 22%) and keeps its bag for the
 // Focus it gives, so its teammates hold the monster captures.
-inline constexpr float prism_safe_gem_factor = 2.0f;
+inline constexpr float prism_safe_gem_factor = 1.7083f;
 // Behind in the gem race (behind_pressure()): how much cheaper a death looks.
-inline constexpr float behind_risk_relief = 0.3f;
+inline constexpr float behind_risk_relief = 0.28656f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

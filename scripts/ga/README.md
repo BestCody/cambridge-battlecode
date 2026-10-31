@@ -1,7 +1,7 @@
 # Genetic algorithm over `policy::` constants
 
 `ga.py` tunes one bot's `strategy.h` constants by playing games through
-`cambc run-batch`; `modal_app.py` runs it on one large Modal container.
+`cambc run-batch`; `modal_app.py` runs it on Modal, split across three 64-core containers.
 
 ## Which bot, on which maps
 
@@ -41,15 +41,16 @@ if tuned test-bot then beats tuned baseline on dense maps.
 | `opponents/opp_baseline`, `opponents/opp_testbot` | Frozen copies of our two bots (named apart from `bots/`: run-batch keys builds by folder name) |
 | `opponents/opp_rusher`, `opp_farmer`, `opp_turtle`, `opp_thief`, `opp_deathball` | Extreme styles built from baseline by `make_opponents.py`: always attacks; never fights; farms only its own half; prefers the enemy's camps; moves as one |
 | `make_opponents.py` | Rebuilds the five extreme opponents from `bots/baseline/src` |
-| `modal_app.py` | Modal launcher |
+| `modal_app.py` | Modal launcher: a coordinator plus three 64-core game workers |
 
 ## How it works
 
 - Each individual is a copy of the bot with its constants written into
   `strategy.h`. Slot 0 is always the current values, the control.
 - A generation plays every individual on the same freshly sampled maps, both
-  seats, against each opponent. The Modal defaults are 40 individuals over 25 generations, 10 maps
-  and 7 opponents (our two bots and the five extreme styles): 5,600 games a generation, 140,000 a run.
+  seats, against each opponent. The Modal defaults are 40 individuals over 25 generations, 6 maps
+  and 5 opponents (our two bots, turtle, thief and deathball; rusher and farmer
+  give little signal): 2,400 games a generation, 60,000 a run, about $14.
 - Fitness per game: 0.5 × win (draw 0.5) + 0.5 × our share of the submitted
   gems, read from the game's statistics file. A bot fault counts as a loss.
 - Selection: 3 elites, then children of 3-way tournament winners. Each gene
@@ -79,14 +80,27 @@ python scripts/ga/ga.py --bot baseline --params scripts/ga/params_baseline.json 
 On Modal (`pip install modal`, `modal setup` once):
 
 ```sh
-modal run scripts/ga/modal_app.py --bot baseline          # sparse maps
-modal run scripts/ga/modal_app.py --bot test-bot          # dense maps
+modal run --detach scripts/ga/modal_app.py --bot baseline   # sparse maps
+modal run --detach scripts/ga/modal_app.py --bot test-bot   # dense maps
 modal run scripts/ga/modal_app.py --bot baseline --resume
 modal run scripts/ga/modal_app.py --bot baseline --validate finalists.json --maps scripts/ga/holdout_sparse.txt
 modal run scripts/ga/modal_app.py --bot test-bot --validate finalists.json --maps scripts/ga/holdout_dense.txt
 modal volume get battlecode-ga baseline_s1 ./ga_runs/
 ```
 
-`CPUS` in `modal_app.py` sets the container size (192) and `--jobs` (192 − 2).
+A small coordinator container (2 cores) runs the GA; each generation's games
+are split across `WORKERS` (3) containers of `CPUS` (64, Modal's per-container
+limit) cores. A Modal core is a physical core with two threads, so each worker
+plays 120 games at a time (`JOBS`) and reserves 32 GB (`MEMORY`; at 16 GB Modal killed a worker for exceeding its
+request). Games come grouped by individual, so
+each worker builds only its share of the individuals. `--detach` keeps a run
+going after the local terminal closes.
+
+`--max-dollars` (default 15) caps a run's estimated spend: the workers' wall
+time times Modal's standard rates (it matched Modal's billing), kept in `spent.json` in the run folder.
+Before each batch of games the coordinator stops if the last batch's cost would
+take the total past the cap; `--resume` with a higher cap continues. Each
+history row also has `per_map`, the individual's mean fitness per map, for
+finding maps on which every individual scores the same.
 The image installs cambc 4.0.0's Linux wheel and builds both bots once, which
 downloads cambc's toolchain.

@@ -102,6 +102,32 @@ def read_result(stats_path, our_team):
     return 0.5 * won + 0.5 * share, won, share, fault
 
 
+def play_values(bot_src, specs, values_list, games, scratch, tag, jobs, build_workers, fuel, timeout):
+    """Builds the value sets the games use and plays them. games: list of
+    (key, value index, opponent, map, seat). Returns {key: result}. Each call
+    runs on one machine; PLAY may split the games across several."""
+    folders = {}
+    for vi in sorted({g[1] for g in games}):
+        folders[vi] = os.path.join(scratch, "bots", f"{os.path.basename(os.path.dirname(bot_src))}_{tag}_i{vi:02d}")
+        make_bot(bot_src, specs, values_list[vi], folders[vi])
+    opponents = sorted({g[2] for g in games})
+    build_all(list(folders.values()) + opponents, build_workers)
+    results = play([(key, folders[vi], opponent, m, seat) for key, vi, opponent, m, seat in games],
+                   os.path.join(scratch, tag), jobs, fuel, timeout)
+    for folder in folders.values():
+        shutil.rmtree(folder, ignore_errors=True)  # Individuals are rebuilt from values when needed.
+    return results
+
+
+def play_here(args, specs, values_list, games, tag):
+    return play_values(args.bot_src, specs, values_list, games, args.out, tag, args.jobs, args.build_workers,
+                       args.fuel, args.timeout)
+
+
+# The game runner: this machine by default; modal_app.py splits it across containers.
+PLAY = play_here
+
+
 def play(games, work_dir, jobs, fuel, timeout):
     """games: list of (key, bot, opponent, map, seat). Returns {key: result}."""
     os.makedirs(work_dir, exist_ok=True)
@@ -162,31 +188,28 @@ def sample_maps(rng, maps, count):
 def evaluate_population(args, specs, population, gen, rng):
     """Plays the population and the control on one map sample; returns scores."""
     maps = sample_maps(rng, args.map_list, args.maps_per_gen)
-    gen_dir = os.path.join(args.out, f"gen{gen:03d}")
-    folders = []
-    for i, values in enumerate(population):
-        folder = os.path.join(args.out, "bots", f"{args.bot}_g{gen:03d}_i{i:02d}")
-        make_bot(args.bot_src, specs, values, folder)
-        folders.append(folder)
     t0 = time.time()
-    build_all(folders + args.opponents, args.build_workers)
     games = []
-    for i, folder in enumerate(folders):
+    for i in range(len(population)):
         for opponent in args.opponents:
             for m in maps:
                 for seat in ("A", "B"):
-                    games.append(((i, opponent, m, seat), folder, opponent, m, seat))
-    results = play(games, gen_dir, args.jobs, args.fuel, args.timeout)
+                    games.append(((i, opponent, m, seat), i, opponent, m, seat))
+    results = PLAY(args, specs, population, games, f"g{gen:03d}")
     scores = []
     for i in range(len(population)):
         rs = [r for k, r in results.items() if k[0] == i and r is not None]
         missing = sum(1 for k, r in results.items() if k[0] == i and r is None)
         fitness = sum(r[0] for r in rs) / len(rs) if rs else 0.0
+        # Per map, so maps on which every individual scores the same can be dropped later.
+        per_map = {}
+        for k, r in results.items():
+            if k[0] == i and r is not None:
+                per_map.setdefault(os.path.basename(k[2]), []).append(r[0])
         scores.append({"fitness": fitness, "wins": sum(r[1] for r in rs), "games": len(rs),
                        "gem_share": sum(r[2] for r in rs) / len(rs) if rs else 0.0,
-                       "faults": sum(r[3] for r in rs), "missing": missing})
-    for folder in folders:
-        shutil.rmtree(folder, ignore_errors=True)  # Individuals are rebuilt from values when needed.
+                       "faults": sum(r[3] for r in rs), "missing": missing,
+                       "per_map": {m: round(sum(v) / len(v), 4) for m, v in sorted(per_map.items())}})
     print(f"gen {gen}: {len(games)} games on {len(maps)} maps in {time.time() - t0:.0f}s", flush=True)
     return scores, maps
 
@@ -243,6 +266,8 @@ def finalists(args):
     """Candidates by mean advantage over the control across every generation
     they were played in (a single generation's map sample is noisy)."""
     rows = [json.loads(l) for l in open(os.path.join(args.out, "history.jsonl"), encoding="utf-8")]
+    # A generation whose games all went missing (a stopped run) measured nothing.
+    rows = [r for r in rows if r["games"] > 0]
     seen = {}
     for r in rows:
         if r["control"]:
@@ -263,19 +288,13 @@ def validate(args):
     defaults = {s["name"]: s["default"] for s in specs}
     chosen = json.load(open(args.validate, encoding="utf-8"))
     values = chosen[0]["values"] if isinstance(chosen, list) else chosen["values"]
-    folders = []
-    for name, vals in (("candidate", values), ("control", defaults)):
-        folder = os.path.join(args.out, "bots", f"{args.bot}_validate_{name}")
-        make_bot(args.bot_src, specs, vals, folder)
-        folders.append(folder)
-    build_all(folders + args.opponents, args.build_workers)
     games = []
-    for i, folder in enumerate(folders):
+    for i in range(2):  # 0 the candidate, 1 the control
         for opponent in args.opponents:
             for m in args.map_list:
                 for seat in ("A", "B"):
-                    games.append(((i, opponent, m, seat), folder, opponent, m, seat))
-    results = play(games, os.path.join(args.out, "validate"), args.jobs, args.fuel, args.timeout)
+                    games.append(((i, opponent, m, seat), i, opponent, m, seat))
+    results = PLAY(args, specs, [values, defaults], games, "validate")
     report = {}
     for i, name in enumerate(("candidate", "control")):
         rs = [r for k, r in results.items() if k[0] == i and r is not None]

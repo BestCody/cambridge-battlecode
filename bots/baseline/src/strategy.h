@@ -20,11 +20,11 @@ namespace policy {
 // choice of gold-only groups (20% of their captures before round 300, 15% to
 // round 800, 30% after, counted from the round dumps); 0.65 / 0.10 gave ours
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
-inline constexpr float early_gold_value = 0.15f;
-inline constexpr float late_gold_value = 0.30f;
+inline constexpr float early_gold_value = 0.17645f;
+inline constexpr float late_gold_value = 0.1f;
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
-inline constexpr float pursue_health = 0.6f;
+inline constexpr float pursue_health = 0.35402f;
 // A champion heads home below this share of its health, away from camps
 // (health_recovery_needed()), in a fight or not: willow best girl's
 // turn for home (by recall in 88-89% of trips) most often at 25-35% (20-26%
@@ -33,7 +33,7 @@ inline constexpr float pursue_health = 0.6f;
 // start for home most at 28-35% of their health (12-14 retreats per 100
 // contact rounds, 6-8 at 35-45%), the same line; ours, at 28%, left at
 // 28-35% in 8 of 100.
-inline constexpr float retreat_health = 0.35f;
+inline constexpr float retreat_health = 0.34436f;
 // The health a camp visit can spend, before the walk out of the camps' reach:
 // all of it, unless below the line we go home at away from camps (then home
 // first). Print dont int's tanks leave camps at 15-20% of their health, 1-2
@@ -47,38 +47,38 @@ inline constexpr float avoided_camp_strength = 100;
 // After a capture with no enemy near, the holder recalls on the capture tile
 // (the recall lands in the round of the reward) when below this share of its
 // health, and shops all its gold at home.
-inline constexpr float home_capture_health = 0.80f;
+inline constexpr float home_capture_health = 0.68275f;
 // ... and, healthy, when it left spawn fewer than this many rounds before the
 // recall starts (the reward 5 rounds later then comes under 30): willow best
 // girl's champions went home after 58-86% of healthy captures within 30
 // rounds of leaving spawn and after 2-18% of later ones (theirs Prism, which
 // keeps its gems, 47% and 2%; ours 2-4% either way), so short trips out to
 // the groups near home end in a recall home and the next one starts there.
-inline constexpr int short_trip_rounds = 25;
+inline constexpr int short_trip_rounds = 19;
 // ... and, healthy or far out, carrying an emblem's gold (five shards) to
 // spend: the trip home buys it.
-inline constexpr unsigned home_capture_gold = 150;
+inline constexpr unsigned home_capture_gold = 155;
 // A retreat's recall counts enemies as chasing for this many of its turns:
 // willow best girl's back line completes recalls with an enemy 3-8 tiles
 // off (its Vesper 2.8 a game, ours 1.0 when we assumed a full chase).
-inline constexpr int recall_chase_turns = 3;
+inline constexpr int recall_chase_turns = 6;
 // Turns of a walk to a target or an altar that make no step (walled off by
 // camp bodies) before it is left out for stuck_rounds.
-inline constexpr int stuck_turns = 3;
-inline constexpr int stuck_rounds = 40;
+inline constexpr int stuck_turns = 2;
+inline constexpr int stuck_rounds = 15;
 // Hard camps (golems and monoliths: hard_camp_health or more): a clear of one
 // under way is seen through (worker_farm()). Alone a golem (5,000 health, 120
 // a round, reach 4) outlasts any champion's health and a monolith (20,000,
 // 200, reach 5) more so: camp choice plans them as parties.
 inline constexpr float hard_camp_health = 5000;
-inline constexpr float casualty_margin = 0.12f;
-inline constexpr int replan_period = 4;
-inline constexpr float unused_cast_cost = 0.01f;
+inline constexpr float casualty_margin = 0.15155f;
+inline constexpr int replan_period = 2;
+inline constexpr float unused_cast_cost = 0.010918f;
 // Squad assembly: converging on surviving allies is the real regroup.
-inline constexpr float depleted_rally_bonus = 3.0f;
+inline constexpr float depleted_rally_bonus = 2.4569f;
 // Fraction of the team that must still be alive for the squad to count as
 // assembled. Below it the rally bias turns on. 0.0 disables regrouping entirely.
-inline constexpr float depleted_alive_fraction = 0.5f;
+inline constexpr float depleted_alive_fraction = 0.45268f;
 // Decisions never depend on the fuel left, so the same game plays the same at
 // any fuel budget.
 // Walking distance a camp choice first searches to, before groups have their
@@ -109,7 +109,7 @@ inline constexpr bool profile = false;
 inline constexpr float cheap_camp_health = 6000.0f;
 inline constexpr float cheap_camp_strength = 120.0f;
 // Multiplier on a camp group's gem reward on a fortress-gem map. 1.0 = normal.
-inline constexpr float siege_gem_weight = 2.0f;
+inline constexpr float siege_gem_weight = 0.82702f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
 // Rounds an enemy out of sight is still counted after its last sighting
@@ -118,54 +118,54 @@ inline constexpr int worker_danger_margin = 1;
 // be on say little. Measured: a ghost two rounds old is near its enemy two
 // times in three, one four rounds old one time in three, and kept while
 // updated (the old rule) four fifths of them were phantoms.
-inline constexpr int ghost_lifetime = 2;
+inline constexpr int ghost_lifetime = 5;
 // Outnumbered where it stands (worker_skirmish()'s tile classes), the camps
 // near those enemies are worth worker_sighting_penalty of their value for
 // worker_sighting_memory rounds. Without it lone champions
 // walked into a waiting group one at a time: half our ladder fights started
 // outnumbered.
-inline constexpr int worker_sighting_memory = 20;
-inline constexpr float worker_sighting_penalty = 0.2f;
+inline constexpr int worker_sighting_memory = 9;
+inline constexpr float worker_sighting_penalty = 0.41529f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
-inline constexpr int bank_nearby = 3;
+inline constexpr int bank_nearby = 1;
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
-inline constexpr unsigned exit_bag_gems = 200;
+inline constexpr unsigned exit_bag_gems = 216;
 // A champion that has lost this much health to enemy champions before its
 // first shard opens with its first emblem's Health version: on engine 2.0.0
 // willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
 // 500 or more and Hunter-Focus in 38 of 47 under 250, its Marcella
 // Prospector-Health in 31 of 47 at 500 or more. Its Vendetta and Willow do
 // not switch.
-inline constexpr float health_treasure_damage = 500;
+inline constexpr float health_treasure_damage = 891.1f;
 // A champion that lost this much health to enemy champions over the last
 // 100-150 rounds starts its build's next Health emblem when it starts a new
 // one (next_item()): willow best girl's Health share of new emblems is
 // 61-64% after 800-1199 and 71-77% after more (30-31% under 150).
-inline constexpr float health_pull_damage = 800;
+inline constexpr float health_pull_damage = 811.94f;
 // Altar locks, as willow best girl places them (about 4 a game): a champion
 // buys one at spawn when an altar wants one (lock_wanted(): the home altars,
 // or one an enemy banked at within lock_memory rounds) and places it when it
 // passes within lock_range of one.
-inline constexpr int lock_memory = 100;
+inline constexpr int lock_memory = 248;
 inline constexpr int lock_range = 2;
 // Value multiplier for the camp a champion is already heading to, so it
 // finishes camps instead of switching between them.
-inline constexpr float worker_commit_bonus = 1.08f;
+inline constexpr float worker_commit_bonus = 1.1102f;
 // Camp choice clears a camp at the team's summed camp rate (ours and its
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
-inline constexpr float team_clear_share = 0.85f;
-inline constexpr float dash_travel_scale = 0.8f;
+inline constexpr float team_clear_share = 0.61002f;
+inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
 // short by a fight, a death or a respawn. willow best girl captures clusters
 // first (median round 16-38, in 52-57% of the games that have them) and
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
-inline constexpr float plan_hazard = 0.02f;
+inline constexpr float plan_hazard = 0.020924f;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of
@@ -176,8 +176,8 @@ inline constexpr float claimed_dead_share = 0.47f;
 // scarce_altar_weight / (altar count) more: with few altars every gem is
 // tributed at the same tiles, where the enemy waits and locks cost the most,
 // so the gems near them are worth the more. 0 disables the scarcity term.
-inline constexpr int altar_walk_cap = 20;
-inline constexpr float scarce_altar_weight = 0.5f;
+inline constexpr int altar_walk_cap = 22;
+inline constexpr float scarce_altar_weight = 0.01444f;
 // Camp choice also divides a group's score by 1 + travel_hazard * (travel +
 // waiting) (the walk there and the wait for its respawn, in rounds; with the
 // walk alone ours stood beside dead groups 140 rounds a game in rounds
@@ -185,30 +185,30 @@ inline constexpr float scarce_altar_weight = 0.5f;
 // times, gold 4-6, monster health 2.5-3 and teammates' groups 1.5-1.8
 // times as much as willow best girl's choices (a logit of its new targets,
 // both samples), and walked past near groups to far ones.
-inline constexpr float travel_hazard = 0.1f;
+inline constexpr float travel_hazard = 0.10824f;
 // Marcella's in place of travel_hazard: willow best girl's Marcella weighs
 // a group's walk the least of its types (logit -2.39; ours -2.94) and takes
 // one-elk groups in 41% of its new targets on the same maps (ours 26%).
-inline constexpr float marcella_travel_hazard = 0.0f;
+inline constexpr float marcella_travel_hazard = 0.024222f;
 // A group nearer the enemy spawn than ours (walking) scores
 // enemy_side_factor of its value: willow best girl's choices avoid the
 // enemy half more than ours did (logit -0.7..-0.9 against -0.5, ours
 // alone -0.3..-0.4), and its lone contacts start 12-15 tiles from home
 // (ours 18-19), so its lone champions are out of reach sooner.
-inline constexpr float enemy_side_factor = 0.4f;
+inline constexpr float enemy_side_factor = 0.94067f;
 // Camp choice values a group an enemy champion stands on this much more (a
 // contest we can win there takes its reward from them).
-inline constexpr float enemy_held_camp_bonus = 1.4f;
+inline constexpr float enemy_held_camp_bonus = 1.8336f;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.
-inline constexpr float held_capture_bonus = 5.0f;
+inline constexpr float held_capture_bonus = 4.4312f;
 // An altar's risk for each enemy champion near it: this much, and
 // altar_enemy_strength_risk per point of its strength (worker_tribute()).
-inline constexpr float altar_enemy_risk = 6.0f;
-inline constexpr float altar_enemy_strength_risk = 0.05f;
+inline constexpr float altar_enemy_risk = 3.5224f;
+inline constexpr float altar_enemy_strength_risk = 0.040161f;
 // A fight step's tile score: its walk times 10 plus the damage that can reach
 // it times this (attack_combo()'s step).
-inline constexpr float step_incoming_weight = 0.14f;
+inline constexpr float step_incoming_weight = 0.038261f;
 // Ordinary camps farther than the map's natural camp spacing from every live
 // teammate claim lose this much value per extra tile (test-bot's cohesion):
 // the team stays within reach of each other. Only on maps whose spacing is at
@@ -216,7 +216,7 @@ inline constexpr float step_incoming_weight = 0.14f;
 // plans. Off (0) until the GA tunes it: 0.03 everywhere was level (83/140),
 // +3 on dense maps and -3 on sparse.
 inline constexpr float cohesion_hazard = 0.0f;
-inline constexpr float cohesion_max_spacing = 40.0f;
+inline constexpr float cohesion_max_spacing = 29.565f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
