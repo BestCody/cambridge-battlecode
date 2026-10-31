@@ -247,6 +247,8 @@ class CampList {
                      : std::span<const ObservedUnit>(slots() + first[g], held[g]);
     }
     std::uint16_t count(int g) const { return held[g]; }
+    // Every group's record count, by group (observe()'s group scan).
+    const std::uint16_t *counts() const { return held.data(); }
     // A record by its slot, and the group's first slot and the one its next
     // record takes.
     ObservedUnit &slot(std::uint32_t s) { return slots()[s]; }
@@ -656,7 +658,24 @@ class Bot {
     // Each open tile's walking region (tiles joined by steps; 0: blocked),
     // labelled once: terrain never changes. A crystal hop lands only in the
     // region of what it heads for (hop_lands_in_reach()).
-    std::vector<std::uint16_t> walk_region;
+    // Walking regions as the runs of open tiles along each row (initialise()):
+    // row y's runs are [region_rows[y], region_rows[y + 1]), each from
+    // region_start to region_end (exclusive) with its region's label. Only
+    // equal labels are compared; 0 is a closed tile (walk_region_at()).
+    std::unique_ptr<int[]> region_start, region_end, region_rows;
+    std::unique_ptr<std::uint16_t[]> region_label;
+    std::uint16_t walk_region_at(int x, int y) const;
+    // The labelling, a row a step (begin_regions() in initialise(), then
+    // region_step() in spare work; ensure_regions() before any hop reads it).
+    int region_row = 0;
+    bool regions_ready = false;
+    std::uint64_t region_step_cost = 0; // The dearest row so far.
+    void begin_regions();
+    bool region_step();
+    void ensure_regions();
+    // Rows while the turn's fuel left covers twice the dearest so far: last in
+    // a turn, in fuel it would not use (unused fuel does not carry over).
+    void spare_region_steps();
     bool hop_lands_in_reach(vec2 landing) const;
     // Camps in view, refreshed by each observation (with the sleeping ones
     // when asleep_known, and the living ones); unseen ward placements.
@@ -666,6 +685,11 @@ class Bot {
     // Per group, with each observation: a camp of it in view, and one of us
     // (or an ally in view) standing on it. The camp tiles in view, listed.
     std::vector<std::uint8_t> group_in_view, group_held;
+    // Per group, the round from which observe() looks at it out of view and
+    // unheld with no records (held: always; cooling: its respawn; capture:
+    // past its timer; else never), kept by note_group_due().
+    std::vector<std::int32_t> group_due;
+    void note_group_due(std::size_t group);
     std::vector<vec2> sighted_camps;
     // Walking distance from origin_position to each camp group. A group a
     // bounded search missed holds only a lower bound, flagged in
@@ -780,6 +804,16 @@ class Bot {
     void observe_fight();
     void publish(unsigned claim);
     float incoming(vec2 tile, bool include_camps = true) const;
+    float incoming_enemies(vec2 tile) const;
+    // incoming() at many tiles with nothing changing between the calls:
+    // begin_scan() starts a scan, and incoming_scan(tile) gives incoming(tile)
+    // with each camp's tile-independent tests made once for the scan.
+    void begin_scan();
+    float incoming_scan(vec2 tile) const;
+    mutable std::vector<std::uint32_t> scan_stamp;
+    mutable std::vector<int> scan_near;
+    mutable std::vector<float> scan_hit;
+    std::uint32_t scan_serial = 0;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -874,6 +908,19 @@ class Bot {
     // Field buffers for plan_hop() and prepare_hops(), rows padded for SIMD
     // (allocated by hop_buffers()).
     std::unique_ptr<std::uint16_t[]> hop_goal, hop_from, hop_rows, hop_near;
+    // plan_hop()'s goal side for the last few goal sets: the walk to the goals
+    // (G) and its window minimum over the landing regions (M, rows padded to
+    // a multiple of 8), both from the goals, the regions and static terrain.
+    struct HopGoals {
+        bc::bitboard goals;
+        std::uint16_t allowed[9];
+        int kinds = -1; // -1: empty
+        bool near_ready = false; // M is built on the goals' second plan.
+        std::unique_ptr<std::uint16_t[]> walk, near;
+    };
+    std::array<HopGoals, 4> hop_cache;
+    unsigned hop_cache_next = 0;
+    bc::bitboard hop_cache_diff;
     void hop_buffers();
     bc::distance_field hop_goal_field, hop_from_field;
     void prepare_hops();

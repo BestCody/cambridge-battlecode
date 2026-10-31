@@ -83,6 +83,11 @@ bool Bot::worker_tribute() {
         banking = false;
         return false;
     }
+    // A holder banks only where the tribute starts beside its capture.
+    if (holding && !win && !deadline && distance(position, selected) > rules::settings().submit_gems_range) {
+        banking = false;
+        return false;
+    }
     if (distance(position, selected) <= rules::settings().submit_gems_range) {
         // A stunned champion cannot act: starting a tribute would throw and
         // lose the rest of the turn's work. Wait beside the altar instead.

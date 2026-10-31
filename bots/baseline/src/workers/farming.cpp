@@ -1,5 +1,6 @@
 // Worker camp choice and farming.
 #include "../bot.h"
+#include <tuple>
 #include <wasm_simd128.h>
 
 int Bot::choose_opening(int &until) const {
@@ -145,7 +146,10 @@ int Bot::worker_choose_group(int excluded) {
             const auto &h = groups[std::size_t(m.claim)];
             m.where = h.centre;
             if (h.status == CampGroup::capture)
-                m.busy = float(std::max(0, capture_payout(h) - int(round)));
+                // Its holding's timer; unknown counts from now (capture_payout()
+                // times only our own stepping on).
+                m.busy = float(std::max(0, (h.holding_since >= 0 ? h.holding_since : int(round)) +
+                                               int(rules::settings().capture_time) - int(round)));
             else if (h.status == CampGroup::alive && h.health < h.max_health)
                 // At its claimants' speed together, not its own alone.
                 m.busy = h.health / std::max({1.0f, mate_rate[s], claim_rates[std::size_t(m.claim)]}) +
@@ -1273,7 +1277,7 @@ void Bot::worker_farm() {
         // and each tile in our range reads its sum. Tile by tile against
         // every camp and ally, this cost 94k fuel a turn on big maps and
         // 244k on the-pack's 48-wolf group.
-        static std::vector<vec2> tiles, best_tiles;
+        static std::vector<vec2> tiles;
         static std::vector<std::uint32_t> hits;
         const std::size_t map_tiles = std::size_t(map_width) * std::size_t(map_height);
         tiles.resize(map_tiles);
@@ -1297,23 +1301,25 @@ void Bot::worker_farm() {
                     row[x] += strength;
             }
         }
+        // The least sum, then the tiles with it as bits imported in one engine
+        // call: most tiles tie (beyond every camp's reach), and a push and a
+        // set per tile cost about 30k a turn on the-pack.
         std::uint32_t least = std::numeric_limits<std::uint32_t>::max();
-        best_tiles.clear();
-        for (std::uint32_t t = 0; t < count; ++t) {
-            const vec2 p = tiles[t];
-            const std::uint32_t hit = hits[std::size_t(p.y * map_width + p.x)];
-            if (hit < least) {
-                least = hit;
-                best_tiles.clear();
-            }
-            if (hit == least)
-                best_tiles.push_back(p);
-        }
+        for (std::uint32_t t = 0; t < count; ++t)
+            least = std::min(least, hits[std::size_t(tiles[t].y * map_width + tiles[t].x)]);
+        std::uint32_t ties = 0;
+        for (std::uint32_t t = 0; t < count; ++t)
+            ties += hits[std::size_t(tiles[t].y * map_width + tiles[t].x)] == least;
         // Every tile tied: the goals stand as they are.
-        if (!best_tiles.empty() && best_tiles.size() != count) {
-            goals.clear();
-            for (const vec2 p : best_tiles)
-                goals.set(p);
+        if (ties && ties != count) {
+            static std::vector<std::uint8_t> best_bits;
+            best_bits.assign(bc::bitboard::linear_buffer_size(), 0);
+            for (std::uint32_t t = 0; t < count; ++t) {
+                const std::size_t index = std::size_t(tiles[t].y * map_width + tiles[t].x);
+                if (hits[index] == least)
+                    best_bits[index >> 3] |= std::uint8_t(1u << (index & 7));
+            }
+            goals.import_linear_buffer(best_bits);
         }
     }
     if (siege && !goals.is_set(position)) {
@@ -1344,6 +1350,7 @@ void Bot::worker_farm() {
         int timer = 0;
         if (!occupancy.is_empty() && group_state(g, timer) == 2) {
             g.status = CampGroup::capture;
+            note_group_due(std::size_t(target));
             refresh_blocked();
             if (!g.tiles().is_set(position) && !capture_deferred(g))
                 move_to(g.tiles(), g.centre, false, false);
@@ -1457,7 +1464,9 @@ int Bot::capture_payout(const CampGroup &g) const {
     // The timer starts at the first capture phase held, no earlier than the
     // round after we stepped on, and pays capture_time phases later
     // (docs/GameRules.md: a five-round timer counted down by later phases).
-    return std::max(g.holding_since, capture_since + 1) + rules::settings().capture_time;
+    // Our own stepping on counts only for the group we hold (capture_group).
+    const int stepped_on = capture_group == int(&g - groups.data()) ? capture_since : -1;
+    return std::max(g.holding_since, stepped_on + 1) + rules::settings().capture_time;
 }
 
 bool Bot::outranks(const ObservedUnit &ally, bool arriving, const CampGroup &g) const {
@@ -1540,41 +1549,100 @@ std::span<const Bot::ClusterLink> Bot::cluster_links_of(int g) {
     // field is built, checked as fields come. Nearest first.
     bool order = false;
     if (link_first[g] < 0) {
-        // Each linked group's entry this build, by the build's stamp.
+        // Only camps of other cluster groups within the group's bounding
+        // box widened by the reach can be in reach of one of its camps:
+        // those are found in one pass, four camps a step, and each is
+        // measured against the group's camps. Each linked group is listed
+        // in the order of its first camp pair in reach (by the group's camp,
+        // then camp order), at the nearest such pair's gap.
+        const int reach = rules::settings().capture_time;
+        const auto &own = groups[g].camps;
+        int low_x = std::numeric_limits<int>::max(), high_x = std::numeric_limits<int>::min();
+        int low_y = low_x, high_y = high_x;
+        for (const auto &c : own) {
+            low_x = std::min(low_x, c.position.x);
+            high_x = std::max(high_x, c.position.x);
+            low_y = std::min(low_y, c.position.y);
+            high_y = std::max(high_y, c.position.y);
+        }
+        struct Found {
+            int group;
+            std::size_t first_camp, first_tile;
+            int apart;
+        };
+        static std::vector<Found> found;
         static std::vector<std::uint32_t> entry_stamp, entry;
         static std::uint32_t stamp = 0;
         entry_stamp.resize(groups.size());
         entry.resize(groups.size());
         ++stamp;
-        const std::size_t first = cluster_links.size();
-        const v128_t reach = wasm_i32x4_splat(rules::settings().capture_time);
-        alignas(16) std::int32_t gaps[4];
-        for (const auto &c : groups[g].camps) {
-            const v128_t x = wasm_i32x4_splat(c.position.x), y = wasm_i32x4_splat(c.position.y);
+        found.clear();
+        const std::size_t own_lane = std::size_t(own.data() - camp_pool.data());
+        const v128_t wide_reach = wasm_i32x4_splat(reach);
+        if (!own.empty()) {
+            const v128_t lx = wasm_i32x4_splat(low_x - reach), hx = wasm_i32x4_splat(high_x + reach);
+            const v128_t ly = wasm_i32x4_splat(low_y - reach), hy = wasm_i32x4_splat(high_y + reach);
             for (std::size_t k = 0; k < camp_lanes; k += 4) {
-                const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
-                                                    wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&camp_y[k]))));
-                unsigned hits = wasm_i32x4_bitmask(wasm_i32x4_le(apart, reach));
-                if (hits)
-                    wasm_v128_store(gaps, apart);
-                for (; hits; hits &= hits - 1) {
-                    const unsigned lane = unsigned(__builtin_ctz(hits));
-                    const int other = camp_group[k + lane];
+                const v128_t x = wasm_v128_load(&camp_x[k]), y = wasm_v128_load(&camp_y[k]);
+                const v128_t in = wasm_v128_and(wasm_v128_and(wasm_i32x4_ge(x, lx), wasm_i32x4_le(x, hx)),
+                                                wasm_v128_and(wasm_i32x4_ge(y, ly), wasm_i32x4_le(y, hy)));
+                for (unsigned bits = wasm_i32x4_bitmask(in); bits; bits &= bits - 1) {
+                    const std::size_t j = k + unsigned(__builtin_ctz(bits));
+                    const int other = camp_group[j];
                     if (other == g || !cluster_group[other])
                         continue;
-                    // Another camp pair of groups already linked: the nearer
-                    // tiles count.
-                    if (entry_stamp[other] == stamp) {
-                        auto &link = cluster_links[entry[other]];
-                        link.apart = std::min(link.apart, gaps[lane]);
-                    } else {
+                    // The group's camps are lanes own_lane on, in its camp
+                    // order: four at a time, the rest one by one.
+                    const v128_t tx = wasm_i32x4_splat(camp_x[j]), ty = wasm_i32x4_splat(camp_y[j]);
+                    std::size_t first_camp = own.size();
+                    v128_t low = wasm_i32x4_splat(std::numeric_limits<std::int32_t>::max());
+                    std::size_t ci = 0;
+                    for (; ci + 4 <= own.size(); ci += 4) {
+                        const v128_t d =
+                            wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(tx, wasm_v128_load(&camp_x[own_lane + ci]))),
+                                           wasm_i32x4_abs(wasm_i32x4_sub(ty, wasm_v128_load(&camp_y[own_lane + ci]))));
+                        const v128_t in = wasm_i32x4_le(d, wide_reach);
+                        if (!wasm_v128_any_true(in))
+                            continue;
+                        if (first_camp == own.size())
+                            first_camp = ci + unsigned(__builtin_ctz(unsigned(wasm_i32x4_bitmask(in))));
+                        low = wasm_i32x4_min(low, d);
+                    }
+                    low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 2, 3, 0, 1));
+                    low = wasm_i32x4_min(low, wasm_i32x4_shuffle(low, low, 1, 0, 3, 2));
+                    int apart = wasm_i32x4_extract_lane(low, 0);
+                    const vec2 tile{camp_x[j], camp_y[j]};
+                    for (; ci < own.size(); ++ci)
+                        if (const int d = distance(own[ci].position, tile); d <= reach) {
+                            first_camp = std::min(first_camp, ci);
+                            apart = std::min(apart, d);
+                        }
+                    if (first_camp == own.size())
+                        continue;
+                    if (entry_stamp[other] != stamp) {
                         entry_stamp[other] = stamp;
-                        entry[other] = std::uint32_t(cluster_links.size());
-                        cluster_links.push_back({other, gaps[lane], false});
+                        entry[other] = std::uint32_t(found.size());
+                        found.push_back({other, first_camp, j, apart});
+                    } else {
+                        auto &f = found[entry[other]];
+                        if (first_camp < f.first_camp) {
+                            f.first_camp = first_camp;
+                            f.first_tile = j;
+                        }
+                        f.apart = std::min(f.apart, apart);
                     }
                 }
             }
         }
+        // Listed by first pair (camp order is the tiles' order within one).
+        for (std::size_t e = 1; e < found.size(); ++e)
+            for (std::size_t f = e; f > 0 && std::tie(found[f].first_camp, found[f].first_tile) <
+                                                 std::tie(found[f - 1].first_camp, found[f - 1].first_tile);
+                 --f)
+                std::swap(found[f], found[f - 1]);
+        const std::size_t first = cluster_links.size();
+        for (const auto &f : found)
+            cluster_links.push_back({f.group, f.apart, false});
         link_first[g] = std::int32_t(first);
         link_count[g] = std::uint16_t(cluster_links.size() - first);
         link_checked[g] = walk_cursor + 1; // Its walks are checked below.

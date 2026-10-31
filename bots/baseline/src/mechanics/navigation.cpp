@@ -466,28 +466,53 @@ void Bot::hop_buffers() {
 }
 
 void row_window_min(const std::uint16_t *field, int w, int h, std::uint16_t *rows, std::uint16_t *near,
-                    int first_row, int last_row, int first_column, int end_column) {
+                    int first_row, int last_row, int first_column, int end_column, const int *run_start,
+                    const int *run_end, const int *row_runs, const std::uint16_t *run_label,
+                    const std::uint16_t *allowed, int kinds) {
     // Rows padded by the range both sides, then the window minimum along
     // each row, eight tiles a SIMD step. A step's lanes past the map's edge
-    // may read the next row: they are never used.
+    // may read the next row: they are never used. With regions, a row is
+    // unreachable but for its runs in an allowed region, copied whole (a
+    // separate pass over the map cost 55k a plan).
     const int reach = rules::crystal_range;
     const int stride = (w + 2 * reach + 7) & ~7, wide = (w + 7) & ~7;
     constexpr std::uint16_t far = bc::distance_field::unreachable;
     for (int y = first_row; y <= last_row; ++y) {
         std::uint16_t *row = rows + std::size_t(y) * std::size_t(stride);
         std::fill(row, row + reach, far);
-        std::memcpy(row + reach, field + std::size_t(y) * std::size_t(w), std::size_t(w) * 2);
+        const std::uint16_t *from = field + std::size_t(y) * std::size_t(w);
+        if (!run_start) {
+            std::memcpy(row + reach, from, std::size_t(w) * 2);
+        } else {
+            std::fill(row + reach, row + reach + w, far);
+            for (int r = row_runs[y]; r < row_runs[y + 1]; ++r)
+                if (std::find(allowed, allowed + kinds, run_label[r]) != allowed + kinds)
+                    std::memcpy(row + reach + run_start[r], from + run_start[r],
+                                std::size_t(run_end[r] - run_start[r]) * 2);
+        }
         std::fill(row + reach + w, row + stride, far);
     }
     std::fill(rows + std::size_t(stride) * std::size_t(h), rows + std::size_t(stride) * std::size_t(h) + 8, far);
+    // Each step's eight tiles and the next eight are loaded once (the next
+    // step's first eight), the window's other six views shuffled out of the
+    // two: a SIMD load costs about seven fuel, a shuffle one (seven loads a
+    // step were most of a hop plan's row pass). Lanes past the row read at
+    // most 13 entries on, inside the padding.
+    static_assert(rules::crystal_range == 3, "the views below are a 7-tile window");
     for (int y = first_row; y <= last_row; ++y) {
         const std::uint16_t *row = rows + std::size_t(y) * std::size_t(stride);
         std::uint16_t *out = near + std::size_t(y) * std::size_t(wide);
+        v128_t here = wasm_v128_load(row + first_column);
         for (int x = first_column; x < end_column; x += 8) {
-            v128_t least = wasm_v128_load(row + x);
-            for (int k = 1; k <= 2 * reach; ++k)
-                least = wasm_u16x8_min(least, wasm_v128_load(row + x + k));
+            const v128_t next = wasm_v128_load(row + x + 8);
+            v128_t least = wasm_u16x8_min(here, wasm_i16x8_shuffle(here, next, 1, 2, 3, 4, 5, 6, 7, 8));
+            least = wasm_u16x8_min(least, wasm_i16x8_shuffle(here, next, 2, 3, 4, 5, 6, 7, 8, 9));
+            least = wasm_u16x8_min(least, wasm_i16x8_shuffle(here, next, 3, 4, 5, 6, 7, 8, 9, 10));
+            least = wasm_u16x8_min(least, wasm_i16x8_shuffle(here, next, 4, 5, 6, 7, 8, 9, 10, 11));
+            least = wasm_u16x8_min(least, wasm_i16x8_shuffle(here, next, 5, 6, 7, 8, 9, 10, 11, 12));
+            least = wasm_u16x8_min(least, wasm_i16x8_shuffle(here, next, 6, 7, 8, 9, 10, 11, 12, 13));
             wasm_v128_store(out + x, least);
+            here = next;
         }
     }
 }
@@ -711,6 +736,7 @@ int Bot::hop_rounds(vec2 toward) const {
 }
 
 void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
+    ensure_regions(); // Rows still unlabelled (the background labels them).
     // Over terrain: the walk from every tile to the goals (G) and from here
     // to every tile (F). A hop taking off at o costs F(o) + the channel +
     // the least G within crystal reach of o (a window minimum: along rows,
@@ -727,69 +753,171 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     constexpr std::uint16_t far = bc::distance_field::unreachable;
     const int wide = (w + 7) & ~7;
     hop_buffers();
-    hop_goal_field.compute(static_blocked, goals, search_visited);
-    hop_goal_field.export_linear_buffer(std::span(hop_goal.get(), tiles));
-    const int walk = hop_goal[std::size_t(tile_index(position))];
+    // The landing regions: only tiles in the region of what we head for or one
+    // beside it (hop_lands_in_reach()): a goal tile no walk joins to it (a
+    // walled pocket in attack range by distance) is no landing.
+    std::uint16_t allowed[9];
+    int kinds = 0;
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+            const vec2 p{hop_plan.toward.x + dx, hop_plan.toward.y + dy};
+            if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h)
+                continue;
+            const std::uint16_t region = walk_region_at(p.x, p.y);
+            if (region && std::find(allowed, allowed + kinds, region) == allowed + kinds)
+                allowed[kinds++] = region;
+        }
+    const auto landable = [&](std::size_t t) {
+        return !kinds || std::find(allowed, allowed + kinds,
+                                   walk_region_at(int(t % std::size_t(w)), int(t / std::size_t(w)))) != allowed + kinds;
+    };
+    // The goal side, G and M, depends only on the goals, these regions and
+    // static terrain: kept for the last few goal sets, and the same goals come
+    // back (a camp's respawn walked to from spawn: the same 264k plan every 40
+    // rounds on tangle). A new set's first plan works its windows over the
+    // band near us only; its second builds M over the map, later ones read it.
+    HopGoals *entry = nullptr;
+    for (auto &e : hop_cache) {
+        if (e.kinds != kinds || !std::equal(allowed, allowed + kinds, e.allowed))
+            continue;
+        hop_cache_diff = goals;
+        hop_cache_diff ^= e.goals;
+        if (hop_cache_diff.is_empty()) {
+            entry = &e;
+            break;
+        }
+    }
+    const v128_t far8 = wasm_u16x8_splat(far), channel8 = wasm_u16x8_splat(std::uint16_t(channel)),
+                 lane = wasm_u16x8_make(0, 1, 2, 3, 4, 5, 6, 7);
+    if (!entry) {
+        entry = &hop_cache[hop_cache_next];
+        hop_cache_next = (hop_cache_next + 1) % hop_cache.size();
+        if (!entry->walk) {
+            entry->walk.reset(new std::uint16_t[tiles]);
+            entry->near.reset(new std::uint16_t[std::size_t(wide) * std::size_t(h)]);
+        }
+        entry->goals = goals;
+        entry->kinds = kinds;
+        entry->near_ready = false;
+        std::copy(allowed, allowed + kinds, entry->allowed);
+        hop_goal_field.compute(static_blocked, goals, search_visited);
+        hop_goal_field.export_linear_buffer(std::span(entry->walk.get(), tiles));
+    } else if (!entry->near_ready) {
+        // The same goals again: M over the whole map, kept for later plans.
+        // Along the rows (the padded rows masked to the regions), then down
+        // each eight columns with the window's seven rows in registers.
+        row_window_min(entry->walk.get(), w, h, hop_rows.get(), hop_near.get(), 0, h - 1, 0, wide,
+                       kinds ? region_start.get() : nullptr, region_end.get(), region_rows.get(), region_label.get(),
+                       allowed, kinds);
+        const std::uint16_t *rows = hop_near.get();
+        std::uint16_t *out = entry->near.get();
+        const auto row_at = [&](int k, int x) {
+            return k < 0 || k >= h ? far8 : wasm_v128_load(rows + std::size_t(k) * std::size_t(wide) + std::size_t(x));
+        };
+        for (int x = 0; x < wide; x += 8) {
+            v128_t r0 = far8, r1 = far8, r2 = far8, r3 = row_at(0, x), r4 = row_at(1, x), r5 = row_at(2, x),
+                   r6 = row_at(3, x);
+            for (int y = 0; y < h; ++y) {
+                wasm_v128_store(out + std::size_t(y) * std::size_t(wide) + std::size_t(x),
+                                wasm_u16x8_min(wasm_u16x8_min(wasm_u16x8_min(r0, r1), wasm_u16x8_min(r2, r3)),
+                                               wasm_u16x8_min(wasm_u16x8_min(r4, r5), r6)));
+                r0 = r1;
+                r1 = r2;
+                r2 = r3;
+                r3 = r4;
+                r4 = r5;
+                r5 = r6;
+                r6 = row_at(y + 4, x);
+            }
+        }
+        entry->near_ready = true;
+    }
+    const std::uint16_t *goal_walk = entry->walk.get(), *near = entry->near.get();
+    const int walk = goal_walk[std::size_t(tile_index(position))];
     if (float(walk - channel) <= threshold)
         return;
-    // Landings only in the region of what we head for (hop_lands_in_reach()):
-    // a goal tile no walk joins to it (a walled pocket in attack range by
-    // distance) is no landing.
-    {
-        bool any = false;
-        for (int dy = -1; dy <= 1 && !any; ++dy)
-            for (int dx = -1; dx <= 1 && !any; ++dx) {
-                const vec2 p{hop_plan.toward.x + dx, hop_plan.toward.y + dy};
-                any = p.x >= 0 && p.y >= 0 && p.x < w && p.y < h && walk_region[std::size_t(p.y * w + p.x)];
-            }
-        if (any)
-            for (std::size_t t = 0; t < tiles; ++t)
-                if (hop_goal[t] != far && !hop_lands_in_reach({int(t % std::size_t(w)), int(t / std::size_t(w))}))
-                    hop_goal[t] = far;
-    }
     const int span = int(std::min(std::floor(float(walk - channel) - threshold) + 1.0f, float(far - 1)));
     hop_from_field.compute(static_blocked, around(position, 0), search_visited, std::uint16_t(span));
     hop_from_field.export_linear_buffer(std::span(hop_from.get(), tiles));
     const int first_row = std::max(0, position.y - span), last_row = std::min(h - 1, position.y + span);
     const int first_column = std::max(0, position.x - span) & ~7,
               end_column = std::min(wide, ((std::min(w - 1, position.x + span)) & ~7) + 8);
-    row_window_min(hop_goal.get(), w, h, hop_rows.get(), hop_near.get(), std::max(0, first_row - reach),
-                   std::min(h - 1, last_row + reach), first_column, end_column);
-    const std::uint16_t *near = hop_near.get();
-    // Along the columns, each tile's sum (far past the map's edge or where
-    // either walk is), into the spent padded rows at `wide`, and the least.
+    // Each tile's sum (far past the map's edge or where either walk is), into
+    // the spent padded rows at `wide`, and the least. A sum is at least its
+    // take-off's walk plus the channel: a step whose every tile already costs
+    // more than that lane's least so far, or than any hop that could pay (the
+    // walk less the threshold), is passed (strictly more: ties stay, and the
+    // first tile in row order with the least is still found below).
     std::uint16_t *sums = hop_rows.get();
-    const v128_t far8 = wasm_u16x8_splat(far), channel8 = wasm_u16x8_splat(std::uint16_t(channel)),
-                 lane = wasm_u16x8_make(0, 1, 2, 3, 4, 5, 6, 7);
     v128_t least_sum = far8;
-    // A sum is at least its take-off's walk plus the channel: a step whose
-    // every tile already costs more than that lane's least so far, or than
-    // any hop that could pay (the walk less the threshold), is passed
-    // without its window (strictly more: ties stay, and the first tile in
-    // row order with the least is still found). Over long maze walks the
-    // windows were 240k fuel a plan on tangle.
     const v128_t pays = wasm_u16x8_splat(std::uint16_t(
         std::clamp(std::floor(float(walk) - threshold) + 1.0f, 0.0f, float(far))));
-    for (int y = first_row; y <= last_row; ++y) {
-        const int top = std::max(0, y - reach), bottom = std::min(h - 1, y + reach);
-        for (int x = first_column; x < end_column; x += 8) {
-            const v128_t from =
-                wasm_v128_load(hop_from.get() + std::size_t(y) * std::size_t(w) + std::size_t(x));
-            if (wasm_i16x8_all_true(
-                    wasm_u16x8_gt(wasm_u16x8_add_sat(from, channel8), wasm_u16x8_min(least_sum, pays)))) {
-                wasm_v128_store(sums + std::size_t(y) * std::size_t(wide) + std::size_t(x), far8);
-                continue;
+    if (entry->near_ready) {
+        for (int y = first_row; y <= last_row; ++y)
+            for (int x = first_column; x < end_column; x += 8) {
+                const v128_t from =
+                    wasm_v128_load(hop_from.get() + std::size_t(y) * std::size_t(w) + std::size_t(x));
+                std::uint16_t *out = sums + std::size_t(y) * std::size_t(wide) + std::size_t(x);
+                if (wasm_i16x8_all_true(
+                        wasm_u16x8_gt(wasm_u16x8_add_sat(from, channel8), wasm_u16x8_min(least_sum, pays)))) {
+                    wasm_v128_store(out, far8);
+                    continue;
+                }
+                const v128_t least = wasm_v128_load(near + std::size_t(y) * std::size_t(wide) + std::size_t(x));
+                const v128_t valid = wasm_v128_and(
+                    wasm_u16x8_lt(lane, wasm_u16x8_splat(std::uint16_t(w - x))),
+                    wasm_v128_and(wasm_i16x8_ne(least, far8), wasm_i16x8_ne(from, far8)));
+                const v128_t sum =
+                    wasm_v128_bitselect(wasm_u16x8_add_sat(wasm_u16x8_add_sat(from, channel8), least), far8, valid);
+                wasm_v128_store(out, sum);
+                least_sum = wasm_u16x8_min(least_sum, sum);
             }
-            v128_t least = wasm_v128_load(near + std::size_t(top) * std::size_t(wide) + std::size_t(x));
-            for (int k = top + 1; k <= bottom; ++k)
-                least = wasm_u16x8_min(least, wasm_v128_load(near + std::size_t(k) * std::size_t(wide) + std::size_t(x)));
-            const v128_t valid = wasm_v128_and(
-                wasm_u16x8_lt(lane, wasm_u16x8_splat(std::uint16_t(w - x))),
-                wasm_v128_and(wasm_i16x8_ne(least, far8), wasm_i16x8_ne(from, far8)));
-            const v128_t sum = wasm_v128_bitselect(
-                wasm_u16x8_add_sat(wasm_u16x8_add_sat(from, channel8), least), far8, valid);
-            wasm_v128_store(sums + std::size_t(y) * std::size_t(wide) + std::size_t(x), sum);
-            least_sum = wasm_u16x8_min(least_sum, sum);
+    } else {
+        // The band's rows (and the window's reach beyond), then down each
+        // eight columns with the window's seven rows in registers (rows off
+        // the map are far). The order only changes which steps the test
+        // passes, never the least or the first tile with it.
+        row_window_min(goal_walk, w, h, hop_rows.get(), hop_near.get(), std::max(0, first_row - reach),
+                       std::min(h - 1, last_row + reach), first_column, end_column,
+                       kinds ? region_start.get() : nullptr, region_end.get(), region_rows.get(), region_label.get(),
+                       allowed, kinds);
+        const std::uint16_t *band = hop_near.get();
+        const auto near_row = [&](int k, int x) {
+            return k < 0 || k >= h ? far8 : wasm_v128_load(band + std::size_t(k) * std::size_t(wide) + std::size_t(x));
+        };
+        for (int x = first_column; x < end_column; x += 8) {
+            const v128_t in_map = wasm_u16x8_lt(lane, wasm_u16x8_splat(std::uint16_t(w - x)));
+            v128_t r0 = near_row(first_row - 3, x), r1 = near_row(first_row - 2, x), r2 = near_row(first_row - 1, x),
+                   r3 = near_row(first_row, x), r4 = near_row(first_row + 1, x), r5 = near_row(first_row + 2, x),
+                   r6 = near_row(first_row + 3, x);
+            for (int y = first_row; y <= last_row; ++y) {
+                const v128_t from =
+                    wasm_v128_load(hop_from.get() + std::size_t(y) * std::size_t(w) + std::size_t(x));
+                std::uint16_t *out = sums + std::size_t(y) * std::size_t(wide) + std::size_t(x);
+                if (wasm_i16x8_all_true(
+                        wasm_u16x8_gt(wasm_u16x8_add_sat(from, channel8), wasm_u16x8_min(least_sum, pays)))) {
+                    wasm_v128_store(out, far8);
+                } else {
+                    const v128_t least = wasm_u16x8_min(
+                        wasm_u16x8_min(wasm_u16x8_min(r0, r1), wasm_u16x8_min(r2, r3)),
+                        wasm_u16x8_min(wasm_u16x8_min(r4, r5), r6));
+                    const v128_t valid = wasm_v128_and(
+                        in_map, wasm_v128_and(wasm_i16x8_ne(least, far8), wasm_i16x8_ne(from, far8)));
+                    const v128_t sum = wasm_v128_bitselect(
+                        wasm_u16x8_add_sat(wasm_u16x8_add_sat(from, channel8), least), far8, valid);
+                    wasm_v128_store(out, sum);
+                    least_sum = wasm_u16x8_min(least_sum, sum);
+                }
+                if (y == last_row)
+                    break;
+                r0 = r1;
+                r1 = r2;
+                r2 = r3;
+                r3 = r4;
+                r4 = r5;
+                r5 = r6;
+                r6 = near_row(y + 4, x);
+            }
         }
     }
     alignas(16) std::uint16_t lanes[8];
@@ -814,8 +942,8 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     int least = far;
     for (int y = std::max(0, takeoff.y - reach); y <= std::min(h - 1, takeoff.y + reach); ++y)
         for (int x = std::max(0, takeoff.x - reach); x <= std::min(w - 1, takeoff.x + reach); ++x)
-            if (hop_goal[std::size_t(y * w + x)] < least) {
-                least = hop_goal[std::size_t(y * w + x)];
+            if (goal_walk[std::size_t(y * w + x)] < least && landable(std::size_t(y * w + x))) {
+                least = goal_walk[std::size_t(y * w + x)];
                 hop_plan.landing = {x, y};
             }
     hop_plan.takeoff_walk = hop_from[std::size_t(best_tile)];
@@ -860,7 +988,7 @@ bool Bot::hop_lands_in_reach(vec2 landing) const {
     // (a group's centre can be a wall, a camp's tile is open): a walled pocket
     // in attack range of a group by distance alone was landed in, the camps
     // out of sight and no walk out (00quadrants: a Vesper stood 262 rounds).
-    const std::uint16_t region = walk_region[std::size_t(tile_index(landing))];
+    const std::uint16_t region = walk_region_at(landing.x, landing.y);
     if (!region)
         return false;
     const vec2 toward = hop_plan.toward;
@@ -868,13 +996,14 @@ bool Bot::hop_lands_in_reach(vec2 landing) const {
         for (int dx = -1; dx <= 1; ++dx) {
             const vec2 p{toward.x + dx, toward.y + dy};
             if (p.x >= 0 && p.y >= 0 && p.x < map_width && p.y < map_height &&
-                walk_region[std::size_t(tile_index(p))] == region)
+                walk_region_at(p.x, p.y) == region)
                 return true;
         }
     return false;
 }
 
 bool Bot::take_hop() {
+    ensure_regions();
     const vec2 landing = hop_plan.landing;
     const int reach = rules::crystal_range;
     auto &me = bc::self();

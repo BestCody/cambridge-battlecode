@@ -514,7 +514,8 @@ void Bot::strike_before_step() {
         return;
     bool reach = false;
     for (const auto &e : enemies)
-        reach = reach || (e.health > 0 && distance(position, e.position) <= range);
+        reach = reach || (e.health > 0 && !enemy_spawn_tile[tile_index(e.position)] &&
+                          distance(position, e.position) <= range);
     if (!reach)
         return;
     const bool stepped = walked;

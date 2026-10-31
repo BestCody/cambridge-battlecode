@@ -1,5 +1,6 @@
 // Worker reinforcement requests and responses.
 #include "../bot.h"
+#include <wasm_simd128.h>
 
 namespace {
 float observed_power(const ObservedUnit &unit) {
@@ -85,7 +86,34 @@ bool Bot::worker_update_formation() {
         if (contact) {
             closest = bc::distance_field::unreachable;
             const vec2 at = contact->position;
-            for (std::size_t i = 0; i < groups.size(); ++i) {
+            // The nearest centre, the first of equals: four groups a step,
+            // each lane keeping its own first nearest, then the lanes' best
+            // (the lower group of equals) and the rest one by one.
+            const std::size_t count = groups.size(), whole = count & ~std::size_t{3};
+            if (whole) {
+                const v128_t x = wasm_i32x4_splat(at.x), y = wasm_i32x4_splat(at.y);
+                v128_t best = wasm_i32x4_splat(std::numeric_limits<std::int32_t>::max());
+                v128_t index = wasm_i32x4_make(0, 1, 2, 3), best_index = index;
+                const v128_t step = wasm_i32x4_splat(4);
+                for (std::size_t i = 0; i < whole; i += 4) {
+                    const v128_t d =
+                        wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&group_cx[i]))),
+                                       wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&group_cy[i]))));
+                    const v128_t nearer = wasm_i32x4_lt(d, best);
+                    best = wasm_v128_bitselect(d, best, nearer);
+                    best_index = wasm_v128_bitselect(index, best_index, nearer);
+                    index = wasm_i32x4_add(index, step);
+                }
+                alignas(16) std::int32_t lane_d[4], lane_i[4];
+                wasm_v128_store(lane_d, best);
+                wasm_v128_store(lane_i, best_index);
+                for (int l = 0; l < 4; ++l)
+                    if (lane_d[l] < closest || (lane_d[l] == closest && lane_i[l] < reported_group)) {
+                        closest = lane_d[l];
+                        reported_group = lane_i[l];
+                    }
+            }
+            for (std::size_t i = whole; i < count; ++i) {
                 const int d = std::max(std::abs(at.x - group_cx[i]), std::abs(at.y - group_cy[i]));
                 if (d < closest) {
                     closest = d;

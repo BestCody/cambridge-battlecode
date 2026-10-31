@@ -3,6 +3,8 @@
 #include <cstring>
 #include <wasm_simd128.h>
 
+using unaligned_u64 = std::uint64_t __attribute__((aligned(1)));
+
 CampGroup::CampGroup(bc::map::camp_group g, std::span<CampMemory> members)
     : unit(std::move(g)), camps(members) {
     for (const auto &m : camps) {
@@ -419,7 +421,8 @@ void Bot::initialise() {
         // from its identity, which needs no vision either. The SDK already
         // holds every design; building another reloads it.
         const auto drafted =
-            s < opening.roster_types.size() ? opening.roster_types[s] : roster[s].champion_name();
+            s < std::min<std::size_t>(opening.body_count, opening.roster_types.size()) ? opening.roster_types[s]
+                                                                                       : roster[s].champion_name();
         const auto index = static_cast<std::size_t>(drafted);
         std::optional<bc::champion> loaded;
         const auto &immutable =
@@ -451,38 +454,7 @@ void Bot::initialise() {
     map_width = bc::map::width();
     map_height = bc::map::height();
     const auto tiles = std::size_t(map_width) * std::size_t(map_height);
-    {
-        // Walking regions: a flood over open terrain, eight ways (read from
-        // one export: a test per tile is an engine call).
-        std::vector<std::uint8_t> bits(bc::bitboard::linear_buffer_size());
-        open_terrain.export_linear_buffer(std::span(bits.data(), bits.size()));
-        const auto open = [&](std::size_t t) { return bits[t >> 3] >> (t & 7) & 1; };
-        walk_region.assign(tiles, 0);
-        std::vector<int> stack;
-        std::uint16_t label = 0;
-        for (std::size_t start = 0; start < tiles; ++start) {
-            if (walk_region[start] || !open(start))
-                continue;
-            walk_region[start] = ++label;
-            stack.assign(1, int(start));
-            while (!stack.empty()) {
-                const int t = stack.back();
-                stack.pop_back();
-                const int x = t % map_width, y = t / map_width;
-                for (int dy = -1; dy <= 1; ++dy)
-                    for (int dx = -1; dx <= 1; ++dx) {
-                        const int nx = x + dx, ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= map_width || ny >= map_height)
-                            continue;
-                        const std::size_t n = std::size_t(ny) * std::size_t(map_width) + std::size_t(nx);
-                        if (!walk_region[n] && open(n)) {
-                            walk_region[n] = label;
-                            stack.push_back(int(n));
-                        }
-                    }
-            }
-        }
-    }
+    begin_regions();
     altars = bc::map::altars().positions();
     altar_goals = altar_goals_of(altars, static_blocked);
     const auto search_start = turn_work();
@@ -539,6 +511,7 @@ void Bot::initialise() {
         }
     }
     camps.reset(groups);
+    group_due.assign(groups.size(), std::numeric_limits<std::int32_t>::max()); // All alive, none held.
     group_cx.resize(groups.size());
     group_cy.resize(groups.size());
     for (std::size_t i = 0; i < groups.size(); ++i) {
@@ -673,25 +646,70 @@ void Bot::initialise() {
             std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
                 return a.strength * b.health > b.strength * a.health;
             });
+            // The strength reaching each tile from striker t on, built by adding
+            // the strikers last to first into one array over the group's box:
+            // summing every later striker per tile and striker cost about 2M
+            // on the-pack's 48-wolf groups. Camp strengths are whole numbers,
+            // so the sums are exact in any order.
+            const std::size_t n = strikers.size();
+            if (!n) {
+                g.reach_share = 1.0f;
+                continue;
+            }
+            int x0 = map_width, y0 = map_height, x1 = 0, y1 = 0;
+            for (const auto &s : strikers) {
+                x0 = std::min(x0, s.position.x);
+                y0 = std::min(y0, s.position.y);
+                x1 = std::max(x1, s.position.x);
+                y1 = std::max(y1, s.position.y);
+            }
+            x0 = std::max(0, x0 - ours);
+            y0 = std::max(0, y0 - ours);
+            x1 = std::min(map_width - 1, x1 + ours);
+            y1 = std::min(map_height - 1, y1 + ours);
+            const int box = x1 - x0 + 1;
+            // A tile we cannot strike from (closed, or a camp's) starts at
+            // infinity: strengths added to it leave it so and it is never the
+            // least, so the scans need no tile lookups (all exact).
+            static std::vector<float> reaching, least_of;
+            reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1));
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const int index = tile_index({x, y});
+                    reaching[std::size_t(y - y0) * std::size_t(box) + std::size_t(x - x0)] =
+                        !open[index] || camp_tile[index] ? std::numeric_limits<float>::infinity() : 0.0f;
+                }
+            least_of.resize(n);
+            float later = 0; // Strength from striker t on.
+            for (std::size_t t = n; t-- > 0;) {
+                const Striker &s = strikers[t];
+                later += s.strength;
+                const int ax = std::max(x0, s.position.x - s.reach), bx = std::min(x1, s.position.x + s.reach);
+                const int along = bx - ax + 1;
+                for (int y = std::max(y0, s.position.y - s.reach); y <= std::min(y1, s.position.y + s.reach); ++y) {
+                    float *row = reaching.data() + std::size_t(y - y0) * std::size_t(box) + std::size_t(ax - x0);
+                    for (int i = 0; i < along; ++i)
+                        row[i] += s.strength;
+                }
+                float least = later;
+                // Strengths are never negative: a tile no striker reaches ends
+                // the search (a ranged champion's often comes first).
+                const int cx = std::max(0, s.position.x - ours), dx = std::min(map_width - 1, s.position.x + ours);
+                const int span = dx - cx + 1;
+                for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours) && least > 0; ++y) {
+                    const std::size_t at = std::size_t(y - y0) * std::size_t(box) + std::size_t(cx - x0);
+                    const float *hit = reaching.data() + at;
+                    for (int i = 0; i < span; ++i)
+                        least = std::min(least, hit[i]);
+                }
+                least_of[t] = least;
+            }
             float living = 0, whole = 0, reached = 0;
             for (const auto &s : strikers)
                 living += s.strength;
-            for (std::size_t t = 0; t < strikers.size(); ++t) {
-                const vec2 at = strikers[t].position;
-                float least = living;
-                for (int y = std::max(0, at.y - ours); y <= std::min(map_height - 1, at.y + ours); ++y)
-                    for (int x = std::max(0, at.x - ours); x <= std::min(map_width - 1, at.x + ours); ++x) {
-                        const int index = tile_index({x, y});
-                        if (!open[index] || camp_tile[index])
-                            continue;
-                        float hit = 0;
-                        for (std::size_t k = t; k < strikers.size(); ++k)
-                            if (distance(vec2{x, y}, strikers[k].position) <= strikers[k].reach)
-                                hit += strikers[k].strength;
-                        least = std::min(least, hit);
-                    }
+            for (std::size_t t = 0; t < n; ++t) {
                 whole += living * strikers[t].health;
-                reached += least * strikers[t].health;
+                reached += least_of[t] * strikers[t].health;
                 living -= strikers[t].strength;
             }
             g.reach_share = whole > 0 ? reached / whole : 1.0f;
@@ -712,6 +730,134 @@ void Bot::initialise() {
     }
     initialised = true;
     last_plan = bc::round_number();
+}
+
+namespace {
+// The walking-region labelling's working state between steps (region_step()):
+// the open terrain as bits, each run's union-find parent, the runs so far and
+// the previous row's, [above, row_first). Kept, never freed: a freed block
+// makes later allocations dearer.
+std::unique_ptr<std::uint8_t[]> region_bits;
+std::unique_ptr<int[]> region_parent;
+int region_runs = 0, region_above = 0, region_row_first = 0;
+
+int region_root(int r) {
+    while (region_parent[r] != r)
+        r = region_parent[r] = region_parent[region_parent[r]];
+    return r;
+}
+} // namespace
+
+void Bot::begin_regions() {
+    // Walking regions: open terrain joined eight ways (read from one export: a
+    // test per tile is an engine call). The regions come from the runs of open
+    // tiles along each row, found 56 tiles at a time: a run joins each run of
+    // the row above that touches it or its diagonals, and a union-find over
+    // the runs labels them (a flood per tile cost 4-5M on a 100x100 map). Only
+    // equal labels are ever compared, so any numbering of the same regions
+    // plays the same. Storage is made once (a run per open tile at most) and
+    // written by index (vectors and pushes cost 250k on a 100x100 map), and the
+    // runs are kept as they are (a label per tile cost another 90k to write).
+    // The terrain never changes, so the rows are labelled a step at a time
+    // (region_step()), only hops read them, and they finish before any does.
+    // A row holds at most (width + 1) / 2 runs: on an odd width that is more
+    // than half its tiles.
+    const std::size_t runs = std::size_t(map_height) * std::size_t((map_width + 1) / 2) + 2;
+    const std::size_t bytes = bc::bitboard::linear_buffer_size();
+    region_bits.reset(new std::uint8_t[bytes + 8]); // Room for the last 8-byte read.
+    open_terrain.export_linear_buffer(std::span(region_bits.get(), bytes));
+    region_parent.reset(new int[runs]);
+    region_start.reset(new int[runs]);
+    region_end.reset(new int[runs]);
+    region_label.reset(new std::uint16_t[runs]);
+    region_rows.reset(new int[std::size_t(map_height) + 1]);
+    region_runs = region_above = region_row_first = 0;
+    region_row = 0;
+    regions_ready = false;
+}
+
+bool Bot::region_step() {
+    // The next row's runs, joined to the row above's; after the last row, the
+    // labels. True once they are done.
+    if (regions_ready)
+        return true;
+    const std::uint8_t *const bits = region_bits.get();
+    int *const run_start = region_start.get(), *const run_end = region_end.get();
+    const int y = region_row++;
+    region_rows[y] = region_runs;
+    const int base = y * map_width, end = base + map_width;
+    for (int t = base; t < end;) {
+        // Tiles t to t + 55 as bits 0-55 (the export is packed row-major),
+        // one unaligned load (a memcpy of 8 bytes cost 17 fuel).
+        std::uint64_t word = *reinterpret_cast<const unaligned_u64 *>(bits + (t >> 3));
+        const int n = std::min(56, end - t);
+        const std::uint64_t open = (word >> (t & 7)) & ((std::uint64_t{1} << n) - 1);
+        if (!open) {
+            t += n;
+            continue;
+        }
+        t += std::countr_zero(open);
+        const int start = t - base;
+        for (;;) {
+            word = *reinterpret_cast<const unaligned_u64 *>(bits + (t >> 3));
+            const int m = std::min(56, end - t);
+            const std::uint64_t closed = ~(word >> (t & 7)) & ((std::uint64_t{1} << m) - 1);
+            if (closed) {
+                t += std::countr_zero(closed);
+                break;
+            }
+            t += m;
+            if (t >= end)
+                break;
+        }
+        const int stop = t - base, run = region_runs++;
+        run_start[run] = start;
+        run_end[run] = stop;
+        region_parent[run] = run;
+        // Runs above that end at or past our start and begin at or before our
+        // end touch us (the diagonals count).
+        while (region_above < region_row_first && run_end[region_above] < start)
+            ++region_above;
+        int ours = run;
+        for (int k = region_above; k < region_row_first && run_start[k] <= stop; ++k) {
+            const int theirs = region_root(k);
+            if (theirs != ours) {
+                const int low = std::min(theirs, ours);
+                region_parent[std::max(theirs, ours)] = low;
+                ours = low;
+            }
+        }
+    }
+    region_above = region_row_first;
+    region_row_first = region_runs;
+    if (region_row < map_height)
+        return false;
+    region_rows[map_height] = region_runs;
+    for (int r = 0; r < region_runs; ++r)
+        region_label[r] = std::uint16_t(region_root(r) + 1);
+    regions_ready = true;
+    return true;
+}
+
+void Bot::spare_region_steps() {
+    while (!regions_ready && bc::fuel_remaining() > 2 * region_step_cost + 2000) {
+        const auto before = bc::fuel_remaining();
+        region_step();
+        region_step_cost = std::max(region_step_cost, before - bc::fuel_remaining());
+    }
+}
+
+void Bot::ensure_regions() {
+    while (!region_step()) {
+    }
+}
+
+std::uint16_t Bot::walk_region_at(int x, int y) const {
+    // A row holds a few runs, in order.
+    for (int r = region_rows[y]; r < region_rows[y + 1] && region_start[r] <= x; ++r)
+        if (x < region_end[r])
+            return region_label[r];
+    return 0;
 }
 
 void Bot::occupied_into(bc::bitboard &out, const bc::bitboard &terrain) {
@@ -978,13 +1124,31 @@ void Bot::observe() {
     threat_count = 0;
     // A group out of view and unheld, with no records listed, no hold timed,
     // no respawn due and no capture past its timer, would be left as it is:
-    // only the others are observed.
-    for (std::size_t i = 0; i < groups.size(); ++i) {
-        const auto &g = groups[i];
-        if (group_in_view[i] || group_held[i] || camps.count(int(i)) || g.holding_since != -1 ||
-            (g.status == CampGroup::cooling && int(round) >= g.respawn) ||
-            (g.status == CampGroup::capture && int(round) > g.seen + rules::settings().capture_time + 1))
-            observe_group(i);
+    // only the others are observed, in group order. Sixteen groups a step
+    // from per-group arrays (a group's tests one by one cost a 3k scan a
+    // turn); observing a group changes only its own entries.
+    {
+        const std::size_t count = groups.size(), whole = count & ~std::size_t{15};
+        const std::uint8_t *in_view = group_in_view.data(), *held = group_held.data();
+        const std::uint16_t *listed = camps.counts();
+        const std::int32_t *due = group_due.data();
+        const v128_t now = wasm_i32x4_splat(std::int32_t(round)), zero = wasm_i32x4_splat(0);
+        for (std::size_t i = 0; i < whole; i += 16) {
+            const v128_t records = wasm_i8x16_narrow_i16x8(
+                wasm_i16x8_ne(wasm_v128_load(listed + i), zero), wasm_i16x8_ne(wasm_v128_load(listed + i + 8), zero));
+            const v128_t timed = wasm_i8x16_narrow_i16x8(
+                wasm_i16x8_narrow_i32x4(wasm_i32x4_ge(now, wasm_v128_load(due + i)),
+                                        wasm_i32x4_ge(now, wasm_v128_load(due + i + 4))),
+                wasm_i16x8_narrow_i32x4(wasm_i32x4_ge(now, wasm_v128_load(due + i + 8)),
+                                        wasm_i32x4_ge(now, wasm_v128_load(due + i + 12))));
+            const v128_t any = wasm_v128_or(wasm_v128_or(wasm_v128_load(in_view + i), wasm_v128_load(held + i)),
+                                            wasm_v128_or(records, timed));
+            for (unsigned lanes = unsigned(wasm_i8x16_bitmask(wasm_i8x16_ne(any, zero))); lanes; lanes &= lanes - 1)
+                observe_group(i + unsigned(__builtin_ctz(lanes)));
+        }
+        for (std::size_t i = whole; i < count; ++i)
+            if (in_view[i] || held[i] || listed[i] || int(round) >= due[i])
+                observe_group(i);
     }
     close_threats();
     mark_camp_zones();
@@ -1013,11 +1177,24 @@ float Bot::camp_reach_damage() const {
     // Groups far from us are passed by their centre (a group spans a few
     // tiles; the longest camp reach is 5).
     float damage = 0;
-    for (const auto &g : groups)
-        if (g.status == CampGroup::alive && distance(position, g.centre) <= 10)
+    const auto group_damage = [&](const CampGroup &g) {
+        if (g.status == CampGroup::alive)
             for (const auto &c : g.camps)
                 if (c.health > 0 && distance(position, c.position) <= int(c.stats.base_attack_range))
                     damage += std::max(c.read_strength, float(c.stats.base_strength));
+    };
+    // The centres within 10, four groups a step, in group order.
+    const std::size_t count = groups.size(), whole = count & ~std::size_t{3};
+    const v128_t x = wasm_i32x4_splat(position.x), y = wasm_i32x4_splat(position.y), near = wasm_i32x4_splat(10);
+    for (std::size_t i = 0; i < whole; i += 4) {
+        const v128_t d = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&group_cx[i]))),
+                                        wasm_i32x4_abs(wasm_i32x4_sub(y, wasm_v128_load(&group_cy[i]))));
+        for (unsigned lanes = wasm_i32x4_bitmask(wasm_i32x4_le(d, near)); lanes; lanes &= lanes - 1)
+            group_damage(groups[i + unsigned(__builtin_ctz(lanes))]);
+    }
+    for (std::size_t i = whole; i < count; ++i)
+        if (distance(position, groups[i].centre) <= 10)
+            group_damage(groups[i]);
     return damage * camp_mitigation * mitigation; // As incoming() takes camp hits.
 }
 
@@ -1254,7 +1431,21 @@ void Bot::mark_group_holders(int group) {
             group_held[g] = 1;
 }
 
+void Bot::note_group_due(std::size_t i) {
+    const auto &g = groups[i];
+    group_due[i] = g.holding_since != -1             ? std::numeric_limits<std::int32_t>::min()
+                   : g.status == CampGroup::cooling ? g.respawn
+                   : g.status == CampGroup::capture ? g.seen + rules::settings().capture_time + 2
+                                                    : std::numeric_limits<std::int32_t>::max();
+}
+
 void Bot::observe_group(std::size_t i) {
+    // Its observe() timers follow whatever this changes.
+    struct Due {
+        Bot &bot;
+        std::size_t group;
+        ~Due() { bot.note_group_due(group); }
+    } due{*this, i};
     auto &g = groups[i];
     const bool friendly_holder = group_held[i];
     if (!friendly_holder)
@@ -1349,6 +1540,14 @@ void Bot::observe_group(std::size_t i) {
     // Totals in locals (nothing below reads the group's own).
     float health = 0, pressure = 0, toughest = 1;
     bool quiet = asleep_known && readings_stand;
+    // Whether any camp's health changed: a group alive before keeps living
+    // facts made from these same healths (refresh_live() follows every
+    // other change of them while it lives), so with none they stand.
+    bool changed = !was_alive;
+    // The group's records listed so far, from its first slot (camps.count()
+    // and camps.next_slot() as each record is listed).
+    const std::uint32_t first_here = camps.first_slot(int(i));
+    std::size_t listed_here = 0;
     for (auto &c : g.camps) {
         c.quiet_view = camp_in_view[c.tile];
         if (const int index = c.tile; c.quiet_view) {
@@ -1358,33 +1557,41 @@ void Bot::observe_group(std::size_t i) {
             bc::detail::camp_state info;
             bool seen_camp = true;
             // Read the round before (camps fall asleep only rounds after the
-            // last hit), and not earlier this turn, when we may have hit it.
+            // last hit), and not earlier this turn, when we may have hit it:
+            // the reading stands as kept.
             if (asleep && c.read_asleep && int(round) - c.read_round == 1 && readings_stand) {
                 info.health = c.read_health;
                 info.max_health = c.read_max_health;
                 info.strength = c.read_strength;
-            } else
+            } else {
                 seen_camp = camp_living[index] && read_camp(c.unit, info);
+                if (seen_camp) {
+                    c.read_asleep = asleep;
+                    c.read_health = info.health;
+                    c.read_max_health = info.max_health;
+                    c.read_strength = info.strength;
+                }
+            }
             if (seen_camp) {
                 c.read_round = int(round);
-                c.read_asleep = asleep;
-                c.read_health = info.health;
-                c.read_max_health = info.max_health;
-                c.read_strength = info.strength;
                 // Each slot holds the last observation's record until this one
                 // reaches it: one of this camp is brought up to date in place
                 // (only a reading and the buffs differ), else made anew.
-                const std::size_t slot = camps.count(int(i));
-                const std::uint32_t listed = camps.next_slot(int(i));
+                const std::size_t slot = listed_here;
+                const std::uint32_t listed = first_here + std::uint32_t(listed_here++);
+                float now;
                 if (slot < last.size() && last[slot].position == c.position) {
                     last[slot].reread_camp(info, asleep);
                     camps.keep_next(int(i));
-                    c.health = last[slot].health;
+                    now = last[slot].health;
                 } else
-                    c.health = camps.emplace(int(i), c, info, asleep).health;
+                    now = camps.emplace(int(i), c, info, asleep).health;
+                changed = changed || now != c.health;
+                c.health = now;
                 list_threat(listed);
             } else {
                 c.read_round = -10;
+                changed = changed || c.health != 0;
                 c.health = 0;
             }
             quiet = quiet && asleep && seen_camp;
@@ -1396,7 +1603,8 @@ void Bot::observe_group(std::size_t i) {
     }
     g.health = health;
     g.pressure = pressure;
-    g.refresh_live();
+    if (changed)
+        g.refresh_live();
     g.quiet = quiet ? int(round) : -10;
     g.quiet_records = camps.count(int(i));
     // Splash accelerates only the health shared by surviving targets.
@@ -1567,7 +1775,7 @@ int Bot::mate_claim(unsigned s) const {
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
 
-float Bot::incoming(vec2 tile, bool include_camps) const {
+__attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) const {
     auto &packed = enemy_lanes;
     if (packed.revision != threat_revision) {
         packed.revision = threat_revision;
@@ -1633,6 +1841,11 @@ float Bot::incoming(vec2 tile, bool include_camps) const {
         damage += wasm_f32x4_extract_lane(taken, 2);
         damage += wasm_f32x4_extract_lane(taken, 3);
     }
+    return damage;
+}
+
+float Bot::incoming(vec2 tile, bool include_camps) const {
+    float damage = incoming_enemies(tile);
     if (!include_camps)
         return damage * mitigation;
     const auto threat = [&](std::size_t k) {
@@ -1666,6 +1879,61 @@ float Bot::incoming(vec2 tile, bool include_camps) const {
             continue;
         for (unsigned lanes = wasm_i16x8_bitmask(hit); lanes; lanes &= lanes - 1)
             threat(k + unsigned(__builtin_ctz(lanes)));
+    }
+    return damage * mitigation;
+}
+
+void Bot::begin_scan() {
+    if (scan_stamp.size() < threat_lanes) {
+        scan_stamp.resize(threat_lanes, 0);
+        scan_near.resize(threat_lanes);
+        scan_hit.resize(threat_lanes);
+    }
+    if (++scan_serial == 0) {
+        std::fill(scan_stamp.begin(), scan_stamp.end(), 0);
+        scan_serial = 1;
+    }
+}
+
+float Bot::incoming_scan(vec2 tile) const {
+    // incoming(tile) while nothing changes between calls (one serial): each
+    // camp's tests that do not depend on the tile (alive, awake, its hit,
+    // the nearest unit) made on its first hit and kept for the serial. The
+    // camps' hits are added as incoming() adds them, in threat order.
+    float damage = incoming_enemies(tile);
+    const v128_t x = wasm_i16x8_splat(std::int16_t(tile.x)), y = wasm_i16x8_splat(std::int16_t(tile.y));
+    for (std::size_t k = 0; k < threat_lanes; k += 8) {
+        const v128_t dx = wasm_i16x8_abs(wasm_i16x8_sub(x, wasm_v128_load(&threat_x[k])));
+        const v128_t dy = wasm_i16x8_abs(wasm_i16x8_sub(y, wasm_v128_load(&threat_y[k])));
+        const v128_t hit = wasm_i16x8_le(wasm_i16x8_max(dx, dy), wasm_v128_load(&threat_reach[k]));
+        if (!wasm_v128_any_true(hit))
+            continue;
+        for (unsigned lanes = wasm_i16x8_bitmask(hit); lanes; lanes &= lanes - 1) {
+            const std::size_t t = k + unsigned(__builtin_ctz(lanes));
+            if (scan_stamp[t] != scan_serial) {
+                scan_stamp[t] = scan_serial;
+                scan_near[t] = std::numeric_limits<int>::min(); // Strikes nobody.
+                const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
+                if (c.health <= 0)
+                    continue;
+                const auto &g = groups[c.group];
+                if (g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
+                    (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
+                    continue;
+                scan_near[t] = threat_target(t);
+                scan_hit[t] = c.strength * camp_mitigation;
+            }
+            const int nearest = scan_near[t];
+            if (nearest == std::numeric_limits<int>::min())
+                continue;
+            const int d = std::max(std::abs(tile.x - int(threat_x[t])), std::abs(tile.y - int(threat_y[t])));
+            if (nearest < d)
+                continue;
+            if (nearest == d)
+                damage += scan_hit[t] / float(1 + threat_ties[t]);
+            else
+                damage += scan_hit[t];
+        }
     }
     return damage * mitigation;
 }

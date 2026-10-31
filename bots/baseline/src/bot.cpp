@@ -14,7 +14,8 @@ void Bot::play_turn() {
 void Bot::take_turn() {
     turn_start_fuel = bc::fuel_remaining();
     round = bc::round_number();
-    walked = false;
+    // Per-turn flags: a turn cut short (ChampionGone) leaves them set.
+    walked = placed = false;
     if (!initialised) {
         // The first turn only sets up: on a large map initialisation takes
         // most of even this turn's doubled fuel. Champions shop and measure
@@ -30,6 +31,7 @@ void Bot::take_turn() {
         // it, so it is the same whatever is measured here.
         if (bc::self().is_alive())
             measure_paths(2);
+        spare_region_steps(); // Last: the turn's required work is done.
         return;
     }
     {
@@ -73,6 +75,9 @@ void Bot::take_turn() {
             else
                 prepare_sieges();
         }
+        // After every other job, so theirs are as before: the walking-region
+        // rows still to label, in the fuel left.
+        spare_region_steps();
     }
 }
 

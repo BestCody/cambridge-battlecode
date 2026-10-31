@@ -17,8 +17,13 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     // A damaging dash (Heart of Ruin) engages first; the rest of the turn
     // continues from the landing tile.
     const bool dashed = !escaping && impact_dash(fighting_champions, farm_group);
-    if (dashed)
+    if (dashed) {
         observe_fight(); // The attack search reads the enemies as the landing left them.
+        if (!fighting_champions && farm_group >= 0)
+            for (auto &u : camps.group(farm_group))
+                if (u.health > 0 && distance(position, u.position) <= 1) // The landing's hit.
+                    u.health = live_health(u);
+    }
     if (fighting_champions && attack_combo(escaping))
         return true;
     // A camp is a target only in the farmed group: the targets are its records

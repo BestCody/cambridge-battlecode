@@ -444,9 +444,13 @@ void hop_walks(const std::uint16_t *walk, const bc::bitboard &open, int width, i
 // first_row to last_row and columns first_column (a multiple of 8) up to
 // end_column: rows padded by the range both sides into `rows` (row stride
 // (width + 2 range + 7) & ~7, 8 entries more), the minimum into `near` (row
-// stride (width + 7) & ~7).
+// stride (width + 7) & ~7). With `run_start` (walking-region runs, as
+// Bot::region_start/end/rows/label hold them), a tile in no run whose label
+// is one of the `kinds` in `allowed` counts as unreachable.
 void row_window_min(const std::uint16_t *field, int width, int height, std::uint16_t *rows, std::uint16_t *near,
-                    int first_row, int last_row, int first_column, int end_column);
+                    int first_row, int last_row, int first_column, int end_column, const int *run_start = nullptr,
+                    const int *run_end = nullptr, const int *row_runs = nullptr,
+                    const std::uint16_t *run_label = nullptr, const std::uint16_t *allowed = nullptr, int kinds = 0);
 // An altar's walk with a hop (the least over its tribute tiles) where shorter
 // than its walk, else unreachable.
 int altar_hop_walk(vec2 altar, const std::uint16_t *walk, const std::uint16_t *hop, int width, int height);
