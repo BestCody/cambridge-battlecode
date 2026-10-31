@@ -116,6 +116,53 @@ bool Bot::worker_reinforce() {
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position))
         return false;
     const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
+    // Willow keeps a chosen real fight instead of bouncing back to a camp ally
+    // whenever its attacked flag flickers. A recall route keeps the same intent
+    // through its channel. Both follow non-attacked sightings of that contact
+    // and end only when the recall fails or every matching report disappears.
+    if (reinforce_commitment >= 0) {
+        if (!reinforce_commitment_ready) {
+            if (own_spawn.is_set(position))
+                reinforce_commitment_ready = true;
+            else {
+                reinforce_commitment = -1;
+                reinforce_commitment_ready = false;
+            }
+        }
+        if (reinforce_commitment >= 0) {
+            const vec2 remembered = groups[reinforce_commitment].centre;
+            int active_group = -1;
+            vec2 rally = remembered;
+            for (unsigned s = 0; s < count; ++s) {
+                if (s == slot || !roster[s].is_alive())
+                    continue;
+                const unsigned code = shared.get(s);
+                if (!TeamMemory::requested_force(code, groups.size()))
+                    continue;
+                const int group = TeamMemory::fight_group(code, groups.size());
+                if (!same_fight(group, remembered))
+                    continue;
+                active_group = group;
+                if (s < slot_ally.size() && slot_ally[s] >= 0)
+                    rally = allies[std::size_t(slot_ally[s])].position;
+                break;
+            }
+            if (active_group >= 0) {
+                reinforce_commitment = active_group;
+                publish(TeamMemory::joining(active_group, groups.size()));
+                const bool moved = move_to(around(rally, 1), rally, false, true);
+                if (moved) {
+                    observe_fight();
+                    combat(true);
+                }
+                // We advertised commitment, so hold this turn even if a
+                // temporary occupancy conflict prevented the planned step.
+                return true;
+            }
+            reinforce_commitment = -1;
+            reinforce_commitment_ready = false;
+        }
+    }
     // Help goes to fights where a teammate is under attack, not to sightings.
     bool requested = false;
     for (unsigned s = 0; s < count; ++s)
@@ -127,10 +174,44 @@ bool Bot::worker_reinforce() {
     for (unsigned s = 0; s < count; ++s)
         alive[s] = roster[s].is_alive();
     const float horizon = std::max(float(range + 1), opening.spacing);
+    struct Travel {
+        float distance;
+        bool recall;
+    };
+    const auto has_dash = [&](unsigned s) {
+        if (s >= roster_kits.size())
+            return false;
+        for (const auto &spell : roster_kits[s].spells)
+            if (spell.kind == bc::ability_kind::dash)
+                return true;
+        return false;
+    };
+    const auto walk_to_fight = [&](vec2 from, vec2 rally, int group) {
+        const int bound = walk_bound(from, group);
+        return bound == bc::distance_field::unreachable ? bound : std::max(distance(from, rally), bound);
+    };
+    // Compare direct travel with recall plus the exact spawn-to-fight walk.
+    // Distances remain in the old horizon's tile units: recall rounds become
+    // the tiles otherwise walked in that time, and dash uses farming's scale.
+    const auto support_travel = [&](int direct_walk, vec2 rally, int attack_range, int move_speed, bool dash,
+                                    int recall_wait, bool on_spawn, bool allow_recall) {
+        const float scale = dash ? policy::dash_travel_scale : 1.0f;
+        const float direct = direct_walk == bc::distance_field::unreachable
+                                 ? std::numeric_limits<float>::infinity()
+                                 : float(std::max(0, direct_walk - attack_range)) * scale;
+        float recalled = std::numeric_limits<float>::infinity();
+        const int home_walk = home_field.get(rally);
+        if (allow_recall && home_walk != bc::distance_field::unreachable)
+            recalled = float(on_spawn ? 0 : std::max(0, recall_wait) * std::max(1, move_speed)) +
+                       float(std::max(0, home_walk - attack_range)) * scale;
+        return recalled < direct ? Travel{recalled, true} : Travel{direct, false};
+    };
+    const bool recall_is_safe = !hit && incoming(position) == 0;
     int selected = -1;
     float best = -1;
     vec2 destination{};
     unsigned selected_force = 0;
+    bool selected_recall = false;
     for (unsigned leader = 0; leader < count; ++leader) {
         if (!alive[leader] || leader == slot || !shared.attacked(leader) ||
             !TeamMemory::requested_force(shared.get(leader), groups.size()))
@@ -144,7 +225,10 @@ bool Bot::worker_reinforce() {
                 rally = allies[i].position;
                 break;
             }
-        const int travel = std::max(0, distance(position, rally) - range);
+        const Travel route = support_travel(walk_to_fight(position, rally, group), rally, range,
+                                            int(stats.base_move_speed), has_dash(slot), recall_turns,
+                                            own_spawn.is_set(position), recall_is_safe);
+        const float travel = route.distance;
         if (travel > horizon)
             continue;
         // Teammates in this fight (under attack in it, or travelling to it),
@@ -159,18 +243,31 @@ bool Bot::worker_reinforce() {
                 committed += !TeamMemory::requested_force(claim, groups.size()) || shared.attacked(s);
                 continue;
             }
+            // A champion already channeling recall has no reliable remaining
+            // time in shared memory, so count it only after it publishes a new
+            // camp objective from home. For ordinary farmers, predict the same
+            // direct-versus-recall choice they will make on their turn.
             if (!claim || claim > groups.size())
                 continue;
+            const auto design = roster[s].base_stats();
             vec2 where = groups[claim - 1].centre;
-            if (seen_slots >> s & 1)
-                for (std::size_t i = 0; i < allies.size(); ++i)
-                    if (ally_slot[i] == s) {
-                        where = allies[i].position;
-                        break;
-                    }
-            const int other_travel = std::max(0, distance(where, rally) - range);
-            free += other_travel <= horizon;
-            if (other_travel < travel || (other_travel == travel && s < slot))
+            int mate_range = int(design.base_attack_range);
+            int mate_speed = std::max(1, int(design.base_move_speed));
+            bool mate_dash = has_dash(s), mate_on_spawn = false, mate_can_recall = true;
+            if (s < slot_ally.size() && slot_ally[s] >= 0) {
+                const auto &mate = allies[std::size_t(slot_ally[s])];
+                where = mate.position;
+                mate_range = mate.range;
+                mate_speed = std::max(1, mate.move_speed);
+                mate_dash = mate.dash_range > 0;
+                mate_on_spawn = own_spawn.is_set(where);
+                mate_can_recall = !mate.channel && incoming(where) == 0;
+            }
+            const Travel other = support_travel(walk_to_fight(where, rally, group), rally, mate_range, mate_speed,
+                                                mate_dash, rules::settings().recall_time, mate_on_spawn,
+                                                mate_can_recall);
+            free += other.distance <= horizon;
+            if (other.distance < travel || (other.distance == travel && s < slot))
                 ++ahead;
         }
         // Nobody goes to a fight the team cannot make up the squad for.
@@ -182,10 +279,21 @@ bool Bot::worker_reinforce() {
             selected = group;
             destination = rally;
             selected_force = demand;
+            selected_recall = route.recall;
         }
     }
     if (selected < 0)
         return false;
+    if (selected_recall && !own_spawn.is_set(position)) {
+        bc::self().recall();
+        publish(TeamMemory::recall);
+        recall_tile = position;
+        reinforce_commitment = selected;
+        reinforce_commitment_ready = false;
+        return true;
+    }
+    reinforce_commitment = type == bc::champion_type::willow ? selected : -1;
+    reinforce_commitment_ready = reinforce_commitment >= 0;
     publish(TeamMemory::joining(selected, groups.size()));
     const bool moved = move_to(around(destination, 1), destination, false, true);
     if (moved) {
@@ -196,5 +304,7 @@ bool Bot::worker_reinforce() {
         if (moved && round % policy::replan_period == slot % policy::replan_period)
             std::printf("FORMATION r=%u id=%u group=%d demand=%u\n", round, id(bc::self()), selected,
                         selected_force);
-    return moved;
+    // A committed Willow holds the response even if occupancy blocks this
+    // step; farming must not pull her back toward a camp-wounded teammate.
+    return moved || reinforce_commitment >= 0;
 }

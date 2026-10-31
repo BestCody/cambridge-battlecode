@@ -62,7 +62,6 @@ void Bot::track_ghosts() {
     }
     ghosts.clear();
     ghost_last.clear();
-    ghost_age.clear();
     bool keep_made = false;
     for (std::size_t i = 0; i < n; ++i) {
         const ObservedUnit *seen = nullptr;
@@ -128,7 +127,6 @@ void Bot::track_ghosts() {
         ghost.stunned = ghost.channel = false;
         ghost.stun_time = -1;
         ghost_last.push_back(ghost_seen[i]->position);
-        ghost_age.push_back(std::uint8_t(std::min(int(round) - ghost_sighted[i], 255)));
     }
     // The hidden attacker last, where it struck from, until that tile is
     // seen, one of the enemies out of view at its hit comes into view where
@@ -148,7 +146,6 @@ void Bot::track_ghosts() {
     if (hidden) {
         ghosts.push_back(*hidden);
         ghost_last.push_back(hidden->position);
-        ghost_age.push_back(0);
     }
 }
 
@@ -156,14 +153,14 @@ void Bot::drop_hidden() {
     hidden.reset();
     ghosts.erase(ghosts.begin() + std::ptrdiff_t(sighted_ghosts), ghosts.end());
     ghost_last.resize(sighted_ghosts);
-    ghost_age.resize(sighted_ghosts);
     ++threat_revision; // The lanes listed it.
 }
 
 // Danger at a tile: how many enemies could hit it, and by how many tiles the
-// closest of them is still short (negative once inside its reach). Fresh
-// ghosts count from their last confirmed tile; older ones project halfway
-// toward the nearest tile they could occupy now.
+// closest of them is still short (negative once inside its reach). Enemies
+// out of sight count from the tile they were last seen on: placed on their
+// possible tile nearest us, ghosts made two danger calls in three wrongly
+// even when fresh, the tile they were seen on fewer.
 std::pair<int, int> Bot::worker_danger(vec2 tile) const {
     int threats = 0, clearance = std::numeric_limits<int>::max();
     const auto count = [&](const ObservedUnit &enemy, vec2 at) {
@@ -175,14 +172,8 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
     };
     for (const auto &enemy : enemies)
         count(enemy, enemy.position);
-    for (std::size_t k = 0; k < ghosts.size(); ++k) {
-        vec2 at = ghost_last[k];
-        if (ghost_age[k] > policy::ghost_projection_delay) {
-            at.x += (ghosts[k].position.x - at.x) / 2;
-            at.y += (ghosts[k].position.y - at.y) / 2;
-        }
-        count(ghosts[k], at);
-    }
+    for (std::size_t k = 0; k < ghosts.size(); ++k)
+        count(ghosts[k], ghost_last[k]);
     return {threats, clearance};
 }
 

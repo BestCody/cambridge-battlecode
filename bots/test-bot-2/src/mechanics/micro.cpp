@@ -326,13 +326,25 @@ bool Bot::attack_combo(bool escaping) {
             for (std::size_t i = 0; i < allies.size(); ++i) {
                 const auto &ally = allies[i].champion();
                 if (!ally.is_visible() || !ally.is_alive() ||
-                    allies[i].max_health - allies[i].health < policy::heal_trigger * focus * spell.modifier ||
+                    allies[i].max_health - allies[i].health < policy::heal_trigger * focus * spell.modifier)
+                    continue;
+                const float champion_danger =
+                    type == bc::champion_type::willow
+                        ? incoming(allies[i].position, -1, false) * allies[i].mitigation /
+                              std::max(0.01f, mitigation)
+                        : 0.0f;
+                const bool reported_danger = i < ally_slot.size() && shared.attacked(ally_slot[i]);
+                if ((type == bc::champion_type::willow && champion_danger <= 0 && !reported_danger) ||
                     !(a.origins = in_range(allies[i].position, spell.range, spell.exclusive)))
                     continue;
                 a.target = int(i);
                 a.support = ability.heal_amount(ally) * 0.9f;
                 if (allies[i].health < allies[i].max_health * 0.5f)
                     a.support *= 2;
+                if (type == bc::champion_type::willow)
+                    // Danger breaks ties between useful heals; it must not make
+                    // a doomed target outweigh a guaranteed champion kill.
+                    a.support += std::min(champion_danger, a.support) * 0.25f;
                 add(a);
             }
         }

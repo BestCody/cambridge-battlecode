@@ -31,9 +31,13 @@ int Bot::worker_choose_group(int excluded) {
     static std::vector<float> partner_arrival;
     claims.assign(groups.size(), 0);
     marks.assign(groups.size(), 0);
+    static std::vector<int> claimed_groups;
+    claimed_groups.clear();
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (const int c = mate_claim(s); c >= 0)
+        if (const int c = mate_claim(s); c >= 0) {
             ++claims[c];
+            claimed_groups.push_back(c);
+        }
     // Each teammate's damage per round on camps (from its live strength and
     // focus in view, else its type's base) and, per camp, its claimants'
     // summed.
@@ -112,7 +116,8 @@ int Bot::worker_choose_group(int excluded) {
         // camp rates, the healing a clear gets and, for a hard group nobody
         // claims, the wait for a partner.
         std::int32_t *status, *respawn, *path, *siege_open, *marks, *sighted;
-        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait;
+        float *remaining, *splash, *pressure, *striker_work, *claims, *claim_rate, *heal, *scores, *partner_wait,
+            *cohesion;
         // A hard group's party (its claimants, else the nearest free
         // teammate): its camp rate besides ours; the camp's strikes its stuns
         // take away, per round (ours too); its shields now and per round
@@ -133,7 +138,7 @@ int Bot::worker_choose_group(int excluded) {
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[12 * padded]);
-        lanes.floats.reset(new float[25 * padded]);
+        lanes.floats.reset(new float[26 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane :
              {&lanes.gem, &lanes.enemy_side, &lanes.safe_gems, &lanes.hard, &lanes.status, &lanes.respawn,
@@ -147,7 +152,7 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.claim_rate, &lanes.heal, &lanes.camp_count, &lanes.home, &lanes.reach,
                             &lanes.partner_wait, &lanes.party_rate, &lanes.party_stun, &lanes.party_shield,
                             &lanes.party_shield_rate, &lanes.tank_scale, &lanes.party_health, &lanes.party_spare,
-                            &lanes.party_heal, &lanes.run_reward, &lanes.run_time}) {
+                            &lanes.party_heal, &lanes.run_reward, &lanes.run_time, &lanes.cohesion}) {
             *lane = next_float;
             next_float += padded;
         }
@@ -160,7 +165,7 @@ int Bot::worker_choose_group(int excluded) {
                                lanes.camp_count, lanes.home, lanes.reach, lanes.partner_wait, lanes.party_rate,
                                lanes.party_stun, lanes.party_shield, lanes.party_shield_rate, lanes.tank_scale,
                                lanes.party_health, lanes.party_spare, lanes.party_heal, lanes.run_reward,
-                               lanes.run_time})
+                               lanes.run_time, lanes.cohesion})
                 lane[i] = 0;
             lanes.path[i] = bc::distance_field::unreachable; // Padding is never chosen.
         }
@@ -252,6 +257,12 @@ int Bot::worker_choose_group(int excluded) {
             splash[i] = g.splash;
             pressure[i] = g.pressure;
             claim[i] = float(claims[i]);
+            float nearest_claim = std::numeric_limits<float>::infinity();
+            for (const int claimed : claimed_groups)
+                nearest_claim = std::min(nearest_claim, float(distance(g.centre, groups[claimed].centre)));
+            lanes.cohesion[i] = std::isfinite(nearest_claim)
+                                    ? std::max(0.0f, nearest_claim - opening.spacing)
+                                    : 0.0f;
         }
         for (std::size_t i = 0; i < count; ++i)
             lanes.sighted[i] = i < enemy_seen_near.size() &&
@@ -705,6 +716,11 @@ int Bot::worker_choose_group(int excluded) {
             }
             value = wasm_f32x4_div(
                 value, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_f32x4_add(travel, waiting), splat(travel_hazard))));
+            // Keep ordinary farmers in neighbouring camp regions without
+            // putting another crowding charge on hard groups' planned parties.
+            const v128_t isolation = pick(zero, wasm_v128_load(&lanes.cohesion[i]), hard);
+            value = wasm_f32x4_div(
+                value, wasm_f32x4_add(one, wasm_f32x4_mul(isolation, splat(policy::cohesion_hazard))));
             value = pick(wasm_f32x4_mul(value, splat(enemy_side_mul)), value,
                          wasm_v128_load(&lanes.enemy_side[i]));
             value = pick(wasm_f32x4_mul(value, splat(safe_gem_factor)), value, wasm_v128_load(&lanes.safe_gems[i]));

@@ -178,9 +178,19 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 if (!ally.is_visible() || !ally.is_alive() ||
                     u.max_health - u.health < policy::heal_trigger * focus * s.modifier)
                     continue;
+                const float champion_danger =
+                    fighting_champions && type == bc::champion_type::willow
+                        ? incoming(u.position, -1, false) * u.mitigation / std::max(0.01f, mitigation)
+                        : 0.0f;
+                const bool reported_danger = i < ally_slot.size() && shared.attacked(ally_slot[i]);
+                if (fighting_champions && type == bc::champion_type::willow && champion_danger <= 0 &&
+                    !reported_danger)
+                    continue;
                 float score = a.heal_amount(ally) * 0.9f;
                 if (u.health < u.max_health * 0.5f)
                     score *= 2;
+                if (fighting_champions && type == bc::champion_type::willow)
+                    score += std::min(champion_danger, score) * 0.25f;
                 if (score > best_score) {
                     best_score = score;
                     best_slot = slot_index;

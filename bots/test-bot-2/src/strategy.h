@@ -143,22 +143,17 @@ inline constexpr float siege_gem_weight = 2.0f;
 inline constexpr float siege_risk_weight = 0.06f;
 // Extra tiles beyond an enemy's reach plus move that still count as danger.
 inline constexpr int worker_danger_margin = 1;
-// Rounds an enemy out of sight remains in positional memory. Fresh records
-// count from the last confirmed tile; older ones project halfway toward their
-// nearest still-possible tile, retaining warnings without the immediate
-// nearest-tile model's many false alarms.
-inline constexpr int ghost_lifetime = 4;
-inline constexpr int ghost_projection_delay = 2;
+// Rounds an enemy out of sight is still counted after its last sighting
+// (safety.cpp's ghosts): after two a walking enemy can be two tiles from
+// where it was seen, the margin of every reach check, and the tiles it could
+// be on say little. Measured: a ghost two rounds old is near its enemy two
+// times in three, one four rounds old one time in three, and kept while
+// updated (the old rule) four fifths of them were phantoms.
+inline constexpr int ghost_lifetime = 2;
 // Camps near a recently seen enemy are worth worker_sighting_penalty of their
 // value for worker_sighting_memory rounds.
 inline constexpr int worker_sighting_memory = 20;
 inline constexpr float worker_sighting_penalty = 0.2f;
-// A basic camp ambush waits one turn when an enemy and the living camp beside
-// it both lost at least these shares since our previous observation. We wait
-// only outside the enemy's next-turn reach and when one more camp round is
-// expected to put it within our immediate basic-plus-spell burst.
-inline constexpr float ambush_enemy_loss = 0.01f;
-inline constexpr float ambush_camp_loss = 0.01f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
@@ -246,6 +241,11 @@ inline constexpr float willow_follow = 2.0f;
 // times as much as willow best girl's choices (a logit of its new targets,
 // both samples), and walked past near groups to far ones.
 inline constexpr float travel_hazard = 0.1f;
+// Ordinary camps farther than the map's natural camp spacing from every live
+// teammate claim lose this much value per excess tile. Same-camp crowding
+// still spreads champions onto neighbouring groups; this only discourages
+// isolated trips that leave nobody within reinforcement distance. 0 disables.
+inline constexpr float cohesion_hazard = 0.03f;
 // Marcella's in place of travel_hazard: willow best girl's Marcella weighs
 // a group's walk the least of its types (logit -2.39; ours -2.94) and takes
 // one-elk groups in 41% of its new targets on the same maps (ours 26%).

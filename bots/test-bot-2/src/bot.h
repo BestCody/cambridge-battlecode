@@ -387,6 +387,14 @@ class Bot {
     std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
+    // A fight support commitment: Willow holds it after a direct response, and
+    // any champion retains it through a faster recall route. A pending recall
+    // becomes ready on spawn; a ready commitment follows continuing sightings.
+    int reinforce_commitment = -1;
+    bool reinforce_commitment_ready = false;
+    // Willow's visible protected ally. It remains until that ally leaves enemy
+    // danger, avoiding target changes between camp wounds and a real fight.
+    int willow_guard_slot = -1;
     // The group camp choice planned a spell-range siege of (-1: none), for
     // worker_farm() to stand as planned.
     int siege_group = -1;
@@ -423,13 +431,6 @@ class Bot {
     std::array<int, TeamMemory::slots> slot_ally{};
     // Each enemy in view's entry in enemy_roster, in enemies' order.
     std::array<std::uint8_t, 8> enemy_slot{};
-    // Camp ambush observations, per enemy roster entry: the previous visible
-    // health, round and nearby camp group. Two consecutive readings beside a
-    // living camp establish that it is farming when both lose health.
-    std::array<float, 8> ambush_enemy_health{};
-    std::array<int, 8> ambush_round{}, ambush_group{};
-    std::vector<float> ambush_camp_health;
-    std::vector<int> ambush_camp_round;
     // This round's fight report: the group nearest the enemy we see and the
     // squad it takes (-1: no enemy in view).
     int reported_round = -1, reported_group = -1;
@@ -439,15 +440,14 @@ class Bot {
     // and that sighting's round, whether its tiles have been made from that
     // sighting yet, and the tiles within our sight radius where it could be
     // now. This turn's records of those that could be near, each placed on
-    // its possible tile nearest us, and in the same order: the tiles they
-    // were last seen on and the age of those sightings.
+    // its possible tile nearest us, and in the same order the tiles they
+    // were last seen on.
     std::vector<int> ghost_round, ghost_sighted;
     std::vector<std::optional<ObservedUnit>> ghost_seen;
     std::vector<std::uint8_t> ghost_built;
     std::vector<bc::bitboard> ghost_where;
     std::vector<ObservedUnit> ghosts;
     std::vector<vec2> ghost_last;
-    std::vector<std::uint8_t> ghost_age;
     // An enemy out of sight that hit us (note_hidden_hit()), on the unseen
     // tile it struck from, kept until that tile is seen, an enemy comes into
     // view or we are a sight radius away; listed after the sightings' ghosts
@@ -910,9 +910,6 @@ class Bot {
     void prepare_sieges();
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
-    // Hold one turn outside contact when a visible enemy and its nearby camp
-    // both lost health, letting the camp bring it into our burst range.
-    bool wait_for_camp_ambush();
     // The fight decision against the hidden record alone (nothing in view).
     bool confront_hidden();
     // Out of a fight too dangerous to stay in (worker_skirmish()).

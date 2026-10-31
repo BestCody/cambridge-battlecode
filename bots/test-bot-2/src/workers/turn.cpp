@@ -78,7 +78,8 @@ void Bot::play_worker_turn() {
         hidden.reset();
         buy_equipment();
         retreating = banking = false;
-        target = -1;
+        target = reinforce_commitment = willow_guard_slot = -1;
+        reinforce_commitment_ready = false;
         cluster_run.clear();
         return;
     }
@@ -138,6 +139,12 @@ void Bot::play_worker_turn() {
         return;
     }
     const bool at_spawn = own_spawn_tile[tile_index(position)];
+    if (reinforce_commitment >= 0 && !reinforce_commitment_ready) {
+        if (at_spawn)
+            reinforce_commitment_ready = true;
+        else
+            reinforce_commitment = -1; // The support recall was interrupted.
+    }
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
         recall_tile = {-1, -1};
@@ -185,12 +192,6 @@ void Bot::play_worker_turn() {
         return;
     }
     worker_update_formation();
-    // A confirmed enemy farmer just outside contact may be worth one quiet
-    // round while its camp brings it into our burst range.
-    if (wait_for_camp_ambush()) {
-        note_activity(Activity::fight);
-        return;
-    }
     // Try the fight once before banking; an unsafe tribute can then retreat
     // without running the skirmish micro a second time.
     if (worker_skirmish() || worker_pursue()) {
