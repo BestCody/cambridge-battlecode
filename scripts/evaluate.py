@@ -250,9 +250,16 @@ def main():
     parser.add_argument("--fuels", default=",".join(map(str, DEFAULT_FUELS)), help="comma-separated fuel budgets")
     parser.add_argument("--mirror", action="store_true", help="also play each opponent against itself")
     parser.add_argument("--jobs", type=int, default=JOBS, help="parallel matches (default: 90%% of cores)")
-    parser.add_argument("--out", default=str(Path(os.environ.get("TEMP", "/tmp")) / "evaluate"),
+    # Inside the workspace: run-batch splits manifest lines on spaces, and the
+    # relative paths from %TEMP% back to a workspace like "VSCode Projects"
+    # carry one, so every match failed.
+    parser.add_argument("--out", default=str(ROOT / "replays" / "evaluate"),
                         help="directory for statistics, replays and games.json")
     args = parser.parse_args()
+    for target in (ROOT / "bots", ROOT / "maps"):
+        if " " in os.path.relpath(target, start=Path(args.out).resolve()):
+            sys.exit(f"--out {args.out}: the path from it to {target} contains a space, which cambc run-batch "
+                     f"cannot read; use a folder inside the workspace (the default, replays/evaluate)")
 
     pool_maps = sorted(p.stem for p in (ROOT / "maps" / "eval").glob("*.map26a"))
     wanted = [m for m in args.maps.split(",") if m]
