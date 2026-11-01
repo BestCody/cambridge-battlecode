@@ -338,7 +338,16 @@ bool Bot::health_recovery_needed() const {
     // walked back in and out under their hits until it died.
     if (target >= 0 && health <= visit_cost(groups[std::size_t(target)]))
         return true;
-    return health < max_health * share || health <= per_round * float(out);
+    // Hurt is low health. The walk out under fire counts the camps' damage
+    // (they do not chase, but a hit cancels a recall); the enemies' is the
+    // fight code's to weigh (its exit test, too dangerous to stay), which
+    // keeps our strength and is judged again each turn. Counted here, two
+    // rounds of every enemy's whole blow (incoming()) made full-health
+    // champions hurt beside two or three enemies: latched home, counting
+    // themselves as nothing, they were chased down (with dashes counted, 3
+    // times our deaths and a sixth of our kills in six games).
+    const float from_camps = per_round - incoming(position, false);
+    return health < max_health * share || health <= from_camps * float(out);
 }
 
 void Bot::retreat_to_spawn() {

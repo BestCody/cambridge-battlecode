@@ -90,8 +90,13 @@ inline int strike_reach(const ObservedUnit &e, bool reset, bool dash) { return e
 // reach of a step and a hit (a melee one, or a ranged one with a ready
 // reset; -1 none); whether it is melee (-1) or not (0); a ready reset's
 // second hit. Its hit is `strength`, its ready burst `spell_burst` (Heart of
-// Ruin's passive included in both).
-inline int lunge_reach(Unit e) { return e->range <= 1 || e->reset_ready ? e->range + e->move_speed : -1; }
+// Ruin's passive included in both). The step closes as closing_tiles()
+// counts it, with a ready dash (Heart of Ruin, Vendetta and Vesper dash 2
+// tiles and strike; without it a tile 3 from a melee one read as safe).
+inline int lunge_reach(Unit e) {
+    const bool dash = e->dash_wait == 0 && e->dash_range > 0;
+    return e->range <= 1 || e->reset_ready || dash ? damage::strike_reach(*e, e->reset_ready, dash) : -1;
+}
 inline int melee_lane(Unit e) { return e->range <= 1 ? -1 : 0; }
 inline float reset_hit(Unit e) { return e->reset_ready ? e->strength : 0.0f; }
 // Its blow on a unit it reaches with everything: one ability a turn, so its
