@@ -38,7 +38,7 @@ if tuned test-bot then beats tuned baseline on dense maps.
 | `params_baseline.json`, `params_test-bot.json` | Genes: name, type, range, current value (the control) |
 | `maps_sparse.txt`, `maps_dense.txt` | Training maps for baseline and test-bot, from `maps/ga` (35 real, 100 generated, 32 edge) |
 | `holdout.txt`, `holdout_sparse.txt`, `holdout_dense.txt` | The 35 eval maps never trained on, and their sparse and dense halves |
-| `opponents/opp_baseline` | A frozen copy of baseline (named apart from `bots/`: run-batch keys builds by folder name). The test-bot opponent is the live `bots/test-bot` |
+| (our two bots) | The opponents include the live `bots/test-bot` and `bots/baseline`, never frozen copies; individuals are named `<bot>_g<gen>_i<index>`, apart from them in run-batch's build cache |
 | `opponents/opp_rusher`, `opp_farmer`, `opp_turtle`, `opp_thief`, `opp_deathball` | Extreme styles built from baseline by `make_opponents.py`: always attacks; never fights; farms only its own half; prefers the enemy's camps; moves as one |
 | `make_opponents.py` | Rebuilds the five extreme opponents from `bots/baseline/src` |
 | `modal_app.py` | Modal launcher: a coordinator plus three 64-core game workers |
@@ -71,7 +71,7 @@ correlation, |z| > 2): baseline 8 of 42 (`late_gold_value`,
   `strategy.h`. Slot 0 is always the current values, the control.
 - A generation plays every individual on the same freshly sampled maps, both
   seats, against each opponent. The Modal defaults are 40 individuals over 25 generations, 6 maps
-  and 5 opponents (the live test-bot, a frozen baseline, turtle, thief and deathball; rusher and farmer
+  and 5 opponents (the live test-bot and baseline, turtle, thief and deathball; rusher and farmer
   give little signal): 2,400 games a generation, 60,000 a run, about $14.
 - Fitness per game: 0.5 × win (draw 0.5) + 0.5 × our share of the submitted
   gems, read from the game's statistics file. A bot fault counts as a loss.
@@ -95,7 +95,7 @@ paths pass its 260-character limit):
 ```sh
 python scripts/ga/ga.py --bot baseline --params scripts/ga/params_baseline.json \
     --maps scripts/ga/maps_sparse.txt \
-    --opponents bots/test-bot,scripts/ga/opponents/opp_baseline \
+    --opponents bots/test-bot,bots/baseline \
     --out ga_runs/baseline --jobs 14
 ```
 
