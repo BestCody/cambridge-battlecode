@@ -215,6 +215,12 @@ inline constexpr std::size_t leg_neighbours = 3;
 // (joshua_baseline's role; wins even).
 inline constexpr int vesper_scout_rounds = 300;
 inline constexpr float vesper_scout_gold_value = 0.5f;
+// Marcella holds any capture she is on (capture_worth() adds this to her rank),
+// so the team's gold makes one carry: 2,906 gold a game to her 2,076, 1 more
+// kill a game, 253/420 games against test-bot to 243 (three fuel budgets,
+// paired 39:29). naviepstokes and dromedaries run the same carry, earning up
+// to 71% of their team's gold on her.
+inline constexpr float marcella_capture_bonus = 100000.0f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

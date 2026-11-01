@@ -1433,7 +1433,8 @@ float capture_worth(bc::champion_type type, const CampGroup &g) {
     if (type == bc::champion_type::vesper_vale)
         worth *= 1 + float(passives::vesper_vale_bonus_gold_percent) / 100;
     if (type == bc::champion_type::marcella)
-        worth += float(g.unit.gem_value()) * float(passives::marcella_tribute_gold_per_gem);
+        worth += float(g.unit.gem_value()) * float(passives::marcella_tribute_gold_per_gem) +
+                 policy::marcella_capture_bonus;
     return worth;
 }
 } // namespace
