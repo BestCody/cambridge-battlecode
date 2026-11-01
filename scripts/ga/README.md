@@ -42,6 +42,28 @@ if tuned test-bot then beats tuned baseline on dense maps.
 | `opponents/opp_rusher`, `opp_farmer`, `opp_turtle`, `opp_thief`, `opp_deathball` | Extreme styles built from baseline by `make_opponents.py`: always attacks; never fights; farms only its own half; prefers the enemy's camps; moves as one |
 | `make_opponents.py` | Rebuilds the five extreme opponents from `bots/baseline/src` |
 | `modal_app.py` | Modal launcher: a coordinator plus three 64-core game workers |
+| `results/baseline_s1`, `results/test-bot_s1` | The first runs (2026-10-31): `history.jsonl` (every individual, every generation, with per-map scores), `finalists.json` (top 5; #1 went into `bots/`), `validate.json` (holdout result), `spent.json` (estimated Modal spend) |
+| `mapgen/` | Map generators for `maps/ga`: `genreal.mjs` (the 100 realistic maps, from `realstats_ga.json`, the GA-half real maps' statistics), `genmaps.mjs` (the edge maps), `realstats.mjs` (map statistics), `maplib.mjs` (map building over the engine module). They need the visualiser's engine module (`engine-v2_0_0.wasm`, cambc 4.0.0), not committed |
+
+## Results of the first runs (2026-10-31)
+
+| | baseline (sparse maps) | test-bot (dense maps) |
+| --- | --- | --- |
+| Generations | 24 (stopped at the Modal limit) | 29 |
+| Elites vs control, late in the run | about +0.03, flat from generation 15 | about +0.045, flat from generation 15 |
+| Holdout, paired games (finalist won only : control won only) | 43 : 32 (18 sparse maps, within noise) | 53 : 25 (17 dense maps, significant) |
+| All 70 eval maps x 2 seats at 4M, wins vs the frozen test-bot copy | 86/140 (control 83) | 77/140 (control 67) |
+
+Both finalists are in `bots/` since 5a330e7, and the gene defaults in the
+`params_*.json` files are now those values, so the next run's control is the
+current bot. Genes that measurably move fitness (within-generation
+correlation, |z| > 2): baseline 8 of 42 (`late_gold_value`,
+`step_incoming_weight`, `health_pull_damage`, `cohesion_hazard`,
+`cohesion_max_spacing`, `travel_hazard`, `worker_sighting_memory`,
+`pursue_health`), test-bot 16 of 58 (led by `partner_penalty`,
+`retreat_health`, `worker_sighting_penalty`, `prism_safe_gem_factor`,
+`respawn_wait_weight`, `stuck_rounds`, `prism_bag`, `aggression`).
+`aggression` and `lock_memory` ended at the top of their ranges.
 
 ## How it works
 

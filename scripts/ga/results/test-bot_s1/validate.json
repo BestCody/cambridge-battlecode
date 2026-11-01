@@ -1,0 +1,18 @@
+{
+ "candidate": {
+  "fitness": 0.5845228736009663,
+  "wins": 105.0,
+  "games": 170,
+  "faults": 0
+ },
+ "control": {
+  "fitness": 0.45867799546378313,
+  "wins": 77.0,
+  "games": 170,
+  "faults": 0
+ },
+ "paired": {
+  "candidate_only": 53,
+  "control_only": 25
+ }
+}
