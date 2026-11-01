@@ -885,6 +885,9 @@ class Bot {
     unsigned gold_seen = 0, gems_seen = 0;
     // A gold's value in gems now (policy::early_gold_value to late_gold_value).
     float gold_value_now() const;
+    // Our build's power gain per gold against the roster's average
+    // (build_gain_per_gold()): how much more a gold makes us than a teammate.
+    float gold_type_weight() const;
     // The rounds a hop must save to pay for its crystal (infinite before any
     // income).
     float hop_threshold() const;

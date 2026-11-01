@@ -68,6 +68,37 @@ Build build_for(bc::champion_type type) {
     }
 }
 using Bought = std::array<unsigned, static_cast<unsigned>(Item::count)>;
+} // namespace
+
+float build_gain_per_gold(bc::champion_type type, const bc::champion_stats &design, const std::array<Spell, 2> &spells) {
+    // A champion's fighting power (unit_power(), as the fight weighs one)
+    // from its design stats, then with every shard of its build added (each
+    // shard adds its stat points times the champion's growth), per gold.
+    float health = design.base_health, strength = design.base_strength, focus = design.base_focus;
+    const auto power = [&]() {
+        float burst = 0;
+        for (const auto &s : spells)
+            if (s.kind == bc::ability_kind::attack_reset)
+                burst = std::max(burst, strength);
+            else if (s.modifier > 0 && s.kind != bc::ability_kind::shield && s.kind != bc::ability_kind::heal)
+                burst = std::max(burst, focus * s.modifier);
+        return unit_power(health, spell_dps(spells, strength, focus), burst, 0, 1);
+    };
+    const float before = power();
+    const auto build = build_for(type);
+    float gold = 0;
+    for (unsigned i = 0; i < build.size; ++i) {
+        const Item item = build.steps[i].item;
+        const float n = float(build.steps[i].count);
+        health += n * float(item.health_points()) * design.health_growth;
+        strength += n * float(item.strength_points()) * design.strength_growth;
+        focus += n * float(item.focus_points()) * design.focus_growth;
+        gold += n * float(item.cost());
+    }
+    return gold > 0 && before > 0 ? (power() / before - 1) / gold : 0.0f;
+}
+
+namespace {
 // The next emblem of the build order, in its order whatever the damage
 // taken: switching to a Health emblem when hurt (willow best girl's habit)
 // put our Marcella's first 300 gold into Health, her spell at 120 to round

@@ -71,6 +71,31 @@ struct Kit {
     int move_speed = 1;
     std::array<Spell, 2> spells;
 };
+const Kit &kit_of(const bc::champion &c, bc::champion_type type);
+} // namespace
+
+float Bot::gold_type_weight() const {
+    // Worked out once: the roster and the designs never change.
+    static float weight = -1;
+    if (weight < 0) {
+        float ours = 0, total = 0;
+        unsigned counted = 0;
+        for (const auto &c : roster) {
+            const auto t = c.champion_name();
+            const float gain = build_gain_per_gold(t, c.base_stats(), kit_of(c, t).spells);
+            if (gain <= 0)
+                continue;
+            total += gain;
+            ++counted;
+            if (t == type)
+                ours = gain;
+        }
+        weight = counted && ours > 0 ? ours / (total / float(counted)) : 1.0f;
+    }
+    return weight;
+}
+
+namespace {
 const Kit &kit_of(const bc::champion &c, bc::champion_type type) {
     static std::array<Kit, 32> kits;
     auto &kit = kits[static_cast<unsigned>(type) % kits.size()];
