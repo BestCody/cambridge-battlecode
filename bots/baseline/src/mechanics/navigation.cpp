@@ -347,7 +347,13 @@ bool Bot::health_recovery_needed() const {
     // themselves as nothing, they were chased down (with dashes counted, 3
     // times our deaths and a sixth of our kills in six games).
     const float from_camps = per_round - incoming(position, false);
-    return health < max_health * share || health <= from_camps * float(out);
+    // At camps that reach us, the walk out of their reach goes under the
+    // enemies' damage too, round by round: counted for the camps alone,
+    // all five of ours stayed at a contested centre elk while enemies
+    // poked, dropped under the low line one by one and were caught walking
+    // home alone (01elk-arena: 3 deaths to 37).
+    const float walking_out = reached ? per_round : from_camps;
+    return health < max_health * share || health <= walking_out * float(out);
 }
 
 void Bot::retreat_to_spawn() {
