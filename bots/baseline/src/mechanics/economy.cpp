@@ -160,7 +160,9 @@ void Bot::buy_equipment() {
     // shard's gold at rounds 18-38 and delayed it a trip; bought on every
     // map, its 10 gold split games from the crystal-free ones where no hop
     // ever paid.
-    if (can_shop && alive && hops_useful && !carrying_crystal() && me.gold_count() >= bc::consumable_type::tp_crystal.cost())
+    const bool detour_crystal = type == bc::champion_type::vesper_vale && opening.detour;
+    if (can_shop && alive && (hops_useful || detour_crystal) && !carrying_crystal() &&
+        me.gold_count() >= bc::consumable_type::tp_crystal.cost())
         bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[0]);
     // Item stats change only when items do.
     if (equipment_dirty) {

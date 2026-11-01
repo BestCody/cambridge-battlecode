@@ -205,6 +205,19 @@ inline constexpr float step_incoming_weight = 0.038261f;
 // +3 on dense maps and -3 on sparse.
 inline constexpr float cohesion_hazard = 0.0f;
 inline constexpr float cohesion_max_spacing = 29.565f;
+// Vesper Vale (its gold bonus, its dash) values gold at
+// vesper_scout_gold_value gems for its first vesper_scout_rounds (the others
+// at early_gold_value): it farms the gold camps early and buys sooner.
+// With it, 0.4 more kills and 0.2 fewer deaths a game against the test-bot
+// (joshua_baseline's role; wins even).
+inline constexpr int vesper_scout_rounds = 300;
+inline constexpr float vesper_scout_gold_value = 0.5f;
+// A detour map: some camp's walk from our spawn is at least detour_ratio
+// times its straight line (walls force the long way round), for camps
+// detour_min_distance tiles or more away. There Vesper carries a teleport
+// crystal even where no hop from spawn pays.
+inline constexpr float detour_ratio = 1.6f;
+inline constexpr int detour_min_distance = 8;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
@@ -425,6 +438,9 @@ struct DraftPlan {
     // Number of gem-bearing groups farmable without a siege. Gameplay values
     // fortress camps more highly when the full map has no cheaper gem source.
     std::uint8_t cheap_gem_groups = 0;
+    // A detour map (policy::detour_ratio), read by the shop: in the padding
+    // before spacing.
+    bool detour = false;
     float spacing = 0;
     // Walking distance from each camp group, in camp_groups() order, to our
     // spawn, the enemy spawn and an altar's tribute tiles, and from our

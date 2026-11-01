@@ -79,6 +79,26 @@ struct DraftState {
                 distance[DraftPlan::hop] = std::min(distance[DraftPlan::hop], hop[std::size_t(p.y * w + p.x)]);
             }
         }
+        // Detour: a camp's walk from our spawn against its straight line.
+        {
+            const auto spawn = bc::map::spawn_region(bc::team::ally).positions();
+            float sx = 0, sy = 0;
+            for (const auto p : spawn)
+                sx += float(p.x), sy += float(p.y);
+            sx /= float(std::max<std::size_t>(1, spawn.size()));
+            sy /= float(std::max<std::size_t>(1, spawn.size()));
+            for (std::size_t i = 0; i < groups.size() && !plan.detour; ++i) {
+                const int walk = plan.group_distance[i][DraftPlan::home];
+                if (walk == bc::distance_field::unreachable)
+                    continue;
+                for (const auto &c : groups[i]) {
+                    const auto p = c.spawn_position();
+                    const float line = std::hypot(float(p.x) - sx, float(p.y) - sy);
+                    if (line >= float(policy::detour_min_distance) && float(walk) >= policy::detour_ratio * line)
+                        plan.detour = true;
+                }
+            }
+        }
         for (std::size_t i = 0; i < altars.size(); ++i)
             plan.altar_hop[i] = std::uint16_t(altar_hop_walk(altars[i], walk.get(), hop.get(), w, h));
         for (std::size_t i = 0; i < groups.size(); ++i) {

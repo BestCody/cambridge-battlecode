@@ -711,6 +711,8 @@ bool Bot::carrying_crystal() const {
 }
 
 float Bot::gold_value_now() const {
+    if (type == bc::champion_type::vesper_vale && int(round) < policy::vesper_scout_rounds)
+        return policy::vesper_scout_gold_value;
     const float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
     return policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress;
 }
