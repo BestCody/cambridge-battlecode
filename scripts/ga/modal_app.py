@@ -103,10 +103,11 @@ def evolve(argv: list[str], max_dollars: float):
         volume.commit()
 
 
-# Our two bots and three extreme styles (make_opponents.py). The rusher and the
-# farmer are left out: baseline beats them 138 and 104 of 140, little signal.
-OPPONENTS = ",".join(f"scripts/ga/opponents/opp_{name}" for name in
-                     ("baseline", "testbot", "turtle", "thief", "deathball"))
+# The live test-bot, a frozen baseline and three extreme styles
+# (make_opponents.py). The rusher and the farmer are left out: baseline beats
+# them 138 and 104 of 140, little signal.
+OPPONENTS = ",".join(["bots/test-bot"] + [f"scripts/ga/opponents/opp_{name}" for name in
+                                          ("baseline", "turtle", "thief", "deathball")])
 
 
 @app.local_entrypoint()
