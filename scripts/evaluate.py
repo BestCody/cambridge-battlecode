@@ -138,12 +138,7 @@ def play(configs, opponents, fuels, args):
                             # run-batch resolves relative paths from the manifest's folder. Keep every
                             # manifest token relative so workspaces whose names contain spaces work.
                             def relative_to_out(path):
-                                relative = Path(os.path.relpath(path, start=out)).as_posix()
-                                if " " in relative:
-                                    # run-batch splits manifest lines on spaces: every match would fail.
-                                    raise SystemExit(f"--out {out} reaches {path} through a space; "
-                                                     "put --out inside the workspace")
-                                return relative
+                                return Path(os.path.relpath(path, start=out)).as_posix()
 
                             bot_a = relative_to_out(ROOT / "bots" / a)
                             bot_b = relative_to_out(ROOT / "bots" / b)
@@ -255,9 +250,8 @@ def main():
     parser.add_argument("--fuels", default=",".join(map(str, DEFAULT_FUELS)), help="comma-separated fuel budgets")
     parser.add_argument("--mirror", action="store_true", help="also play each opponent against itself")
     parser.add_argument("--jobs", type=int, default=JOBS, help="parallel matches (default: 90%% of cores)")
-    parser.add_argument("--out", default=str(ROOT / "replays" / "evaluate"),
-                        help="directory for statistics, replays and games.json (inside the workspace: "
-                             "manifest paths are relative to it and must contain no spaces)")
+    parser.add_argument("--out", default=str(Path(os.environ.get("TEMP", "/tmp")) / "evaluate"),
+                        help="directory for statistics, replays and games.json")
     args = parser.parse_args()
 
     pool_maps = sorted(p.stem for p in (ROOT / "maps" / "eval").glob("*.map26a"))

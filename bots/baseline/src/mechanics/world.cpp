@@ -718,18 +718,6 @@ void Bot::initialise() {
     bush_tile.load(bc::map::bushes());
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
     dash_terrain = bc::map::walls() | bc::map::altars() | bc::map::spawn_region(bc::team::enemy);
-    // A dash's two steps cross a hole one tile wide: open ground on both
-    // sides of it in a line.
-    dash_holes.clear();
-    for (const vec2 h : bc::map::holes().positions())
-        for (int dx = -1; dx <= 1; ++dx)
-            for (int dy = -1; dy <= 1; ++dy) {
-                const vec2 a{h.x - dx, h.y - dy}, b{h.x + dx, h.y + dy};
-                if ((dx || dy) && a.x >= 0 && a.y >= 0 && b.x >= 0 && b.y >= 0 && a.x < map_width &&
-                    b.x < map_width && a.y < map_height && b.y < map_height && open_terrain.is_set(a) &&
-                    open_terrain.is_set(b))
-                    dash_holes.set(h);
-            }
     enemy_spawn_tiles = bc::map::spawn_region(bc::team::enemy).positions();
     shared.set_groups(unsigned(groups.size()));
     {
@@ -1808,11 +1796,7 @@ __attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) con
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
             packed.reach[n] = e.range;
-            // A ready dash closes its tiles too (Vendetta: two, then a step):
-            // walking reach alone read a tile four off a Vendetta as safe.
-            packed.lunge[n] = e.range <= 1 || e.reset_ready
-                                  ? e.range + closing_tiles(e, true, policy::dash_threat && e.dash_wait == 0)
-                                  : -1;
+            packed.lunge[n] = e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1;
             packed.melee[n] = e.range <= 1 ? -1 : 0;
             packed.spell[n] = e.spell_reach;
             packed.hit[n] = e.strength;
@@ -2266,11 +2250,8 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 }
 
 bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
-    if (u.stunned && u.stun_time > 0)
-        return distance(u.position, tile) <= std::max(u.range, u.spell_reach);
-    // Its strike reaches its step and a ready dash further (closing_tiles()).
-    const int strike = u.range + closing_tiles(u, true, policy::dash_threat && u.dash_wait == 0);
-    return distance(u.position, tile) <= std::max(strike, u.spell_reach + u.move_speed);
+    const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
+    return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
 }
 
 float Bot::unit_power_of(const ObservedUnit &u, bool full) const {

@@ -415,19 +415,7 @@ class Bot {
     // Walled off (camp bodies sealing the only route): turns of a walk that
     // made no step, and the group or altar left out until a round.
     int farm_stalls = 0, stuck_group = -1, stuck_group_until = -1;
-    int bank_stalls = 0;
-    // Altars left out of banking until a round (altar_open()): walled off,
-    // for longer each time, or watched by enemies that would reach a
-    // channel before it ends. Turns spent beside one waiting for them.
-    std::vector<int> altar_closed_until, altar_walled_times;
-    int bank_waits = 0;
-    // Where our last two turns ended, the back-and-forth steps in a row with
-    // nothing struck, and the round a commitment to our objective lasts to
-    // (note_pingpong()).
-    vec2 last_end{-1, -1}, before_end{-1, -1};
-    int pingpong = 0, objective_until = -1;
-    bool committed() const { return int(round) < objective_until; }
-    void note_pingpong();
+    int bank_stalls = 0, stuck_altar = -1, stuck_altar_until = -1;
     int zone_target = -2; // The target mark_camp_zones() exempted.
     vec2 previous{-1, -1}, position{}, ward{-1, -1}, origin_position{-1, -1};
     float health = 0, max_health = 0, strength = 0, focus = 0, camp_multiplier = 1, camp_mitigation = 1,
@@ -751,12 +739,6 @@ class Bot {
     // cross or land on; our spawn (the engine builds a new mask per call,
     // about 600 fuel); and the enemy spawn's tiles.
     bc::bitboard camp_tiles{bc::uninitialized}, dash_terrain{bc::uninitialized}, own_spawn{bc::uninitialized};
-    // Holes a dash crosses (open ground either side of one in a line), and
-    // the blocked tiles without them for a walk whose dash is ready.
-    bc::bitboard dash_holes{bc::uninitialized}, hole_blocked{bc::uninitialized};
-    // A route over a hole that did not move us (the dash could not land past
-    // it) walks around until this round.
-    int holes_off_until = -1;
     std::vector<vec2> enemy_spawn_tiles;
     // Items changed since the last stat refresh: only shopping changes them.
     bool equipment_dirty = true;
@@ -1018,18 +1000,6 @@ class Bot {
     void place_lock();
     bool worker_pursue();
     bool home_after_capture(const CampGroup &g) const;
-    // The bag worth banking from this walk to an altar (policy::bag_gems),
-    // and the walk to one from our spawn (worked out once).
-    float bank_bag(int walk) const;
-    int spawn_altar_walk() const;
-    // Banking's altars: whether one is open, the walk to the nearest open
-    // one, one closed for some rounds, and the damage known enemies can deal
-    // us before a channel of this many turns ends.
-    bool altar_open(std::size_t i) const;
-    int open_altar_walk() const;
-    void close_altar(std::size_t i, int rounds);
-    float channel_danger(int turns) const;
-    mutable int spawn_bank_walk = -1;
     // How far behind in the gem race we are, 0 (even or ahead) to 1: the gap
     // against what the leader still needs to win.
     float behind_pressure() const;

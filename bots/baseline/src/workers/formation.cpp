@@ -138,8 +138,6 @@ bool Bot::worker_update_formation() {
 
 bool Bot::worker_reinforce() {
     profiling::Scope scope(profiling::Stage::reinforce);
-    if (committed())
-        return false;
     if (!enemies.empty() || !TeamMemory::formations(groups.size()) ||
         health < max_health * policy::retreat_health)
         return false;
