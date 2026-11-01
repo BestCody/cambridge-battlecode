@@ -47,8 +47,27 @@ bool Bot::worker_skirmish() {
             selected_contact = contact;
         }
     }
-    if (selected < 0)
-        return false;
+    if (selected < 0) {
+        // Every enemy in view stands on its spawn, where none can be struck
+        // and from where they strike: when it is too dangerous to stay, as
+        // the fight tests it below, out of their reach as the fight leaves
+        // (a capture's holder stays: leaving resets it). Skipped, our
+        // Marcella farmed five tiles from a 367-gem Prism on its spawn
+        // (incoming() 1713 for six turns) until its stun killed her. Left on
+        // any of their damage, ours gave up the ground by their own spawn
+        // where the spawns nearly touch (00reverse-spiral: no kill all game).
+        const bool holding = target >= 0 && groups[target].status == CampGroup::capture &&
+                             groups[target].tiles().is_set(position);
+        const auto danger = exit_risk(position, health, mitigation, camp_mitigation, gems,
+                                      passive == bc::passive_type::stun_immunity);
+        if (holding || danger.damage <= 0 || exit_pool(self_shield(), is_ready) > danger.damage + danger.margin)
+            return false;
+        int nearest = 0;
+        for (std::size_t i = 1; i < enemies.size(); ++i)
+            if (distance(position, enemies[i].position) < distance(position, enemies[nearest].position))
+                nearest = int(i);
+        return leave_fight(enemies[std::size_t(nearest)].position);
+    }
     const auto victim = enemies[selected];
     float spell_burst = 0;
     for (unsigned i = 0; i < 2; ++i)
@@ -66,7 +85,11 @@ bool Bot::worker_skirmish() {
                 // The engine's damage for it, with Heart of Ruin's passive.
                 spell_burst = std::max(spell_burst, abilities[i].damage_amount());
         }
-    float burst = spell_burst + (distance(position, victim.position) <= range ? basic_damage() : 0);
+    // Our basic hit only while our attack is ready (a reset's own hit is
+    // in spell_burst).
+    float burst = spell_burst + (bc::self().can_attack() && distance(position, victim.position) <= range
+                                     ? basic_damage()
+                                     : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
     // A channelling victim (recalling or banking: not fighting back) our hit
     // and our teammates' still to come this round would finish holds us
@@ -642,7 +665,10 @@ bool Bot::confront_hidden() {
     if (const auto risk = exit_risk(position, health, mitigation, camp_mitigation, gems, immune);
         risk.damage > 0 && pool <= risk.damage + risk.margin) {
         debug_block({ std::printf("HIDDENACT r=%u id=%u leave\n", round, id(bc::self())); });
-        return leave_fight(at);
+        // Hurt, the way out is home, as the fight's (too dangerous, hurt:
+        // worker_escape()): a step out of reach left hurt champions at the
+        // edge of the enemies' bursts.
+        return hurt_turn ? worker_escape() : leave_fight(at);
     }
     // The rest answers a hit this round: without one the record only counts
     // in the danger reckoning (stepping out of reach of a record unhit, our
@@ -690,6 +716,10 @@ bool Bot::confront_hidden() {
     const auto out = [&] {
         if (on_capture)
             return false;
+        // Hurt, the way out is home, as the fight's: a step left a hurt
+        // champion at the edge of the hidden enemy's burst.
+        if (hurt_turn)
+            return worker_escape();
         const vec2 step = step_away_tile();
         const bool stepped = step != position && move_step(step);
         if (stepped) {
