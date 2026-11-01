@@ -50,3 +50,4 @@ playground.txt
 /analysis/prism-banking-ab-*/manifest-*.txt
 ga_runs/
 __pycache__/
+compile_commands.json
