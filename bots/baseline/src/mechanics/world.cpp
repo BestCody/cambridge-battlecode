@@ -282,9 +282,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         const bool cast = cooldown >= s.cooldown - 2;
         if (cast && s.kind == bc::ability_kind::attack_reset)
             cast_damage += strength;
-        else if (cast && (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                          s.kind == bc::ability_kind::aoe_damage ||
-                          (s.kind == bc::ability_kind::dash && s.modifier > 0)))
+        else if (cast && damage::damaging(s))
             cast_damage += focus * s.modifier;
         if (s.kind == bc::ability_kind::attack_reset) {
             damage_rate += strength / s.cooldown;
@@ -295,16 +293,17 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         } else if (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
                    s.kind == bc::ability_kind::aoe_damage) {
             damage_rate += focus * s.modifier / s.cooldown;
-            spell_reach = std::max(spell_reach, int(s.range + s.radius));
+            spell_reach = std::max(spell_reach, damage::cast_reach(s));
             if (ready) {
                 burst = std::max(burst, focus * s.modifier);
                 spell_burst = std::max(spell_burst, focus * s.modifier);
             }
         } else if (s.kind == bc::ability_kind::dash && s.modifier > 0) {
             // A damaging dash (Heart of Ruin) lands its area its steps plus
-            // its radius away.
+            // its radius away (damage::damaging() spells, as this and the
+            // branch above).
             damage_rate += focus * s.modifier / s.cooldown;
-            spell_reach = std::max(spell_reach, int(s.range + s.radius));
+            spell_reach = std::max(spell_reach, damage::cast_reach(s));
             if (ready) {
                 burst = std::max(burst, focus * s.modifier);
                 spell_burst = std::max(spell_burst, focus * s.modifier);
@@ -1264,11 +1263,9 @@ void Bot::note_hidden_hit(float lost) {
         for (const auto &spell : kit.spells) {
             if (spell.kind == bc::ability_kind::attack_reset)
                 burst = std::max(burst, s);
-            else if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
-                     spell.kind == bc::ability_kind::aoe_damage ||
-                     (spell.kind == bc::ability_kind::dash && spell.modifier > 0)) {
+            else if (damage::damaging(spell)) {
                 burst = std::max(burst, f * spell.modifier);
-                far = std::max(far, int(spell.range + spell.radius));
+                far = std::max(far, damage::cast_reach(spell));
             }
         }
         reach = std::max(reach, far);
@@ -1311,9 +1308,8 @@ void Bot::note_hidden_hit(float lost) {
     ghost.immune = kit.immune;
     ghost.slot_ready = 3;
     for (const auto &spell : kit.spells) {
-        if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
-            spell.kind == bc::ability_kind::aoe_damage || (spell.kind == bc::ability_kind::dash && spell.modifier > 0))
-            ghost.spell_reach = std::max(ghost.spell_reach, int(spell.range + spell.radius));
+        if (damage::damaging(spell))
+            ghost.spell_reach = std::max(ghost.spell_reach, damage::cast_reach(spell));
         if (spell.kind == bc::ability_kind::attack_reset)
             ghost.reset_ready = true;
         if (spell.kind == bc::ability_kind::dash) {
@@ -1633,7 +1629,7 @@ void Bot::observe_after_move(int group) {
 
 void Bot::list_threat(std::uint32_t slot) {
     // A stun whose timer has run out ends before the camp acts.
-    if (const auto &c = camps.slot(slot); c.strength > 0 && !(c.stunned && c.stun_time > 0)) {
+    if (const auto &c = camps.slot(slot); damage::camp_strikes(c)) {
         camp_threats[threat_count] = int(slot);
         threat_x[threat_count] = std::int16_t(c.position.x);
         threat_y[threat_count] = std::int16_t(c.position.y);
@@ -1788,19 +1784,18 @@ __attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) con
         }
         std::size_t n = 0;
         for (const auto &e : enemies) {
-            // A stun whose timer has run out ends before the enemy acts; a
-            // recall or tribute can be cancelled to strike, a teleport not.
+            // A recall or tribute can be cancelled to strike, a teleport not.
             const bool teleporting = e.channel && !e.recalling && !e.tributing;
-            if (e.health <= 0 || (e.stunned && e.stun_time > 0) || teleporting)
+            if (e.health <= 0 || damage::held(e) || teleporting)
                 continue;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
             packed.reach[n] = e.range;
-            packed.lunge[n] = e.range <= 1 || e.reset_ready ? e.range + e.move_speed : -1;
-            packed.melee[n] = e.range <= 1 ? -1 : 0;
+            packed.lunge[n] = damage::lunge_reach(e);
+            packed.melee[n] = damage::melee_lane(e);
             packed.spell[n] = e.spell_reach;
             packed.hit[n] = e.strength;
-            packed.reset[n] = e.reset_ready ? e.strength : 0.0f;
+            packed.reset[n] = damage::reset_hit(e);
             packed.burst[n++] = e.spell_burst;
         }
         packed.lanes = (n + 3) & ~std::size_t{3};
@@ -1852,10 +1847,8 @@ float Bot::incoming(vec2 tile, bool include_camps) const {
         const auto &c = camps.slot(std::uint32_t(camp_threats[k]));
         if (c.health <= 0) // Killed earlier this turn.
             return;
-        const auto &g = groups[c.group];
         // Sleeping camps, of the engaged group too, do not strike.
-        if (g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
-            (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
+        if (camp_dormant(c))
             return;
         // Camps attack the nearest champion, including our enemy. Avoid taking
         // aggro from the current tank (a unit nearer the camp than the tile);
@@ -1864,7 +1857,7 @@ float Bot::incoming(vec2 tile, bool include_camps) const {
         if (nearest < distance(tile, c.position))
             return;
         if (nearest == distance(tile, c.position)) {
-            damage += c.strength * camp_mitigation / float(1 + threat_ties[k]);
+            damage += damage::shared_hit(c.strength * camp_mitigation, threat_ties[k]);
             return;
         }
         damage += c.strength * camp_mitigation;
@@ -1914,11 +1907,7 @@ float Bot::incoming_scan(vec2 tile) const {
                 scan_stamp[t] = scan_serial;
                 scan_near[t] = std::numeric_limits<int>::min(); // Strikes nobody.
                 const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
-                if (c.health <= 0)
-                    continue;
-                const auto &g = groups[c.group];
-                if (g.attacked < int(round) - rules::settings().camp_sleep_time - 1 &&
-                    (g.health >= g.max_health || (asleep_known && camp_asleep[tile_index(c.position)])))
+                if (c.health <= 0 || camp_dormant(c))
                     continue;
                 scan_near[t] = threat_target(t);
                 scan_hit[t] = c.strength * camp_mitigation;
@@ -1930,7 +1919,7 @@ float Bot::incoming_scan(vec2 tile) const {
             if (nearest < d)
                 continue;
             if (nearest == d)
-                damage += scan_hit[t] / float(1 + threat_ties[t]);
+                damage += damage::shared_hit(scan_hit[t], threat_ties[t]);
             else
                 damage += scan_hit[t];
         }
@@ -1960,19 +1949,19 @@ const Bot::ExitLanes &Bot::exit_packed() const {
             for (const auto &e : *list) {
                 if (e.health <= 0 || e.channel)
                     continue;
+                // Its terms for one walking out of its reach (damage.h):
+                // its first-round strike, its reset and dash ready as read;
+                // each ready slot's burst and its reach (a cast from where
+                // it stands, or after a walk when the spell allows one); a
+                // ready stun's reach.
                 const bool unseen = list == &ghosts;
                 const auto &kit = kit_of(e.champion(), e.type);
                 const unsigned ready = unseen ? 3u : e.slot_ready;
-                // Its strike next round (closing_tiles()), its reset and dash
-                // ready as read (an unseen one's counted ready).
                 bool reset = false;
                 for (unsigned k = 0; k < kit.spells.size(); ++k)
                     reset = reset || (ready >> k & 1 && kit.spells[k].kind == bc::ability_kind::attack_reset);
-                const int lunge = e.range + closing_tiles(e, reset, unseen || e.dash_wait == 0);
-                // Heart of Ruin's passive raises its spells as its hits
-                // (the strength reading already has it).
-                const float bonus =
-                    e.type == bc::champion_type::heart_of_ruin ? hor_bonus(e.health, e.max_health) : 1.0f;
+                const int lunge = damage::strike_reach(e, reset, unseen || e.dash_wait == 0);
+                const float bonus = damage::spell_bonus(e);
                 std::array<float, 2> burst{};
                 std::array<int, 2> reach{-1, -1};
                 int stun = -1;
@@ -1980,18 +1969,14 @@ const Bot::ExitLanes &Bot::exit_packed() const {
                     const auto &s = kit.spells[k];
                     if (!(ready >> k & 1))
                         continue;
-                    // A cast from where it stands, or after a walk when the
-                    // spell allows one.
-                    const int cast = int(s.range + s.radius) + (s.exclusive ? 0 : e.move_speed);
+                    const int cast = damage::cast_reach(s) + (s.exclusive ? 0 : e.move_speed);
                     if (s.kind == bc::ability_kind::attack_reset) {
                         burst[k] = e.strength;
                         reach[k] = lunge;
                         // Marcella's enhanced hit stuns.
                         if (s.enhanced)
                             stun = std::max(stun, lunge);
-                    } else if (s.kind == bc::ability_kind::damage || s.kind == bc::ability_kind::cc ||
-                               s.kind == bc::ability_kind::aoe_damage ||
-                               (s.kind == bc::ability_kind::dash && s.modifier > 0)) {
+                    } else if (damage::damaging(s)) {
                         burst[k] = e.focus * s.modifier * bonus;
                         reach[k] = cast;
                         if (s.duration > 0 && s.kind != bc::ability_kind::damage)
@@ -2000,8 +1985,8 @@ const Bot::ExitLanes &Bot::exit_packed() const {
                 }
                 packed.x[n] = e.position.x;
                 packed.y[n] = e.position.y;
-                packed.held[n] = e.stunned && e.stun_time > 0 ? e.stun_time : 0;
-                packed.reach[n] = std::max(e.range + e.move_speed, e.spell_reach);
+                packed.held[n] = damage::exit_held(e);
+                packed.reach[n] = damage::exit_reach(e);
                 packed.lunge[n] = lunge;
                 packed.reach_a[n] = reach[0];
                 packed.reach_b[n] = reach[1];
@@ -2064,7 +2049,10 @@ float Bot::exit_camps(vec2 tile) const {
                 for (std::size_t u = 0; u < unit_x.size(); ++u)
                     ties -= unit_x[u] == tile.x && unit_y[u] == tile.y;
             }
-            camp += c.strength * float(c.range - d + 1) / float(1 + ties); // The unit's camp share is the caller's.
+            // Its hits until we are out of its reach, shared as
+            // damage::shared_hit() shares one (the unit's camp share is the
+            // caller's).
+            camp += c.strength * float(damage::rounds_in_reach(c.range, d)) / float(1 + ties);
         }
     }
     return camp;
@@ -2250,13 +2238,11 @@ bool Bot::camp_dormant(const ObservedUnit &c) const {
 }
 
 bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
-    const int move = u.stunned && u.stun_time > 0 ? 0 : u.move_speed;
-    return distance(u.position, tile) <= std::max(u.range, u.spell_reach) + move;
+    return distance(u.position, tile) <= damage::act_reach(u, true);
 }
 
 float Bot::unit_power_of(const ObservedUnit &u, bool full) const {
-    return unit_power((full ? u.max_health : u.health) + u.shield + u.ready_shield, u.damage_rate,
-                      u.stunned && u.stun_time > 0 ? 0.0f : u.burst, u.healing_rate, u.mitigation);
+    return damage::power(u, full ? u.max_health : u.health, true);
 }
 
 std::pair<float, float> Bot::sides_at(vec2 tile) const {
@@ -2286,12 +2272,7 @@ float Bot::respawn_threat(vec2 at) const {
             continue;
         const auto &c = enemy_roster[i];
         const auto &kit = kit_of(c, c.champion_name());
-        int far = int(c.base_stats().base_attack_range);
-        for (const auto &spell : kit.spells)
-            if (spell.kind == bc::ability_kind::damage || spell.kind == bc::ability_kind::cc ||
-                spell.kind == bc::ability_kind::aoe_damage ||
-                (spell.kind == bc::ability_kind::dash && spell.modifier > 0))
-                far = std::max(far, int(spell.range + spell.radius));
+        const int far = damage::kit_reach(kit.spells, int(c.base_stats().base_attack_range));
         if (spawn_dist <= far + kit.move_speed)
             p += enemy_design_power[i];
     }

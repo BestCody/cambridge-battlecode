@@ -68,7 +68,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             // A one-hit kill on a harmless cluster outranked a hit on the elk
             // beside it, which struck through the whole clear.
             value += u.strength * useful / camp_rate;
-        if (cc && !(u.stunned && u.stun_time > 0) && !u.immune) {
+        if (cc && !damage::held(u) && !u.immune) {
             if (!u.enemy())
                 value += controls[&u - targets.data()];
             else if (effective < u.health + u.shield)
@@ -330,11 +330,12 @@ float Bot::basic_damage() const {
 }
 
 float Bot::stun_prevented(const ObservedUnit &e) const {
-    if ((e.stunned && e.stun_time > 0) || e.immune)
+    if (damage::held(e) || e.immune)
         return 0;
-    // One ability a turn: its hit, then a reset's second hit or its burst.
-    const float blow = e.strength + std::max(e.reset_ready ? e.strength : 0.0f, e.spell_burst);
-    const int reach = std::max(e.range, e.spell_reach) + e.move_speed;
+    // One ability a turn: its hit, then a reset's second hit or its burst
+    // (incoming()'s blow), anywhere it can act by its next turn.
+    const float blow = damage::blow(e);
+    const int reach = damage::act_reach(e, false);
     float most = distance(position, e.position) <= reach ? std::min(blow * mitigation, health) : 0.0f;
     for (const auto &a : allies)
         if (a.health > 0 && distance(a.position, e.position) <= reach)
@@ -346,12 +347,12 @@ float Bot::stun_follow_up(const ObservedUnit &e) const {
     // Teammates that finished this round cannot act before its next turn.
     float damage = 0;
     for (const auto &a : allies) {
-        if (a.health <= 0 || a.completed || (a.stunned && a.stun_time > 0) || a.channel)
+        if (a.health <= 0 || a.completed || damage::held(a) || a.channel)
             continue;
         const int d = distance(a.position, e.position);
         if (d <= a.range)
             damage += a.strength;
-        if (d <= std::max(a.range, a.spell_reach))
+        if (d <= damage::standing_reach(a))
             damage += a.burst;
     }
     return damage * e.mitigation;

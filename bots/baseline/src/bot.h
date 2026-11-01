@@ -331,20 +331,11 @@ float self_shield();
 // What a worker spent each turn on, for the time-use diagnostic.
 enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, farm, travel, count };
 
+// The damage model's building blocks (mechanics/damage.h).
+#include "mechanics/damage.h"
+
 // One bit per tile, row-major, from the engine's packed export of a mask: one
 // call of about 200 fuel, where testing tiles one by one costs a call each.
-// Tiles a unit closes on us in a round and still strikes: a melee one walks
-// and strikes in one turn, a ranged one cannot walk and shoot unless a ready
-// attack reset gives the shot back; a ready dash adds its tiles (in place of
-// the walk when no walk can follow it). One rule for the chase, the threat
-// bits and the exit lanes.
-inline int closing_tiles(const ObservedUnit &e, bool reset, bool dash) {
-    const int walk = e.range <= 1 || reset ? e.move_speed : 0;
-    if (!dash || e.dash_range <= 0)
-        return walk;
-    return e.dash_walks ? walk + e.dash_range : std::max(walk, int(e.dash_range));
-}
-
 class TileBits {
     // The export writes every byte, so the buffer is never zero-filled (memory
     // fills cost about a fuel per byte).
@@ -990,6 +981,10 @@ class Bot {
     void note_altar_locks();
     bool lock_wanted(std::size_t altar) const;
     void place_lock();
+    // This turn's champion is hurt (the health retreat's test, or already
+    // retreating): the fight plays XSquare's hurt mode, then the retreat walks
+    // it home when no fight acts.
+    bool hurt_turn = false;
     bool worker_pursue();
     bool home_after_capture(const CampGroup &g) const;
     // How far behind in the gem race we are, 0 (even or ahead) to 1: the gap

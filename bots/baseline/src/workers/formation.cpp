@@ -3,10 +3,8 @@
 #include <wasm_simd128.h>
 
 namespace {
-float observed_power(const ObservedUnit &unit) {
-    return unit_power(unit.health + unit.shield + unit.ready_shield, unit.damage_rate, unit.burst,
-                      unit.healing_rate, unit.mitigation);
-}
+// A stunned ally keeps its burst here (sides_at() counts none).
+float observed_power(const ObservedUnit &unit) { return damage::power(unit, unit.health, false); }
 } // namespace
 
 float Bot::team_average_power() const {

@@ -102,7 +102,7 @@ void Bot::record_life() {
     life.nearest_enemy = -1;
     for (const auto &enemy : enemies) {
         const int d = distance(position, enemy.position);
-        if (d <= std::max(enemy.range, enemy.spell_reach) + enemy.move_speed)
+        if (d <= damage::act_reach(enemy, false))
             ++life.enemies_near;
         if (life.nearest_enemy < 0 || d < life.nearest_enemy)
             life.nearest_enemy = d;

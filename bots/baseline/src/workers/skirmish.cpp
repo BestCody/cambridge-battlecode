@@ -103,8 +103,12 @@ bool Bot::worker_skirmish() {
                     round, id(bc::self()), int(type), health, pool, risk.damage, risk.margin, gems, int(kill),
                     int(finish), int(too_dangerous), int(overridden));
     });
+    // Hurt, the way out is home: a step out of reach left our hurt champions
+    // hovering at the edge of the enemies' bursts (dashes and range-4 spells
+    // reach past "can hit next turn"), dying 10.6% of such turns against
+    // 1.5% walking home.
     if (too_dangerous && !overridden)
-        return leave_fight(victim.position);
+        return hurt_turn ? worker_escape() : leave_fight(victim.position);
     // The fight, as XSquare's open Battlecode micro decides it (2022-2024
     // winners'; most top teams ran a copy): no fight-or-flee rule and no
     // aggression factor, but every tile we can end on, scored each turn
@@ -141,6 +145,10 @@ bool Bot::worker_skirmish() {
                                                         spells[i].kind == bc::ability_kind::aoe_damage ||
                                                         spells[i].kind == bc::ability_kind::dash))))
             nothing_ready = false;
+    // Team A starts odd rounds, team B even ones (the starting team swaps
+    // each round; A acts first in round one).
+    static const bool team_a = read_champion(bc::self()).team == 0;
+    const bool our_team_started = team_a == (round % 2 == 1);
     // Each side's units once, as sides_at() counts them, for every tile.
     struct Side {
         const ObservedUnit *unit;
@@ -151,11 +159,21 @@ bool Bot::worker_skirmish() {
     for (const auto *list : {&enemies, &ghosts})
         for (const auto &e : *list)
             if (e.health > 0 && !e.channel && their_count < theirs_list.size())
-                theirs_list[their_count++] = {&e, unit_power_of(e, enemy_spawn_tile[tile_index(e.position)])};
+                // A stunned enemy cannot act before our next turn (XSquare's
+                // StunManager) only in a round its team started: in one ours
+                // started, its skipped turn is later this round and its next
+                // comes first in the next (teams alternate, the starting team
+                // swaps each round). Counted as harmless in ours, it struck
+                // the champion the rule kept beside it in 11 of 12 cases.
+                theirs_list[their_count++] = {&e, damage::held(e) && !our_team_started
+                                                      ? 0.0f
+                                                      : unit_power_of(e, enemy_spawn_tile[tile_index(e.position)])};
     for (const auto &a : allies)
         if (a.health > 0 && !a.channel && our_count < ours_list.size())
             ours_list[our_count++] = {&a, unit_power_of(a, false)};
-    const float own = own_power(), life = health + self_shield();
+    // Hurt, our champion counts none of its own strength (XSquare's
+    // severelyHurt: a hurt unit adds no damage to its side).
+    const float own = hurt_turn ? 0.0f : own_power(), life = health + self_shield();
     // Each ready spell's damage to a champion (reset: a second attack; dash:
     // the engine's figure), read once, and whether its hit stuns, as the
     // executors count one (attack_combo(): a control or area spell with a
@@ -210,7 +228,7 @@ bool Bot::worker_skirmish() {
                 const auto &u = *list[k].unit;
                 l.x[k] = u.position.x;
                 l.y[k] = u.position.y;
-                l.reach[k] = std::max(u.range, u.spell_reach) + (u.stunned && u.stun_time > 0 ? 0 : u.move_speed);
+                l.reach[k] = damage::standing_reach(u) + damage::move_by_next(u, true); // act_reach()
             } else if (k % 4) {
                 l.x[k] = l.y[k] = far_off;
                 l.reach[k] = -1;
@@ -281,7 +299,7 @@ bool Bot::worker_skirmish() {
         stun_kill = kill_value();
         for (std::size_t k = 0; k < near_count; ++k) {
             const auto &e = *near[k];
-            stunnable[k] = !(e.stunned && e.stun_time > 0) && !e.immune;
+            stunnable[k] = !damage::held(e) && !e.immune;
             spared[k] = stun_prevented(e);
             window[k] = stun_follow_up(e);
         }
@@ -472,6 +490,22 @@ bool Bot::worker_skirmish() {
             s.safety = 1;
         else
             s.safety = 2;
+        // XSquare's lone unit: no teammate that can act on the tile by next
+        // turn (a fixed 3 tiles left out ranged teammates 4 away, already on
+        // our side) and two or more enemies that can.
+        if (s.safety == 2 && acting(our_lanes, our_count, tile) == 0) {
+            unsigned acting_enemies = 0;
+            for (std::uint32_t m = acting(their_lanes, their_count, tile); m; m &= m - 1)
+                acting_enemies += theirs_list[__builtin_ctz(m)].power > 0;
+            if (acting_enemies >= 2)
+                s.safety = 1;
+        }
+        // Hurt: the safest tile, farthest from the enemies (his alwaysInRange,
+        // no allies key); a kill still counts.
+        if (hurt_turn) {
+            s.dealt = 0;
+            s.ally = 0;
+        }
         // The longest reach from the nearest enemy while we strike from it and
         // it stays in our attack range there (XSquare's inRange: in range,
         // the farthest; out of it, closer), else closer to the victim; with
@@ -480,8 +514,8 @@ bool Bot::worker_skirmish() {
         // three tiles off, then spent its next move walking back (00ambush
         // r369-377, three of ours on one enemy at 710 of 2400): the micro's
         // own hit-and-runs went from 6 to 30 a game.
-        s.in_range = nearest != std::numeric_limits<int>::max() && (nothing_ready || nearest <= range);
-        s.reach = s.strike && s.in_range ? nearest : -distance(tile, victim.position);
+        s.in_range = nearest != std::numeric_limits<int>::max() && (nothing_ready || hurt_turn || nearest <= range);
+        s.reach = (s.strike || hurt_turn) && s.in_range ? nearest : -distance(tile, victim.position);
         return s;
     };
     // The fight is ours to play when an enemy in view can act on our tile,
@@ -522,6 +556,12 @@ bool Bot::worker_skirmish() {
         }
     }
     engaged = engaged || (here.strike && !nothing_ready);
+    // Hurt, a fight only for a kill this turn: otherwise the retreat walks us
+    // home. Hurt champions that stood on the safest tile within a step when
+    // an enemy could hit them (XSquare's units back off a tile at a time,
+    // cheap to lose) died 1.7 times more a game.
+    if (hurt_turn)
+        engaged = best_score.kills > 0;
     debug_block({
         std::printf("MICRO r=%u id=%u type=%d engaged=%d here=%d/%d/%d stand=%d,%d %d/%d/%d taken=%.0f ours=%.0f "
                     "theirs=%.0f\n",
@@ -549,7 +589,7 @@ bool Bot::worker_skirmish() {
     // camp in 49% of rounds. Held by the micro instead, ours stopped
     // clearing as soon as an enemy came near (captures by r300 8.8 to 7.5;
     // 65% of the micro's turns had no strike from any tile in reach).
-    if (here.safety == 2 && !(here.strike && !nothing_ready) && target >= 0 &&
+    if (!hurt_turn && here.safety == 2 && !(here.strike && !nothing_ready) && target >= 0 &&
         groups[target].attacked >= int(round) - 2)
         return false;
     if (stand != position) {

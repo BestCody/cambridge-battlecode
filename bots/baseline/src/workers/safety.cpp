@@ -9,9 +9,7 @@ bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
     if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(at)])
         return false;
     // A stunned enemy loses its next move, so only its standing reach counts.
-    const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
-    const int reach = std::max(enemy.range, enemy.spell_reach) + move + policy::worker_danger_margin;
-    return distance(tile, at) <= reach;
+    return distance(tile, at) <= damage::act_reach(enemy, true, policy::worker_danger_margin);
 }
 
 void Bot::worker_track_sightings() {
@@ -23,9 +21,7 @@ void Bot::worker_track_sightings() {
     for (const auto &enemy : enemies) {
         if (enemy.health <= 0 || enemy.channel || enemy_spawn_tile[tile_index(enemy.position)])
             continue;
-        const int move = enemy.stunned && enemy.stun_time > 0 ? 0 : enemy.move_speed;
-        const v128_t reach =
-            wasm_i32x4_splat(std::max(enemy.range, enemy.spell_reach) + move + policy::worker_danger_margin);
+        const v128_t reach = wasm_i32x4_splat(damage::act_reach(enemy, true, policy::worker_danger_margin));
         const v128_t x = wasm_i32x4_splat(enemy.position.x), y = wasm_i32x4_splat(enemy.position.y);
         for (std::size_t k = 0; k < camp_lanes; k += 4) {
             const v128_t apart = wasm_i32x4_max(wasm_i32x4_abs(wasm_i32x4_sub(x, wasm_v128_load(&camp_x[k]))),
@@ -167,8 +163,7 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
         if (!enemy_threatens(enemy, at, tile))
             return;
         ++threats;
-        const int reach = std::max(enemy.range, enemy.spell_reach) + enemy.move_speed;
-        clearance = std::min(clearance, distance(tile, at) - reach);
+        clearance = std::min(clearance, distance(tile, at) - damage::act_reach(enemy, false));
     };
     for (const auto &enemy : enemies)
         count(enemy, enemy.position);
@@ -178,8 +173,6 @@ std::pair<int, int> Bot::worker_danger(vec2 tile) const {
 }
 
 namespace {
-int closing(const ObservedUnit &e, bool dash) { return closing_tiles(e, e.reset_ready, dash); }
-
 // Our dash: tiles, rounds until usable (-1: no dash), cooldown, and whether a
 // walk can follow it.
 struct OwnDash {
@@ -212,9 +205,10 @@ std::uint32_t Bot::threat_bits() const {
     std::uint32_t bits = 0;
     for (std::size_t k = 0; k < enemies.size(); ++k) {
         const auto &e = enemies[k];
-        if (e.health <= 0 || e.channel || (e.stunned && e.stun_time > 0) || enemy_spawn_tile[tile_index(e.position)])
+        if (e.health <= 0 || e.channel || damage::held(e) || enemy_spawn_tile[tile_index(e.position)])
             continue;
-        int reach = e.range + closing(e, e.dash_wait == 0);
+        // Its strike with its reset and dash as read, or a ready burst.
+        int reach = damage::strike_reach(e, e.reset_ready, e.dash_wait == 0);
         if (e.spell_burst > 0)
             reach = std::max(reach, e.spell_reach);
         if (distance(position, e.position) <= reach)
@@ -273,12 +267,12 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
             const auto &a = allies[k];
             if (!(staying >> k & 1))
                 continue;
-            if (distance(a.position, e.position) <= a.range + closing(a, false))
+            if (distance(a.position, e.position) <= damage::strike_reach(a, a.reset_ready, false))
                 rate += a.damage_rate;
         }
         // Its ready burst lands in the first round (race() counts it too).
         foes.push_back({(e.health + e.shield + heal) / (rate * e.mitigation), e.damage_rate * mitigation,
-                        (e.stunned && e.stun_time > 0 ? 0.0f : e.burst) * mitigation});
+                        damage::ready_burst(e, true) * mitigation});
     }
     if (foes.empty())
         return false;
@@ -329,12 +323,12 @@ bool Bot::race(vec2 goal, int arrive, bool use_dash, float pool) {
     for (const auto &e : enemies) {
         if (e.health <= 0 || e.channel || enemy_spawn_tile[tile_index(e.position)])
             continue;
-        const int reach = std::max(e.range, e.spell_reach);
+        const int reach = damage::standing_reach(e);
         const int mark = distance(e.position, position);
-        runners.push_back({e.position.x, e.position.y, e.range, reach, reach + recall * e.move_speed, closing(e, false),
-                           closing(e, true), e.move_speed, e.dash_range, e.dash_cooldown,
-                           e.dash_range > 0 ? int(e.dash_wait) : -1, mark, e.strength, e.burst,
-                           e.stunned && e.stun_time > 0});
+        runners.push_back({e.position.x, e.position.y, e.range, reach, reach + recall * e.move_speed,
+                           damage::closing_tiles(e, e.reset_ready, false), damage::closing_tiles(e, e.reset_ready, true),
+                           e.move_speed, e.dash_range, e.dash_cooldown, e.dash_range > 0 ? int(e.dash_wait) : -1, mark,
+                           e.strength, e.burst, damage::held(e)});
         if (e.dash_range > 0)
             cycle = std::max(cycle, int(e.dash_cooldown));
     }
@@ -439,7 +433,7 @@ Bot::Chase::Mode Bot::chase_mode() {
         if (e.health <= 0 || e.channel || enemy_spawn_tile[tile_index(e.position)])
             continue;
         in_view |= 1u << enemy_slot[k];
-        if (e.stunned && e.stun_time > 0)
+        if (damage::held(e))
             stunned |= 1u << enemy_slot[k];
     }
     // Health and shield, read only when a check or a decision needs them.

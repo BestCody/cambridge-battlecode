@@ -115,7 +115,7 @@ bool Bot::attack_combo(bool escaping) {
             if (range <= 1)
                 reach_k = distance(position, e.position) > range ? float(range) : -1.0f;
             else
-                reach_k = !e.immune && (!e.stunned || e.stun_time <= 0) ? std::max(reset_reach, control_reach)
+                reach_k = !e.immune && !damage::held(e) ? std::max(reset_reach, control_reach)
                                                                          : reset_reach;
             // No distance is negative, so a negative reach brings none within.
             if (reach_k >= 0) {
@@ -342,7 +342,7 @@ bool Bot::attack_combo(bool escaping) {
         foe.mitigation = e.mitigation;
         foe.recoil = e.retaliation() * mitigation;
         foe.kill_score = kill_value();
-        foe.stun_ok = (!e.stunned || e.stun_time <= 0) && !e.immune;
+        foe.stun_ok = !damage::held(e) && !e.immune;
         foe.prevented = stun_prevented(e);
         foe.window = stun_follow_up(e);
         foe.siblings = 0;
@@ -962,7 +962,7 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 if (fighting_champions) {
                     if (dealt >= unit.health + unit.shield)
                         extra = kill_value();
-                    else if (!unit.immune && !(unit.stunned && unit.stun_time > 0))
+                    else if (!unit.immune && !damage::held(unit))
                         extra = stun_value(unit, unit.health + unit.shield - dealt);
                 }
                 const bool twin = fighting_champions && dealt >= unit.health + unit.shield &&

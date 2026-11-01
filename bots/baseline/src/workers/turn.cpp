@@ -147,13 +147,6 @@ void Bot::play_worker_turn() {
         worker_tribute();
         return;
     }
-    // Health recovery precedes fighting, capture, bank travel and shopping.
-    // Empty bags and a nearly cleared camp never waive this obligation.
-    retreating |= health_recovery_needed();
-    if (retreating && worker_escape()) {
-        note_activity(at_spawn ? Activity::heal : Activity::retreat);
-        return;
-    }
     if (!state.intersects(bc::champion_state::can_move | bc::champion_state::can_attack |
                           bc::champion_state::can_cast)) {
         // A stunned champion still reports the fight it is caught in: help
@@ -178,9 +171,27 @@ void Bot::play_worker_turn() {
         worker_tribute();
         return;
     }
+    // XSquare's order: the fight first, a hurt champion playing it in hurt
+    // mode (no strength of its own on our side, the safest tile, a fight only
+    // when an enemy can hit it or it kills), then the walk home. Our health
+    // retreat ran first: it walked away from enemies we were finishing (a
+    // stunned Heart of Ruin at 10 hp, ours at 473 of 1000, 00galaxy). Moved
+    // without the hurt mode, our deaths doubled.
+    hurt_turn = retreating || health_recovery_needed();
+    // Hurt, the champion is retreating from now on, whoever plays the turn:
+    // when the fight took it, the retreat was never latched and the next turn
+    // played as if healthy. Hurt, no chase.
+    retreating = retreating || hurt_turn;
     worker_update_formation();
-    if (worker_skirmish() || worker_pursue()) {
+    if (worker_skirmish() || (!hurt_turn && worker_pursue())) {
         note_activity(Activity::fight);
+        return;
+    }
+    // Health recovery precedes capture, bank travel and shopping. Empty bags
+    // and a nearly cleared camp never waive this obligation.
+    retreating |= hurt_turn;
+    if (retreating && worker_escape()) {
+        note_activity(at_spawn ? Activity::heal : Activity::retreat);
         return;
     }
     skirmish_declined = int(round); // A pursuit declined acts on nothing.

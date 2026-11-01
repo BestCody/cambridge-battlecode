@@ -291,7 +291,7 @@ bool Bot::health_recovery_needed() const {
     float reaching = 0;
     for (const auto &c : camps)
         if (c.strength > 0 && distance(position, c.position) <= c.range && !camp_dormant(c)) {
-            out = std::max(out, c.range - distance(position, c.position) + 1);
+            out = std::max(out, damage::rounds_in_reach(c.range, distance(position, c.position)));
             reached = true;
             ours = ours && group_at(c.position) == target;
             reaching += c.strength;
@@ -422,8 +422,7 @@ void Bot::retreat_to_spawn() {
         auto clearance = [&](vec2 tile) {
             int value = std::numeric_limits<int>::max();
             for (const auto &enemy : enemies)
-                value = std::min(value,
-                                 distance(tile, enemy.position) - std::max(enemy.range, enemy.spell_reach));
+                value = std::min(value, distance(tile, enemy.position) - damage::standing_reach(enemy));
             for (const auto &camp : camps)
                 if (camp.strength > 0)
                     value = std::min(value, distance(tile, camp.position) - camp.range);
