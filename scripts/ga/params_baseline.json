@@ -31,8 +31,6 @@
  {"name": "ghost_lifetime", "type": "int", "lo": 1, "hi": 6, "default": 5},
  {"name": "worker_sighting_memory", "type": "int", "lo": 5, "hi": 60, "default": 9},
  {"name": "bank_nearby", "type": "int", "lo": 1, "hi": 8, "default": 1},
- {"name": "health_treasure_damage", "type": "float", "lo": 200.0, "hi": 1200.0, "default": 891.1},
- {"name": "health_pull_damage", "type": "float", "lo": 300.0, "hi": 1600.0, "default": 811.94},
  {"name": "lock_memory", "type": "int", "lo": 30, "hi": 300, "default": 248},
  {"name": "lock_range", "type": "int", "lo": 1, "hi": 4, "default": 2},
  {"name": "dash_travel_scale", "type": "float", "lo": 0.5, "hi": 1.0, "default": 0.69475},

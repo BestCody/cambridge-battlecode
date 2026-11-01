@@ -133,18 +133,6 @@ inline constexpr int bank_nearby = 1;
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
-// A champion that has lost this much health to enemy champions before its
-// first shard opens with its first emblem's Health version: on engine 2.0.0
-// willow best girl's Heart of Ruin takes Hunter-Health in 47 of 65 games at
-// 500 or more and Hunter-Focus in 38 of 47 under 250, its Marcella
-// Prospector-Health in 31 of 47 at 500 or more. Its Vendetta and Willow do
-// not switch.
-inline constexpr float health_treasure_damage = 891.1f;
-// A champion that lost this much health to enemy champions over the last
-// 100-150 rounds starts its build's next Health emblem when it starts a new
-// one (next_item()): willow best girl's Health share of new emblems is
-// 61-64% after 800-1199 and 71-77% after more (30-31% under 150).
-inline constexpr float health_pull_damage = 811.94f;
 // Altar locks, as willow best girl places them (about 4 a game): a champion
 // buys one at spawn when an altar wants one (lock_wanted(): the home altars,
 // or one an enemy banked at within lock_memory rounds) and places it when it

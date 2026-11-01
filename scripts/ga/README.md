@@ -58,7 +58,7 @@ Both finalists are in `bots/` since 5a330e7, and the gene defaults in the
 `params_*.json` files are now those values, so the next run's control is the
 current bot. Genes that measurably move fitness (within-generation
 correlation, |z| > 2): baseline 8 of 42 (`late_gold_value`,
-`step_incoming_weight`, `health_pull_damage`, `cohesion_hazard`,
+`step_incoming_weight`, `health_pull_damage` (since removed with the Health switches), `cohesion_hazard`,
 `cohesion_max_spacing`, `travel_hazard`, `worker_sighting_memory`,
 `pursue_health`), test-bot 16 of 58 (led by `partner_penalty`,
 `retreat_health`, `worker_sighting_penalty`, `prism_safe_gem_factor`,

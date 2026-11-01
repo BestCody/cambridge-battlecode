@@ -61,11 +61,6 @@ void Bot::play_worker_turn() {
         shared.set_leaving(slot, false);
     }
     if (!me.is_alive()) {
-        // A death where an enemy champion could hit us was theirs.
-        if (!death_counted && threatened_last)
-            champion_damage += before;
-        death_counted = true;
-        threatened_last = false;
         note_activity(Activity::dead);
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
@@ -114,10 +109,6 @@ void Bot::play_worker_turn() {
     // sight did.
     if (hit)
         note_hidden_hit(before - health);
-    death_counted = false;
-    if (hit && (attacked || threatened_last))
-        champion_damage += before - health;
-    threatened_last = attacked;
     if (state.contains(bc::champion_state::submitting_gems)) {
         note_activity(Activity::bank);
         publish(TeamMemory::bank);

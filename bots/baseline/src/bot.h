@@ -633,14 +633,6 @@ class Bot {
     LifeSnapshot last_life;
     // Shards this champion has bought, by item type, for its build order.
     std::array<unsigned, static_cast<unsigned>(bc::item_type::count)> bought{};
-    // Health lost while an enemy champion could hit us (a death counts what
-    // was left), which picks the first emblem's stat; whether one could last
-    // turn, and whether this death is counted.
-    float champion_damage = 0;
-    // champion_damage at the last three 50-round marks (buy_equipment()).
-    std::array<float, 3> damage_marks{};
-    int damage_mark_round = 0;
-    bool threatened_last = false, death_counted = false;
     // Per camp group: last round this worker saw an enemy close to it.
     std::vector<int> enemy_seen_near;
     std::array<unsigned, static_cast<unsigned>(Activity::count)> activity_turns{};

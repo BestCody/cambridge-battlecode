@@ -7,9 +7,7 @@ using Item = bc::item_type;
 // 2026-10-29): each emblem in the order of its median first shard, kept
 // when about two in five of the games finish it (comments: median rounds of
 // the first and fifth shard, games finished), and the shard bought most
-// repeated after. The first emblem is its Health version for a champion
-// enemy champions have hurt (policy::health_treasure_damage). Whole
-// emblems, since only a finished emblem gives its passive. Every shard adds
+// repeated after. Whole emblems, since only a finished emblem gives its passive. Every shard adds
 // one growth of its stat; five identical shards combine into an emblem
 // automatically.
 struct BuildStep {
@@ -21,10 +19,10 @@ struct Build {
     unsigned size;
     Item repeat;
 };
-Build build_for(bc::champion_type type, bool hurt) {
+Build build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::vesper_vale:
-            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_strength, 5}, // r114-129, 15/15
+            return {{{{Item::treasure_shard_of_strength, 5},        // r114-129, 15/15
                       {Item::power_shard_of_strength, 5},       // r129-283, 15/15
                       {Item::durability_shard_of_health, 5},    // r301-283, 13/15
                       {Item::prospector_shard_of_strength, 5},  // r333-430, 9/15
@@ -34,7 +32,7 @@ Build build_for(bc::champion_type type, bool hurt) {
                     7,
                     Item::bruiser_shard_of_strength};           // 38 a game
         case bc::champion_type::heart_of_ruin:
-            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_focus, 5}, // r159-318, 15/15
+            return {{{{Item::treasure_shard_of_focus, 5},           // r159-318, 15/15
                       {Item::power_shard_of_focus, 5},          // r379-532, 14/15
                       {Item::home_shard_of_health, 5},          // r527-570, 10/15
                       {Item::durability_shard_of_health, 5},    // r629-710, 8/15
@@ -43,7 +41,7 @@ Build build_for(bc::champion_type type, bool hurt) {
                     6,
                     Item::bruiser_shard_of_focus};              // 3.7 a game
         case bc::champion_type::vendetta:
-            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_strength, 5}, // r140-402, 12/14
+            return {{{{Item::treasure_shard_of_strength, 5},        // r140-402, 12/14
                       {Item::durability_shard_of_health, 5},    // r468-648, 10/14
                       {Item::jungle_shard_of_health, 5},        // r682-796, 8/14
                       {Item::monster_shard_of_strength, 5},     // r716-753, 6/14
@@ -51,7 +49,7 @@ Build build_for(bc::champion_type type, bool hurt) {
                     5,
                     Item::bruiser_shard_of_strength};           // 5.2 a game
         case bc::champion_type::marcella:
-            return {{{{hurt ? Item::treasure_shard_of_health : Item::treasure_shard_of_focus, 5}, // r95-182, 16/16
+            return {{{{Item::treasure_shard_of_focus, 5},           // r95-182, 16/16
                       {Item::durability_shard_of_health, 5},    // r190-276, 16/16
                       {Item::prospector_shard_of_focus, 5},     // r280-408, 12/16
                       {Item::monster_shard_of_focus, 5},        // r345-421, 14/16
@@ -70,36 +68,21 @@ Build build_for(bc::champion_type type, bool hurt) {
     }
 }
 using Bought = std::array<unsigned, static_cast<unsigned>(Item::count)>;
-// Every sixth item is a family's Health shard.
-bool health_shard(Item item) { return static_cast<unsigned>(item) % 6 == 4; }
-// The next emblem of the build order, or, when pressed (enemy champions hurt
-// us lately), its next Health one: willow best girl starts a Health emblem in
-// 30-31% of new emblems after under 150 champion damage in the 150 rounds
-// before, 51-59% after 500-799 and 71-77% after 1200+ (both samples); its
-// Vesper took Durability-Health after its Treasure and Jungle Strength, its
-// Prism Jungle-Health before Monster-Focus in 16 of 40 games. An emblem begun
-// is finished first: only a finished one gives its passive.
-Item next_item(bc::champion_type type, bool hurt, bool pressed, const Bought &bought) {
-    const auto build = build_for(type, hurt);
-    const auto left = [&](unsigned i) { return bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count; };
+// The next emblem of the build order, in its order whatever the damage
+// taken: switching to a Health emblem when hurt (willow best girl's habit)
+// put our Marcella's first 300 gold into Health, her spell at 120 to round
+// 900 in 15 of 100 ranked games (13 lost); without the switches 95/140
+// against 86 (paired 16:7, 4M fuel). An emblem begun is finished first:
+// only a finished one gives its passive.
+Item next_item(bc::champion_type type, const Bought &bought) {
+    const auto build = build_for(type);
     for (unsigned i = 0; i < build.size; ++i)
-        if (left(i) && bought[static_cast<unsigned>(build.steps[i].item)] > 0)
+        if (bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count)
             return build.steps[i].item;
-    unsigned first = 0;
-    while (first < build.size && !left(first))
-        ++first;
-    if (first == build.size)
-        return build.repeat;
-    const Item item = build.steps[first].item;
-    if (!pressed || health_shard(item))
-        return item;
-    for (unsigned i = first + 1; i < build.size; ++i)
-        if (left(i) && health_shard(build.steps[i].item))
-            return build.steps[i].item;
-    return item;
+    return build.repeat;
 }
-unsigned step_left(bc::champion_type type, bool hurt, const Bought &bought, Item item) {
-    const auto build = build_for(type, hurt);
+unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
+    const auto build = build_for(type);
     for (unsigned i = 0; i < build.size; ++i)
         if (build.steps[i].item == item && bought[static_cast<unsigned>(item)] < build.steps[i].count)
             return build.steps[i].count - bought[static_cast<unsigned>(item)];
@@ -160,22 +143,11 @@ void Bot::buy_equipment() {
         if (!carrying_lock && wanted && me.gold_count() >= bc::consumable_type::altar_lock.cost())
             carrying_lock = bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[1]) == 0;
     }
-    // The first emblem's stat is chosen at its first shard and kept.
-    const auto shards = [&](Item item) { return bought[static_cast<unsigned>(item)]; };
-    const Item hurt_first = build_for(type, true).steps[0].item, calm_first = build_for(type, false).steps[0].item;
-    const bool hurt =
-        shards(hurt_first) > 0 || (!shards(calm_first) && champion_damage >= policy::health_treasure_damage);
-    // Champion damage over the last 100-150 rounds, from marks every 50.
-    if (int(round) >= damage_mark_round + 50) {
-        damage_marks = {damage_marks[1], damage_marks[2], champion_damage};
-        damage_mark_round = int(round);
-    }
-    const bool pressed = champion_damage - damage_marks[0] >= policy::health_pull_damage;
     while (can_shop) {
-        const auto item = next_item(type, hurt, pressed, bought);
+        const auto item = next_item(type, bought);
         if (me.gold_count() < item.cost())
             break;
-        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, hurt, bought, item));
+        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item));
         if (!count || !me.can_buy(item, count))
             break;
         me.buy(item, count);
