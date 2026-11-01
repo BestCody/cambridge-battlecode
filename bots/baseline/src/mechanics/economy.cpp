@@ -160,8 +160,12 @@ void Bot::buy_equipment() {
     // shard's gold at rounds 18-38 and delayed it a trip; bought on every
     // map, its 10 gold split games from the crystal-free ones where no hop
     // ever paid.
-    const bool detour_crystal = type == bc::champion_type::vesper_vale && opening.detour;
-    if (can_shop && alive && (hops_useful || detour_crystal) && !carrying_crystal() &&
+    // Or where a leg out of the group we farm (DraftPlan::leg_saving) saves
+    // more rounds than a hop costs: walls between camp areas that no hop
+    // from spawn crosses.
+    const bool leg_crystal = target >= 0 && draft_measured() &&
+                             float(opening.leg_rounds(std::size_t(target))) > hop_threshold();
+    if (can_shop && alive && (hops_useful || leg_crystal) && !carrying_crystal() &&
         me.gold_count() >= bc::consumable_type::tp_crystal.cost())
         bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[0]);
     // Item stats change only when items do.

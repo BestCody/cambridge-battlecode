@@ -662,6 +662,71 @@ void hop_walks(const std::uint16_t *walk, const bc::bitboard &open_terrain, int 
                     std::size_t(w) * 2);
 }
 
+int hop_leg(const std::uint16_t *from, const std::uint16_t *to, int w, int h, int x0, int y0, int x1, int y1) {
+    // Over the tiles of the box x0..x1, y0..y1 (a leg's ends and a margin:
+    // a hop that saves rounds runs near the straight line), the walk to the
+    // tile from `from`'s roots, the channel, and the least of `to` within
+    // crystal_range of it (the best landing; a closed tile is unreachable in
+    // `to`). Along each row of the box and within the range of it, only the
+    // box's columns and the range either side are copied (row_window_min()
+    // copies whole rows: 49 fuel a box tile on 01big-world); the window's
+    // least is then taken along the row and down the columns, eight tiles
+    // a SIMD step. `from` is read up to seven entries past its last tile
+    // (the caller pads it).
+    constexpr std::uint16_t far = bc::distance_field::unreachable;
+    constexpr int reach = rules::crystal_range;
+    static_assert(reach == 3, "the row views below are a 7-tile window");
+    x0 = std::max(0, x0), y0 = std::max(0, y0), x1 = std::min(w - 1, x1), y1 = std::min(h - 1, y1);
+    const int first_row = std::max(0, y0 - reach), last_row = std::min(h - 1, y1 + reach);
+    // The box's columns, a multiple of eight wide (lanes past x1 are real
+    // tiles or masked below), and its rows' window least, row by row.
+    const int span = (x1 - x0 + 8) & ~7, rows_used = last_row - first_row + 1;
+    static std::vector<std::uint16_t> segment, near;
+    if (segment.size() < std::size_t(span + 2 * reach + 8))
+        segment.resize(std::size_t(span + 2 * reach + 8));
+    if (near.size() < std::size_t(span) * std::size_t(rows_used))
+        near.resize(std::size_t(span) * std::size_t(rows_used));
+    std::uint16_t *seg = segment.data();
+    for (int y = first_row; y <= last_row; ++y) {
+        // to[y][x0 - reach .. x0 + span + reach), far off the map.
+        const int left = x0 - reach, right = x0 + span + reach;
+        const int copy_from = std::max(0, left), copy_to = std::min(w, right);
+        std::fill(seg, seg + (copy_from - left), far);
+        std::memcpy(seg + (copy_from - left), to + std::size_t(y) * std::size_t(w) + std::size_t(copy_from),
+                    std::size_t(copy_to - copy_from) * 2);
+        std::fill(seg + (copy_to - left), seg + (right - left) + 8, far);
+        std::uint16_t *out = near.data() + std::size_t(y - first_row) * std::size_t(span);
+        for (int x = 0; x < span; x += 8) {
+            v128_t least = wasm_v128_load(seg + x);
+            for (int k = 1; k <= 2 * reach; ++k)
+                least = wasm_u16x8_min(least, wasm_v128_load(seg + x + k));
+            wasm_v128_store(out + x, least);
+        }
+    }
+    const v128_t channel = wasm_u16x8_splat(std::uint16_t(rules::settings().tp_crystal_time)),
+                 far8 = wasm_u16x8_splat(far), lane = wasm_u16x8_make(0, 1, 2, 3, 4, 5, 6, 7);
+    v128_t best = far8;
+    for (int y = y0; y <= y1; ++y) {
+        const int top = std::max(0, y - reach), bottom = std::min(h - 1, y + reach);
+        for (int x = 0; x < span; x += 8) {
+            v128_t least = wasm_v128_load(near.data() + std::size_t(top - first_row) * std::size_t(span) + std::size_t(x));
+            for (int k = top + 1; k <= bottom; ++k)
+                least = wasm_u16x8_min(
+                    least, wasm_v128_load(near.data() + std::size_t(k - first_row) * std::size_t(span) + std::size_t(x)));
+            const v128_t out = wasm_v128_load(from + std::size_t(y) * std::size_t(w) + std::size_t(x0 + x));
+            v128_t total = wasm_u16x8_add_sat(wasm_u16x8_add_sat(out, channel), least);
+            // Lanes past the map's row are the next row's tiles.
+            total = wasm_v128_bitselect(total, far8,
+                                        wasm_u16x8_lt(lane, wasm_u16x8_splat(std::uint16_t(w - (x0 + x)))));
+            best = wasm_u16x8_min(best, total);
+        }
+    }
+    best = wasm_u16x8_min(best, wasm_i16x8_shuffle(best, best, 4, 5, 6, 7, 0, 1, 2, 3));
+    best = wasm_u16x8_min(best, wasm_i16x8_shuffle(best, best, 2, 3, 0, 1, 6, 7, 4, 5));
+    best = wasm_u16x8_min(best, wasm_i16x8_shuffle(best, best, 1, 0, 3, 2, 5, 4, 7, 6));
+    return int(wasm_u16x8_extract_lane(best, 0));
+}
+
 int altar_hop_walk(vec2 altar, const std::uint16_t *walk, const std::uint16_t *hop, int w, int h) {
     // The least over the altar's tribute tiles, where shorter than the walk.
     const int submit = int(rules::settings().submit_gems_range);

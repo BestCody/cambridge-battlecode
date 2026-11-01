@@ -205,6 +205,9 @@ inline constexpr float step_incoming_weight = 0.038261f;
 // +3 on dense maps and -3 on sparse.
 inline constexpr float cohesion_hazard = 0.0f;
 inline constexpr float cohesion_max_spacing = 29.565f;
+// The nearest groups (straight line) whose legs from a group the draft
+// prices for a crystal hop (DraftPlan::leg_saving).
+inline constexpr std::size_t leg_neighbours = 3;
 // Vesper Vale (its gold bonus, its dash) values gold at
 // vesper_scout_gold_value gems for its first vesper_scout_rounds (the others
 // at early_gold_value): it farms the gold camps early and buys sooner.
@@ -212,12 +215,6 @@ inline constexpr float cohesion_max_spacing = 29.565f;
 // (joshua_baseline's role; wins even).
 inline constexpr int vesper_scout_rounds = 300;
 inline constexpr float vesper_scout_gold_value = 0.5f;
-// A detour map: some camp's walk from our spawn is at least detour_ratio
-// times its straight line (walls force the long way round), for camps
-// detour_min_distance tiles or more away. There Vesper carries a teleport
-// crystal even where no hop from spawn pays.
-inline constexpr float detour_ratio = 1.6f;
-inline constexpr int detour_min_distance = 8;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
@@ -438,9 +435,6 @@ struct DraftPlan {
     // Number of gem-bearing groups farmable without a siege. Gameplay values
     // fortress camps more highly when the full map has no cheaper gem source.
     std::uint8_t cheap_gem_groups = 0;
-    // A detour map (policy::detour_ratio), read by the shop: in the padding
-    // before spacing.
-    bool detour = false;
     float spacing = 0;
     // Walking distance from each camp group, in camp_groups() order, to our
     // spawn, the enemy spawn and an altar's tribute tiles, and from our
@@ -449,7 +443,7 @@ struct DraftPlan {
     // a champion's turns cannot (the hops alone froze each champion 20-75
     // rounds on the ladder). group_count is 0 when they are not here. The
     // 70 maps have at most 51 groups and 18 altars.
-    static constexpr std::size_t max_groups = 100, max_altars = 24;
+    static constexpr std::size_t max_groups = 96, max_altars = 24;
     enum Ground { home, enemy, altar, hop };
     std::uint16_t group_count = 0;
     std::array<std::array<std::uint16_t, 4>, max_groups> group_distance{};
@@ -458,6 +452,15 @@ struct DraftPlan {
     std::array<std::uint8_t, max_groups> group_splash{};
     // Each altar's walk from our spawn with one hop, as for the groups.
     std::array<std::uint16_t, max_altars> altar_hop{};
+    // The most rounds one crystal hop saves on a leg out of each group (to
+    // its nearest altar or one of its leg_neighbours nearest groups in a
+    // straight line), in units of two rounds, four bits a group: the walks
+    // champions take between camps, which the hops from spawn above leave
+    // out (a wall between two camp areas). Units past 15 count as 15.
+    std::array<std::uint8_t, max_groups / 2> leg_saving{};
+    int leg_rounds(std::size_t group) const {
+        return group < max_groups ? 2 * ((leg_saving[group / 2] >> (4 * (group % 2))) & 15) : 0;
+    }
 };
 static_assert(sizeof(DraftPlan) <= 1024);
 
@@ -476,6 +479,10 @@ void row_window_min(const std::uint16_t *field, int width, int height, std::uint
                     int first_row, int last_row, int first_column, int end_column, const int *run_start = nullptr,
                     const int *run_end = nullptr, const int *row_runs = nullptr,
                     const std::uint16_t *run_label = nullptr, const std::uint16_t *allowed = nullptr, int kinds = 0);
+// The least walk from `from`'s roots to `to`'s with one crystal hop
+// over the box x0..x1, y0..y1 (navigation.cpp): row-major walks of the
+// same map, `from` padded by 8.
+int hop_leg(const std::uint16_t *from, const std::uint16_t *to, int width, int height, int x0, int y0, int x1, int y1);
 // An altar's walk with a hop (the least over its tribute tiles) where shorter
 // than its walk, else unreachable.
 int altar_hop_walk(vec2 altar, const std::uint16_t *walk, const std::uint16_t *hop, int width, int height);
