@@ -35,6 +35,8 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
+        if (g.status != CampGroup::alive || i == std::size_t(opening_last))
+            continue; // A later opening group (strategy.h opening_groups): not the one just taken.
         if (centre_opening() && g.home_distance > opening_reach_now)
             continue;
         // Without a trip home: what each member spends before it leaves,
@@ -78,6 +80,21 @@ int Bot::worker_choose_group(int excluded) {
             siege_group = -1;
             cluster_run.clear();
             return opening_group;
+        }
+        // The next opening group, while the team still has openings to make
+        // and the round allows (strategy.h opening_groups).
+        if (policy::opening_groups > 1 && openings_made + 1 < policy::opening_groups && opening_group >= 0 &&
+            int(round) < policy::opening_group_until && !enemy_near_lately(opening_group)) {
+            ++openings_made;
+            opening_last = opening_group;
+            opening_group = choose_opening(opening_until);
+            if (opening_group >= 0) {
+                opening_until += int(round);
+                last_plan = round;
+                siege_group = -1;
+                cluster_run.clear();
+                return opening_group;
+            }
         }
         opening_done = true;
     }

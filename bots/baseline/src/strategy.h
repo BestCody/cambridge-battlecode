@@ -157,7 +157,7 @@ inline constexpr float team_clear_share = 0.85f;
 // A party plan charges what each asked teammate gives up (our best score at
 // its camp rate) times party_ask_discount: at 1 a teammate's alternative is
 // assumed as good as ours; lower, parties for elks and golems form sooner.
-inline constexpr float party_ask_discount = 1.0f; // 0.61002 (GA); 0.85: elk maps locally 1/8 to 4/8, +16% gems from big captures; v96 a wash on 30, v101 on the rating set
+inline constexpr float party_ask_discount = 1.0f; // 0.5: hard-group maps 3/10 to 5/10, the pool 164 to 159 of 280
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
@@ -405,6 +405,12 @@ inline constexpr float centre_share = 0.35f;
 inline constexpr int opening_reach = 20;
 inline constexpr int opening_rounds = 80;
 inline constexpr float opening_far_mul = 0.1f;
+// The team clears its first opening_groups groups together (choose_opening()
+// picks the next after each capture, while round < opening_group_until):
+// the top teams open on the nearest big group with everyone and keep the
+// group for the next one; ours spread after the first.
+inline constexpr int opening_groups = 1;
+inline constexpr int opening_group_until = 200;
 // Routed (opening_route): the opening runs only on the maps listed by print
 // (bot.h opening_map), each with its own reach, and the centre_share rule
 // is not used. 03colosseum (Olympus, 0/3 ranked): the only altar and all

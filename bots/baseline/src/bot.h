@@ -399,6 +399,7 @@ class Bot {
     // none), and whether the opening is over.
     int opening_group = -2, opening_until = 0;
     bool opening_done = false;
+    int openings_made = 0, opening_last = -1; // later opening groups (strategy.h opening_groups)
     int rally_holds = 0;
     int own_deaths = 0; bool was_dead = false; // feed_guard (strategy.h) // turns held for the team during the opening (strategy.h rally_radius)
     int choose_opening(int &until) const;
