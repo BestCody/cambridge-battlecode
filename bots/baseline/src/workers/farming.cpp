@@ -1794,6 +1794,7 @@ float Bot::behind_pressure() const {
         if (ghost_seen[i] && !(i < enemy_respawn.size() && enemy_respawn[i] >= 0))
             theirs += ghost_seen[i]->tributing ? 0.0f : float(ghost_seen[i]->gems);
     const float win = float(rules::settings().winning_gems);
+    behind_gap = theirs - ours;
     behind_value = std::clamp((theirs - ours) / std::max(1.0f, win - theirs), 0.0f, 1.0f);
     return behind_value;
 }

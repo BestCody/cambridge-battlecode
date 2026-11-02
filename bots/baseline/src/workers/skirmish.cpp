@@ -560,7 +560,7 @@ bool Bot::worker_skirmish() {
     // farming and travel go on. Ghosts weigh on the tiles but start no
     // fight. Without the chase a wounded enemy walked off while we farmed
     // and the teammate that followed it fought alone (00collision, r53-83).
-    bool engaged = false;
+    bool engaged = false, teammate_threatened = false;
     for (const auto &e : enemies) {
         if (engaged)
             break;
@@ -568,7 +568,7 @@ bool Bot::worker_skirmish() {
             continue;
         engaged = acts_on(e, position);
         for (std::size_t j = 0; j < our_count && !engaged; ++j)
-            engaged = acts_on(e, ours_list[j].unit->position);
+            engaged = teammate_threatened = acts_on(e, ours_list[j].unit->position);
         if (!engaged) {
             const auto [theirs, ours] = sides(e.position);
             engaged = ours > theirs;
@@ -577,20 +577,21 @@ bool Bot::worker_skirmish() {
     vec2 stand = position;
     Score best_score = score(position);
     const Score here = best_score;
+    bool strike_in_reach = here.strike && !nothing_ready;
     if (!on_capture && me.can_move()) {
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
         for (const vec2 tile : step_positions()) {
             if (tile == position)
                 continue;
             const Score s = score(tile);
-            engaged = engaged || (s.strike && !nothing_ready);
+            strike_in_reach = strike_in_reach || (s.strike && !nothing_ready);
             if (s > best_score) {
                 best_score = s;
                 stand = tile;
             }
         }
     }
-    engaged = engaged || (here.strike && !nothing_ready);
+    engaged = engaged || strike_in_reach;
     // Hurt, a fight only for a kill this turn: otherwise the retreat walks us
     // home. Hurt champions that stood on the safest tile within a step when
     // an enemy could hit them (XSquare's units back off a tile at a time,
@@ -604,12 +605,41 @@ bool Bot::worker_skirmish() {
                     stand.y, best_score.safety, best_score.kills, best_score.strike, best_score.taken,
                     best_score.ours, sides(stand).first);
     });
-    if (!engaged)
+    if (!engaged) {
+        watch_turns = 0;
         return false;
+    }
     // Outnumbered where we stand: the camps by these enemies wait out the
     // sighting (camp choice).
     if (here.safety < 2)
         worker_track_sightings();
+    // Watching (strategy.h): safe here, no enemy to strike from any tile in
+    // reach, not holding a capture. A camp of ours in attack reach is farmed
+    // (farm_in_view); watch_limit such turns in a row end the watch.
+    const bool watching = !hurt_turn && here.safety == 2 && !strike_in_reach && !on_capture;
+    watch_turns = watching ? watch_turns + 1 : 0;
+    if (watching)
+        watch_score += 1.0f;
+    bool behind = true;
+    if (policy::watch_gap > 0) {
+        behind_pressure();
+        behind = behind_gap >= float(policy::watch_gap);
+    }
+    const bool dancing = policy::watch_window <= 0 || watch_score >= policy::watch_min;
+    const bool expert = !policy::watch_route || watch_map;
+    if (watching && target >= 0 && expert && behind && dancing && !(policy::watch_alone && teammate_threatened)) {
+        bool camp_in_reach = false;
+        if constexpr (policy::farm_in_view)
+            for (const auto &c : groups[target].camps)
+                if (c.health > 0 && distance(position, c.position) <= range)
+                    camp_in_reach = true;
+        if (camp_in_reach || (policy::watch_limit > 0 && watch_turns > policy::watch_limit)) {
+            if constexpr (policy::diagnostic)
+                std::printf("WATCH r=%u id=%u pos=%d,%d turns=%d camp=%d\n", round, id(bc::self()), position.x,
+                            position.y, watch_turns, int(camp_in_reach));
+            return false;
+        }
+    }
     // No safe tile within a step and no kill: a group's reach and move cover
     // every tile one step takes us to, so the step cannot leave it; the
     // retreat (a step out of reach, else the escape home) takes over. Held

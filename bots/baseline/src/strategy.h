@@ -237,6 +237,51 @@ inline constexpr bool sweep_contested = true;
 // this many rounds, the holder closes on the enemy (worker_skirmish()). 0
 // switches it off.
 inline constexpr int standoff_rounds = 6;
+// Watching: the fight claims the turn with an enemy in view that can act on
+// a teammate, or a side we outweigh, while no enemy can be struck from any
+// tile a step reaches. On 00the-line (both teams in view all game along a
+// 161-gem line) ours watched 70% of their turns and never farmed: a
+// Marcella at 542 of 1,200 walked beside the line 25 rounds with no enemy
+// within 3 tiles and no hit. A watching champion, safe where it stands,
+// farms its camp when one is in its attack reach (farm_in_view), and after
+// watch_limit strike-less turns in a row (0: never).
+inline constexpr bool farm_in_view = true;
+inline constexpr int watch_limit = 4;
+// Where the watch rules run (bot.h watch_map). Everywhere, they move the
+// weak maps and lose as much elsewhere (280 games against test-bot at two
+// fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of
+// 40, the rest 178 to 157), and no map feature or in-game signal (gem gap,
+// the champion's own watching rate) separates the two. So an expert, routed
+// by the map's print (width, height, camp groups, gems: the SDK gives no
+// name): the maps where the rules gained 2+ of 4 games at both budgets.
+// With watch_route off the rules run on every map.
+inline constexpr bool watch_route = true;
+struct MapPrint {
+    int width, height, groups, gems;
+};
+inline constexpr MapPrint watch_maps[] = {
+    {37, 31, 13, 258},  // 00anvil 0 to 2 of 4
+    {41, 41, 20, 280},  // 00collision 0 to 3
+    {40, 40, 14, 200},  // 00interlock 1 to 2
+    {29, 29, 10, 124},  // 00oasis 0 to 3
+    {30, 30, 14, 334},  // 00reverse-spiral 0 to 2
+    {31, 31, 7, 359},   // 00vault 0 to 4
+    {41, 61, 8, 252},   // adgato-gemcombat4 0 to 4
+    {50, 41, 31, 1180}, // 01boss-battle 1 to 4
+    {91, 75, 11, 380},  // 02famine 0 to 3
+};
+// With watch_alone, neither applies while an enemy in view can act on a
+// teammate: the bystander still joins that fight.
+inline constexpr bool watch_alone = false;
+// With watch_gap > 0, the watch rules apply only while the enemy's gems
+// (tributed and carried, behind_pressure()) lead ours by watch_gap or more:
+// the maps where we never farm are the ones we fall behind on.
+inline constexpr int watch_gap = 0;
+// With watch_window > 0, the watch rules apply only once the champion's own
+// watching turns in about the last watch_window turns reach watch_min: the
+// dance detects itself, map by map.
+inline constexpr int watch_window = 0;
+inline constexpr float watch_min = 0.0f;
 // A bag this big goes to the altar (worker_tribute()), whatever the trip.
 inline constexpr unsigned bank_bag = 100000;
 // Centre maps (a group with centre_share of the gems, opening_reach or more

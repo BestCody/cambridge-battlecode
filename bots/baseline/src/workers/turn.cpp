@@ -178,6 +178,10 @@ void Bot::play_worker_turn() {
     // stunned Heart of Ruin at 10 hp, ours at 473 of 1000, 00galaxy). Moved
     // without the hurt mode, our deaths doubled.
     hurt_turn = retreating || health_recovery_needed();
+    // The watch score decays each turn (strategy.h watch_window): the fight
+    // adds one on a watching turn.
+    if constexpr (policy::watch_window > 0)
+        watch_score *= 1.0f - 1.0f / float(policy::watch_window);
     // Hurt, the champion is retreating from now on, whoever plays the turn:
     // when the fight took it, the retreat was never latched and the next turn
     // played as if healthy. Hurt, no chase.

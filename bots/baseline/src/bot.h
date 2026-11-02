@@ -580,7 +580,11 @@ class Bot {
     // A centre map: one group holds centre_share of the map's gems and is
     // opening_reach or more steps from our spawn (centre_opening()).
     bool centre_map = false;
+    // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
+    bool watch_map = false;
     bool sweep_back = false; // A contested capture's sweep heads home.
+    int watch_turns = 0; // Fight turns in a row with no enemy to strike from any tile in reach.
+    float watch_score = 0; // About the count of such turns in the last watch_window turns.
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;
@@ -622,6 +626,7 @@ class Bot {
     // behind_pressure() is worked out once a round.
     mutable int behind_round = -1;
     mutable float behind_value = 0;
+    mutable float behind_gap = 0; // Their gems (tributed and carried) less ours, as behind_pressure() counts them.
     // The capture gold multiplier (Vesper's passive, Treasure).
     float gold_bonus = 1;
     // Turn ends our recall takes: five, three with a Home emblem.

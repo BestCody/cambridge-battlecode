@@ -608,6 +608,17 @@ void Bot::initialise() {
             }
         }
         centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
+        // The map's print, against the watch expert's maps (strategy.h).
+        const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
+                                     int(total + 0.5f)};
+        watch_map = false;
+        for (const auto &m : policy::watch_maps)
+            if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
+                m.gems == print.gems)
+                watch_map = true;
+        if constexpr (policy::diagnostic)
+            std::printf("MAPPRINT w=%d h=%d groups=%d gems=%d watch=%d\n", print.width, print.height,
+                        print.groups, print.gems, int(watch_map));
     }
     // Camp tiles and their groups, each camp's tile index, and the camps of
     // spawn-reachable groups. The masks are written here and imported once
