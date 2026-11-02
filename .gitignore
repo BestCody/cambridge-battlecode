@@ -51,3 +51,20 @@ playground.txt
 ga_runs/
 __pycache__/
 compile_commands.json
+
+# Scratch replays, downloaded match summaries and ladder dumps from single-game study.
+/analysis/**/*.repl26a
+/analysis/**/summ/
+/analysis/**/summary.json
+/analysis/**/*_replay
+/analysis/**/*.err
+/analysis/*.json
+/analysis/*.id
+/analysis/*.log
+/analysis/*_show.json
+/analysis/**/*.zip
+/analysis/ifish/
+/analysis/linked/
+/analysis/me4/
+/analysis/pg[0-9]/
+/analysis/t1/
