@@ -1,0 +1,2 @@
+TOKEN2 a1e82708-dfd3-4609-8b9a-69f652d12185 00collision,adgato_gemcombat1,01hooks,00corners,02geodes a,b,a,b,a
+NAVIE2 aab88deb-381c-4dad-a439-20e8695fa132 adgato_gemcombat3,00corners,00gemfight,01elk_arena,00vault b,a,b,a,b
