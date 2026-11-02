@@ -47,6 +47,11 @@ Build build_for(bc::champion_type type, bool jungle_first = false) {
 Build full_build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::vesper_vale:
+            if constexpr (policy::vesper_build == 1)
+                return {{{{Item::treasure_shard_of_strength, 5}, // strategy.h vesper_build
+                          {Item::durability_shard_of_health, 5}}},
+                        2,
+                        Item::bruiser_shard_of_health};
             return {{{{Item::treasure_shard_of_strength, 5},        // r114-129, 15/15
                       {Item::power_shard_of_strength, 5},       // r129-283, 15/15
                       {Item::durability_shard_of_health, 5},    // r301-283, 13/15
