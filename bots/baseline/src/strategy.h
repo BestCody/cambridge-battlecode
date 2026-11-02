@@ -368,19 +368,27 @@ struct HarvestMap {
     MapPrint print;
     bool gate_alone;
 };
+// The species' map class (analysis/mapfeat/tree.py on the species against
+// v106, 4 games a map): the gold on the groups nearer our spawn than the
+// enemy's (walk, home within harvest_own_share of the enemy's) at least
+// harvest_own_gold with harvest_picks champions: islands +3, yellow-brick-road
+// +2, boss-battle +1, gift-wrapping 0, no member worse. The rest of the
+// hand-picked twelve had no rule behind them and were dropped; anvil and
+// gemfight stay by identity with the alone gate (8/8 locally).
+// Own-half gold alone cannot separate islands (1,280 in the engine's
+// straight-line count) from split (1,330, where the species loses 2 of 4),
+// so the class also needs a contested middle: harvest_mid_share of the gems
+// in the band about as far from both spawns (within harvest_mid_band of the
+// spawns' separation). Islands 54%, yellow-brick-road 36%, boss-battle 38%,
+// gift-wrapping 32%; split 0%, road-of-riches 8%, the-farm 10%.
+inline constexpr float harvest_own_gold = 1200;
+inline constexpr float harvest_own_share = 0.8f;
+inline constexpr float harvest_mid_share = 0.3f;
+inline constexpr float harvest_mid_band = 0.2f;
+inline constexpr int harvest_picks = 5;
 inline constexpr HarvestMap harvest_maps[] = {
-    {{37, 31, 13, 258}, true},    // 00anvil
-    {{79, 79, 11, 238}, false},   // 00dunes
-    {{30, 30, 19, 200}, true},    // 00gemfight
-    {{29, 29, 10, 124}, false},   // 00oasis
-    {{33, 33, 9, 193}, false},    // 00the-line
-    {{50, 41, 31, 1180}, false},  // 01boss-battle
-    {{40, 40, 22, 746}, false},   // 01broken-curve
-    {{60, 60, 46, 608}, false},   // 01islands
-    {{40, 30, 28, 472}, false},   // 01yellow-brick-road
-    {{89, 71, 14, 402}, false},   // 02geodes
-    {{100, 80, 33, 600}, false},  // 02tangle
-    {{31, 31, 6, 126}, false},    // adgato-gemcombat1
+    {{37, 31, 13, 258}, true}, // 00anvil
+    {{30, 30, 19, 200}, true}, // 00gemfight
 };
 struct OpeningMap {
     MapPrint print;

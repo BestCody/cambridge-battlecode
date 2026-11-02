@@ -585,6 +585,7 @@ class Bot {
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
     bool harvest_map = false, harvest_ready = false, harvest_gate_alone = false; // the harvest species (strategy.h harvest_*)
+    float harvest_own_gold_now = 0; // the gold on our half, as the species' map class counts it
     bool harvesting() const { return harvest_map && !harvest_ready; }
     // The cohesion hazard in force: the species keeps the team within the
     // camp spacing of each other's claims in both of its phases.

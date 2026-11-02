@@ -623,7 +623,29 @@ void Bot::initialise() {
                     opening_rounds_now = m.rounds;
                 }
         }
-        harvest_map = policy::harvest_all;
+        // The harvest species by map class (strategy.h harvest_own_gold,
+        // harvest_picks): the gold on the groups nearer our spawn than the
+        // enemy's (straight-line, as analysis/mapfeat/features.py counts it:
+        // islands' walks are long and would leave it out), with a full
+        // roster. Then the identity list.
+        float own_gold = 0, mid_gems = 0, all_gems = 0;
+        const int separation =
+            std::abs(home_centre.x - enemy_centre.x) + std::abs(home_centre.y - enemy_centre.y);
+        for (const auto &g : groups) {
+            const int ours = std::abs(g.centre.x - home_centre.x) + std::abs(g.centre.y - home_centre.y);
+            const int theirs = std::abs(g.centre.x - enemy_centre.x) + std::abs(g.centre.y - enemy_centre.y);
+            if (float(ours) < policy::harvest_own_share * float(theirs))
+                own_gold += g.unit.gold_value();
+            // The middle band: about as far from both spawns.
+            if (float(std::abs(ours - theirs)) <= policy::harvest_mid_band * float(separation))
+                mid_gems += g.unit.gem_value();
+            all_gems += g.unit.gem_value();
+        }
+        harvest_own_gold_now = own_gold;
+        const float mid_share = all_gems > 0 ? mid_gems / all_gems : 0.0f;
+        harvest_map = policy::harvest_all ||
+                      (own_gold >= policy::harvest_own_gold && mid_share >= policy::harvest_mid_share &&
+                       int(roster.size()) >= policy::harvest_picks);
         harvest_gate_alone = false;
         for (const auto &m : policy::harvest_maps)
             if (m.print.width == print.width && m.print.height == print.height &&
@@ -637,8 +659,9 @@ void Bot::initialise() {
                 m.gems == print.gems)
                 watch_map = true;
         if constexpr (policy::diagnostic)
-            std::printf("MAPPRINT w=%d h=%d groups=%d gems=%d watch=%d\n", print.width, print.height,
-                        print.groups, print.gems, int(watch_map));
+            std::printf("MAPPRINT w=%d h=%d groups=%d gems=%d watch=%d own_gold=%.0f mid=%.2f picks=%zu harvest=%d\n",
+                        print.width, print.height, print.groups, print.gems, int(watch_map), own_gold, mid_share,
+                        roster.size(), int(harvest_map));
     }
     // Camp tiles and their groups, each camp's tile index, and the camps of
     // spawn-reachable groups. The masks are written here and imported once
