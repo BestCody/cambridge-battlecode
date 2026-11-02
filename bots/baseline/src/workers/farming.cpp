@@ -1027,6 +1027,12 @@ int Bot::worker_choose_group(int excluded) {
                     continue;
                 }
                 const float time = end + trips * trip_time / std::max(1.0f, fronts) + settle;
+                if constexpr (policy::diagnostic)
+                    if (g.unit.gem_value() >= 100 && round % 50 == 0)
+                        std::printf("PARTY r=%u id=%u g=%zu k=%u end=%.0f trips=%.0f each=%.0f damage=%.0f first=%.0f time=%.0f left=%.0f "
+                                    "value=%.3f without=%.3f factor=%.2f asked=%.3f best=%.3f\n",
+                                    round, id(bc::self()), i, k, end, trips, each, damage, first, time, rounds_left,
+                                    plan_value(time), without, lanes.factor[i], party_best * rate_asked / our_rate, best);
                 if (time > rounds_left)
                     continue;
                 const float score =
