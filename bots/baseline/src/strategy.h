@@ -141,6 +141,8 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
+// A winning bag channels under fire only when the channel is this short (tribute.cpp).
+inline constexpr int win_channel_turns = 4;
 inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)

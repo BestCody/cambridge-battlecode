@@ -148,7 +148,12 @@ bool Bot::worker_tribute() {
         float hazard = incoming(position);
         // At the start, the damage our last turn took, for the whole channel
         // (the turns of it then measure what comes).
-        if (health > taken_last * float(channel_duration(gems) + 1) || win || hazard == 0) {
+        // A winning bag starts under fire only when its channel is short
+        // (strategy.h win_channel_turns): anvil, at 998 banked, our Marcella
+        // twice began the 20-turn channel of a 200-gem bag beside the centre
+        // altar with the enemy in reach, was hit, and lost the bag both times.
+        const bool win_now = win && (hazard == 0 || channel_duration(gems) <= policy::win_channel_turns);
+        if (health > taken_last * float(channel_duration(gems) + 1) || win_now || hazard == 0) {
             if constexpr (policy::diagnostic)
                 if (capture_combo)
                     std::printf("CAPTURE_TRIBUTE r=%u gems=%u group=%d\n", round, gems, target);
