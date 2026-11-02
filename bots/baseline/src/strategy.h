@@ -136,8 +136,8 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
-inline constexpr int bank_nearby = 1;
-inline constexpr bool bank_nearby_clear = false; // the nearby trip only with no enemy in view (tribute.cpp)
+inline constexpr int bank_nearby = 3;
+inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
@@ -153,7 +153,7 @@ inline constexpr float worker_commit_bonus = 1.1102f;
 // Camp choice clears a camp at the team's summed camp rate (ours and its
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
-inline constexpr float team_clear_share = 0.61002f; // 0.85: elk maps locally 1/8 to 4/8, practice a wash (v96)
+inline constexpr float team_clear_share = 0.85f; // 0.61002 (GA); 0.85: elk maps locally 1/8 to 4/8, +16% gems from big captures; v96 a wash on 30, v101 on the rating set
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
