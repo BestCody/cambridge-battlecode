@@ -11,7 +11,7 @@ bool Bot::worker_escape() {
     // A champion caught while it goes keeps reporting the fight, so help can
     // still come.
     if (!worker_update_formation())
-        publish(TeamMemory::homeward);
+        publish(0);
     if (own_spawn_tile[tile_index(position)]) {
         if (health >= max_health) {
             retreating = false;
@@ -72,7 +72,7 @@ void Bot::play_worker_turn() {
         // A capture's holder riding its recall home keeps its claim, so
         // teammates leave the capture to it; a hop keeps its claim too.
         if (!capture_recall && !state.contains(bc::champion_state::teleporting))
-            publish(TeamMemory::homeward);
+            publish(0);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         return;

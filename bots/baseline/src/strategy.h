@@ -333,12 +333,12 @@ inline Spell describe(const bc::ability &a) {
 // 11-bit fields (our rosters have at most five bodies: no twin pick), each a
 // 10-bit claim and one flag. The flag of a fight request is set while an enemy
 // can hit that champion next round (attacked); any other claim's is clear.
-// Zero is idle; the top codes are unavailable/bank/homeward (on the way home,
-// walking or recalling: not to be counted on), never camp identifiers.
+// Zero is idle (no target, or on the way home); the top codes are
+// unavailable/bank, never camp identifiers.
 struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
     static constexpr unsigned field = bits + 1, field_mask = (1u << field) - 1;
-    static constexpr unsigned bank = mask - 1, homeward = mask;
+    static constexpr unsigned bank = mask - 1;
     static constexpr unsigned unavailable = mask - 2;
     static constexpr unsigned slots = 5;
     // Normal objective claims retain their original codes. Extra codes carry
