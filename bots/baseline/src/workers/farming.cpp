@@ -305,7 +305,14 @@ int Bot::worker_choose_group(int excluded) {
             return walk;
         if (on_spawn && float(walk - group_hops[i]) > threshold)
             walk = group_hops[i];
-        return std::min(walk, hop_rounds(groups[i].centre));
+        int planned = hop_rounds(groups[i].centre);
+        // The approach plans its hop toward the nearest camp, not the
+        // centre (strategy.h hop_home): off spawn, a group chosen for its
+        // hop read as its walk again and was dropped a step later.
+        if constexpr (policy::hop_home)
+            for (const auto &c : groups[i].camps)
+                planned = std::min(planned, hop_rounds(c.position));
+        return std::min(walk, planned);
     };
     // Teammates' claims since our last choice: one that changed has ended
     // (claim_ended: the round we saw it end).
@@ -831,6 +838,14 @@ int Bot::worker_choose_group(int excluded) {
     // Planned offline on print dont int's 34 case games, this took 16 of 22
     // near multi-elk groups by round 400 (claimants only 10), parties of
     // 3.0 early and 2.1 from round 400 (print 3.2-4.0, 2.3).
+    if constexpr (policy::diagnostic) {
+        std::printf("CHOICE r=%u id=%u pos=%d,%d choice=%d best=%.2f spawn=%d crystal=%d |", round, id(bc::self()),
+                    position.x, position.y, choice, best, int(home_field.get(position) == 0), int(hopping));
+        for (std::size_t i = 0; i < count; ++i)
+            if (groups[i].unit.gem_value() >= 25)
+                std::printf(" g%zu:s=%.2f p=%d st=%d", i, lanes.scores[i], lanes.path[i], int(groups[i].status));
+        std::printf("\n");
+    }
     int party = -1;
     if (choice >= 0 && best > 0) {
         struct Cohort {

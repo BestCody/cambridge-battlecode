@@ -129,7 +129,7 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
-inline constexpr int bank_nearby = 1;
+inline constexpr int bank_nearby = 3;
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
@@ -208,6 +208,13 @@ inline constexpr float cohesion_max_spacing = 29.565f;
 // The nearest groups (straight line) whose legs from a group the draft
 // prices for a crystal hop (DraftPlan::leg_saving).
 inline constexpr std::size_t leg_neighbours = 3;
+// A group's distance from spawn (CampGroup::home_distance: the trips home a
+// clear needs, which side of the map it is on, the opening's reach) is its
+// crystal hop walk plus the channel where that is shorter (prepare_hops()).
+// 02tangle's 43-gem elk pocket is 8 steps from our spawn over a wall and 90
+// round it: priced by the walk it scored 0.03 against 0.15 for a 29-gem
+// group 48 steps off, and Nameless took its mirror ten times to our none.
+inline constexpr bool hop_home = true;
 // Vesper Vale (its gold bonus, its dash) values gold at
 // vesper_scout_gold_value gems for its first vesper_scout_rounds (the others
 // at early_gold_value): it farms the gold camps early and buys sooner.
@@ -270,7 +277,7 @@ inline constexpr unsigned island_bag = 60;
 // 4,000-damage spell, 16 kills to 0 deaths on 00packs); 2 QS2isLaw's
 // (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
 // Bruiser/Health: 3,200 health by round 166 on 03showdown).
-inline constexpr int marcella_build = 0;
+inline constexpr int marcella_build = 3;
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of

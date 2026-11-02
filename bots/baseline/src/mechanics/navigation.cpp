@@ -776,6 +776,12 @@ void Bot::prepare_hops() {
         for (std::size_t i = 0; i < altars.size(); ++i)
             altar_hops[i] = altar_hop_walk(altars[i], walk, hop, w, h);
     }
+    // The hop walk and its channel as the group's distance from spawn
+    // where shorter (strategy.h hop_home).
+    if constexpr (policy::hop_home)
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            if (group_hops[i] != far && group_hops[i] + rules::settings().tp_crystal_time < groups[i].home_distance)
+                groups[i].home_distance = group_hops[i] + rules::settings().tp_crystal_time;
     // A group's hop walk where shorter than its walk, else unreachable.
     for (std::size_t i = 0; i < groups.size(); ++i)
         if (group_hops[i] >= groups[i].home_distance)
