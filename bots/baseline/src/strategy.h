@@ -341,6 +341,12 @@ inline constexpr int marcella_build = 3;
 // (their Heart of Ruin 6,400 health on hooks); ours buy 5-7 farming
 // emblems first and die to one enemy's burst from 80% health in 4-8 rounds.
 inline constexpr unsigned short_builds = 0;
+// Capture first (subscribe to caterpillow, 25-15 over its last 40 ranked
+// games, all six wins studied): every champion's first emblem is Capture of
+// its main stat, at rounds 53-230, then Treasure, Jungle, Bruiser. Capture
+// caps the team's capture timer at 3 turns instead of 10, joining
+// mid-capture included: faster cycles and far less exposure to a reset.
+inline constexpr bool capture_first = true;
 // Vesper's build (economy.cpp): 0 print dont int's seven farming emblems
 // then Bruiser/Strength; 1 Treasure/Strength, Durability/Health, then
 // Bruiser/Health (QS2isLaw's Vesper 10,900 health on the pond, bbas's 6,400
