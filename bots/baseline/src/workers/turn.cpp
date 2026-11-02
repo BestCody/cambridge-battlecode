@@ -162,6 +162,7 @@ void Bot::play_worker_turn() {
         ++stalls;
     else
         stalls = 0;
+    before_previous = previous;
     previous = position;
     worker_report();
 

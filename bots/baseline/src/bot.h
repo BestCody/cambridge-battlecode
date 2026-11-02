@@ -387,6 +387,8 @@ class Bot {
     std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
+    int bounces = 0;
+    vec2 before_previous{-1, -1}; // Our position at the start of the turn before last (bounce_stalls)
     // The group camp choice planned a spell-range siege of (-1: none), for
     // worker_farm() to stand as planned.
     int siege_group = -1;

@@ -65,6 +65,13 @@ inline constexpr int recall_chase_turns = 6;
 // Turns of a walk to a target or an altar that make no step (walled off by
 // camp bodies) before it is left out for stuck_rounds.
 inline constexpr int stuck_turns = 2;
+// A farm turn that ends on the tile of two turns ago counts as a stall too
+// (bounce_stalls): on 00split a Vendetta stepped into an elk's reach and
+// back out, (17,27) and (18,28), for 390 rounds at constant health with 7
+// gems, farming nothing, because only a turn without a step counted.
+inline constexpr bool bounce_stalls = true;
+// ... after bounce_min bounces in a row (every bounce counted: 81/140 to 74, the fight's step in and out).
+inline constexpr int bounce_min = 6;
 inline constexpr int stuck_rounds = 15;
 // Hard camps (golems and monoliths: hard_camp_health or more): a clear of one
 // under way is seen through (worker_farm()). Alone a golem (5,000 health, 120

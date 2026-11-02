@@ -1094,7 +1094,9 @@ void Bot::worker_farm() {
             // Reads only, so their order changes nothing: the tests without
             // engine calls first.
             const auto ready = bc::champion_state::can_attack | bc::champion_state::can_cast;
-            const bool idle = bot.position == from && t >= 0 &&
+            const bool bounced = policy::bounce_stalls && bot.position == bot.before_previous && bot.position != from;
+            bot.bounces = bounced ? bot.bounces + 1 : 0;
+            const bool idle = (bot.position == from || bot.bounces >= policy::bounce_min) && t >= 0 &&
                               distance(bot.position, bot.groups[t].centre) > bot.range + 2 && self.is_alive() &&
                               self.state().contains(ready) && !bot.groups[t].tiles().is_set(bot.position);
             bot.farm_stalls = idle ? bot.farm_stalls + 1 : 0;
