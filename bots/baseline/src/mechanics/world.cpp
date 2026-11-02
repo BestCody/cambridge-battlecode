@@ -302,7 +302,10 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         std::int32_t cooldown = 0;
         bc::detail::check(bc::detail::sdk_champion_cooldown(handle, ability_slot, &cooldown));
         // Castable at its next action: a slot at 1 is not (measured).
-        const bool ready = cooldown <= 0;
+        bool ready = cooldown <= 0;
+        if (policy::burst_soon > 0 && !ready && cooldown <= policy::burst_soon && damage::damaging(s) &&
+            s.kind != bc::ability_kind::attack_reset && focus * s.modifier >= policy::big_burst)
+            ready = true; // strategy.h big_burst
         slot_ready = std::uint8_t(slot_ready | unsigned(ready) << ability_slot);
         const bool cast = cooldown >= s.cooldown - 2;
         if (cast && s.kind == bc::ability_kind::attack_reset)

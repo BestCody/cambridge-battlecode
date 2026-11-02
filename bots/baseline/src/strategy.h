@@ -277,13 +277,20 @@ inline constexpr unsigned island_bag = 60;
 // 4,000-damage spell, 16 kills to 0 deaths on 00packs); 2 QS2isLaw's
 // (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
 // Bruiser/Health: 3,200 health by round 166 on 03showdown).
-inline constexpr int marcella_build = 3;
+inline constexpr int marcella_build = 1;
 // Every champion's build cut to its first short_builds emblems, then
 // Bruiser of its repeat's stat (economy.cpp build_for(); 0: the full
 // builds). Olympus's whole roster stacks Bruiser from the third emblem
 // (their Heart of Ruin 6,400 health on hooks); ours buy 5-7 farming
 // emblems first and die to one enemy's burst from 80% health in 4-8 rounds.
 inline constexpr unsigned short_builds = 0;
+// An enemy's damage spell of big_burst damage or more counts as ready for
+// the tile safety test while its cooldown is within burst_soon turns (0:
+// only when ready now). Our champions at 70-80% health died in 4-8 rounds
+// to one stacked carry (Olympus's Marcella: a 4,000-damage spell at range
+// 4 every 8 turns), stepping into its reach the turn before it came back.
+inline constexpr float big_burst = 800.0f;
+inline constexpr int burst_soon = 0;
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of
@@ -351,7 +358,7 @@ struct OpeningMap {
 // v90 (80 rounds on colosseum): gold at round 300 968 to 1,365, early
 // deaths 6 to 3, still 610-1008; Olympus farms the edge all game.
 inline constexpr OpeningMap opening_maps[] = {
-    {{51, 51, 42, 268}, 15, 300}, // 03colosseum
+    {{51, 51, 42, 268}, 15, 80}, // 03colosseum (300 rounds: 383-1017, worse)
 };
 // A banker that has not moved for corridor_stalls turns cuts through the
 // cheap camps (strength up to cheap_camp_strength: wolves, elks, golems, not
