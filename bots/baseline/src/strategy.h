@@ -247,6 +247,30 @@ inline constexpr int standoff_rounds = 6;
 // watch_limit strike-less turns in a row (0: never).
 inline constexpr bool farm_in_view = true;
 inline constexpr int watch_limit = 4;
+// A carrier watching with a bank trip pending (on spawn, already banking, or
+// an altar within bank_nearby steps) yields the turn to the tribute, on
+// every map: ours stood ten rounds beside spawn with 56 gems while a
+// Vendetta hovered 6-8 tiles off, the altar three tiles away (00packs
+// against Olympus r287-300; the bag was carried 193 rounds).
+inline constexpr bool watch_bank = true;
+// A bag beside a camp waiting to respawn goes to the altar when the wait,
+// times wait_bank, covers the round trip and the channel (0: never): on
+// 03ultrastarvation (four 7-gem camps, 50-round respawns, one altar 30 steps
+// off) ours sat 800 rounds beside its camp with 14 gems, banking 44 all game
+// to QS2isLaw's 242 in 24 small lots.
+inline constexpr float wait_bank = 1.5f;
+// With no altar reachable on foot (an island of camps inside holes, reached
+// by a crystal hop: 02the_pond), a bag of island_bag gems recalls home and
+// banks from spawn; any bag does when the rounds left just cover that
+// (worker_tribute(); 0: never). Ours ended the pond with 370 gems in hand.
+inline constexpr unsigned island_bag = 60;
+// Marcella's build (economy.cpp build_for()): 0 print dont int's farming
+// emblems then Bruiser/Focus; 1 Olympus's (Power/Focus, Jungle/Focus,
+// Durability/Health, then Bruiser/Focus: 26 of them by round 1,000, a
+// 4,000-damage spell, 16 kills to 0 deaths on 00packs); 2 QS2isLaw's
+// (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
+// Bruiser/Health: 3,200 health by round 166 on 03showdown).
+inline constexpr int marcella_build = 0;
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of

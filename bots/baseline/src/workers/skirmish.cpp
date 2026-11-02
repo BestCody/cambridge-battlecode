@@ -640,6 +640,15 @@ bool Bot::worker_skirmish() {
             return false;
         }
     }
+    // A bag with a bank trip pending (strategy.h watch_bank): the tribute,
+    // not the watch. The pursuit needs an empty view, so none follows.
+    if (policy::watch_bank && watching && gems > 0 &&
+        (banking || own_spawn.is_set(position) || int(altar_walk().get(position)) <= policy::bank_nearby)) {
+        if constexpr (policy::diagnostic)
+            std::printf("WATCHBANK r=%u id=%u pos=%d,%d gems=%u turns=%d\n", round, id(bc::self()), position.x,
+                        position.y, gems, watch_turns);
+        return false;
+    }
     // No safe tile within a step and no kill: a group's reach and move cover
     // every tile one step takes us to, so the step cannot leave it; the
     // retreat (a step out of reach, else the escape home) takes over. Held

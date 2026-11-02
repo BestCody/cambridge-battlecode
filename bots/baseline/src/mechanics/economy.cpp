@@ -49,6 +49,25 @@ Build build_for(bc::champion_type type) {
                     5,
                     Item::bruiser_shard_of_strength};           // 5.2 a game
         case bc::champion_type::marcella:
+            if constexpr (policy::marcella_build == 1)
+                return {{{{Item::power_shard_of_focus, 5},         // Olympus (strategy.h)
+                          {Item::jungle_shard_of_focus, 5},
+                          {Item::durability_shard_of_health, 5}}},
+                        3,
+                        Item::bruiser_shard_of_focus};
+            if constexpr (policy::marcella_build == 3)
+                return {{{{Item::treasure_shard_of_focus, 5},     // print dont int's first two, then
+                          {Item::durability_shard_of_health, 5}}}, // Olympus's stacking
+                        2,
+                        Item::bruiser_shard_of_focus};
+            if constexpr (policy::marcella_build == 2)
+                return {{{{Item::prospector_shard_of_health, 5},   // QS2isLaw (strategy.h)
+                          {Item::jungle_shard_of_health, 5},
+                          {Item::capture_shard_of_health, 5},
+                          {Item::durability_shard_of_health, 5},
+                          {Item::monster_shard_of_strength, 5}}},
+                        5,
+                        Item::bruiser_shard_of_health};
             return {{{{Item::treasure_shard_of_focus, 5},           // r95-182, 16/16
                       {Item::durability_shard_of_health, 5},    // r190-276, 16/16
                       {Item::prospector_shard_of_focus, 5},     // r280-408, 12/16
