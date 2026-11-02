@@ -124,6 +124,10 @@ Details: `docs/macro-experiments.md`, `docs/baseline-ablations.md`.
 - `scarce_gold_boost` 1.5 and 2.0 (gold worth more on maps with 800 or less camp gold): 89 and 87 to 87. Nothing.
 - `bank_nearby` 6 and 12 (bank whenever an altar is that close): 88 and 74 to 87, deaths up 19%.
 - `bank_bag` 40 and 80 (go bank at that bag size): 74 and 85 to 88.
+- `retreat_health` 0.40 and 0.45 (home earlier): 82 and 72 to 91. The tuned 0.344 stands.
+- `worker_sighting_penalty` 0.2, `worker_sighting_memory` 20, `pursue_health` 0.25 (fight less): 84, 83, 82 to 91, deaths up 10-15%. The GA's constants are a local optimum against test-bot: in this session every constant moved off it cost 5-10 wins. Stop probing constants against test-bot; new behaviour needs a new rule and, for the top teams, a practice probe.
+- Centre-map opening expert (`opening_rounds` 80): 85 to 91; see below.
+- `corridor_stalls` (cut through a guarded altar's wolves): lost both the-pack seats; see below.
 
 **Added 2026-11-02 (neutral against test-bot, 88/140):** `sweep_contested` reads the engine's `capture_state()` on a held capture, so an enemy on the tiles out of view counts as contesting, and the holder walks the tiles toward the enemy spawn and back; `standoff_rounds` closes on an enemy in view on a contested capture after 6 rounds of nobody moving. Vault seat A went from 0-0 at round 2,000 to 343-1037 (test-bot's Prism took the next three vault spawns, 50 rounds apart, while we went home to bank).
 
