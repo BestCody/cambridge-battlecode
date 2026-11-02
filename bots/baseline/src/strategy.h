@@ -248,7 +248,7 @@ inline constexpr float step_incoming_weight = 0.038261f;
 // most cohesion_max_spacing (dense ones). Hard groups are left to the party
 // plans. Off (0) until the GA tunes it: 0.03 everywhere was level (83/140),
 // +3 on dense maps and -3 on sparse.
-inline constexpr float cohesion_hazard = 0.0f;
+inline constexpr float cohesion_hazard = 0.03f; // 0 (GA): 83 to 88/140 and +16% gems collected on the v103 code (2026-11-02), v104 candidate
 inline constexpr float cohesion_max_spacing = 29.565f;
 // The nearest groups (straight line) whose legs from a group the draft
 // prices for a crystal hop (DraftPlan::leg_saving).
