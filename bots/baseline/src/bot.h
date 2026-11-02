@@ -1050,6 +1050,8 @@ class Bot {
     float reported_power(vec2 at) const;
     bool worker_reinforce();
     bool worker_tribute();
+    // Banking blocked by camps: cut through the cheap ones nearer the altar.
+    bool corridor_attack(vec2 altar);
     void note_activity(Activity activity);
     // safety.cpp: danger from enemy champions, remembered sightings, and
     // stepping away.

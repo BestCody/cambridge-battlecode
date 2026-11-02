@@ -254,6 +254,12 @@ inline constexpr float centre_share = 0.35f;
 inline constexpr int opening_reach = 20;
 inline constexpr int opening_rounds = 0;
 inline constexpr float opening_far_mul = 0.1f;
+// A banker that has not moved for corridor_stalls turns cuts through the
+// cheap camps (strength up to cheap_camp_strength: wolves, elks, golems, not
+// monoliths) between it and the altar (corridor_attack()). 0 switches it off.
+// On the-pack the gap we cut let test-bot bank too, with the bigger bags:
+// seat A 37-1024 (was 0-1184), seat B 96-1144 (was 0-0, ours on the tiebreak).
+inline constexpr int corridor_stalls = 0;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
