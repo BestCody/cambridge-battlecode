@@ -29,7 +29,9 @@ struct DraftState {
         auto walls = bc::map::walls() | bc::map::holes() | bc::map::altars();
         unsigned productive = 0;
         unsigned cheap_gem_groups = 0;
+        unsigned map_gold = 0;
         for (const auto &g : groups) {
+            map_gold += g.gold_value();
             bool farmable = true;
             for (const auto &c : g) {
                 auto stats = c.base_stats();
@@ -47,6 +49,7 @@ struct DraftState {
             }
         }
         plan.cheap_gem_groups = static_cast<std::uint8_t>(std::min(cheap_gem_groups, 255u));
+        plan.map_gold_forties = static_cast<std::uint8_t>(std::min(map_gold / 40, 255u));
         plan.spacing = std::sqrt(float((~walls).count()) / std::max(1u, productive));
         measure_groups(groups);
         ready = true;

@@ -221,6 +221,13 @@ inline constexpr float vesper_scout_gold_value = 0.5f;
 // paired 39:29). naviepstokes and dromedaries run the same carry, earning up
 // to 71% of their team's gold on her.
 inline constexpr float marcella_capture_bonus = 100000.0f;
+// On a map with at most scarce_map_gold on all its camps, gold is worth
+// scarce_gold_boost times as much: items are what decide fights, and there is
+// little to buy them with. On gemfight (about 500 gold) ours never cleared the
+// elk groups, 22 gems and 110 gold, for 7-gem clusters worth no gold, and had
+// 244 gold at round 300 to 1,217.
+inline constexpr unsigned scarce_map_gold = 800;
+inline constexpr float scarce_gold_boost = 1.0f;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
@@ -441,6 +448,8 @@ struct DraftPlan {
     // Number of gem-bearing groups farmable without a siege. Gameplay values
     // fortress camps more highly when the full map has no cheaper gem source.
     std::uint8_t cheap_gem_groups = 0;
+    // All the gold on the map's camps, in forties (capped at 10,200).
+    std::uint8_t map_gold_forties = 0;
     float spacing = 0;
     // Walking distance from each camp group, in camp_groups() order, to our
     // spawn, the enemy spawn and an altar's tribute tiles, and from our
