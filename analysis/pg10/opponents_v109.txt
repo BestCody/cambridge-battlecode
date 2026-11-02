@@ -1,0 +1,3 @@
+ESTRO e8aea141-4c4e-4841-998d-ad002227398e 01islands,01yellow_brick_road,00anvil,01boss_battle,02gift_wrapping a,b,a,b,a
+TOKEN a1e82708-dfd3-4609-8b9a-69f652d12185 01islands,01yellow_brick_road,00anvil,01boss_battle,02gift_wrapping a,b,a,b,a
+DING 626450a6-dab1-46a3-b4f4-0df7867e275f 01islands,01yellow_brick_road,00anvil,01boss_battle,02gift_wrapping a,b,a,b,a

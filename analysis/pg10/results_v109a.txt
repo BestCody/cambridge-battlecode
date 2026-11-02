@@ -1,0 +1,18 @@
+  01islands              finished  loss  gems           54d595b8-3454-45b8-b58d-7c9a46282c99
+  01yellow_brick_road    finished  win   gems           329affc1-f92f-4696-8fde-43dcdb424979
+  00anvil                finished  loss  gems           360638e0-1f5f-47b8-b1de-60180f1b2d9a
+  01boss_battle          finished  win   gems           519ddc73-401c-41f6-a806-882494a1ca60
+  02gift_wrapping        finished  win   gems           0a1e75a3-c9f5-4d26-9eb5-4be3c36e2552
+3a9cf274 estrogen :3 3/5
+  01islands              finished  loss  gems           e33f6fc3-18fd-40f2-bb35-ae911894414b
+  01yellow_brick_road    finished  loss  gems           8ca33455-8cba-491d-9747-f1f09a3bbda8
+  00anvil                finished  win   gems           25861230-3c07-4900-860a-c6618f89def8
+  01boss_battle          finished  loss  tiebreak_gems  ecc2410c-df76-48a0-b8c8-ab3d9e8b7a04
+  02gift_wrapping        finished  win   gems           a7efbfab-5acc-4d14-bee2-8ff5f52590d1
+b06d774f Tokenmaxxing 2/5
+  01islands              finished  loss  gems           a3f03134-2e6e-4d56-8690-d15130e9a7cf
+  01yellow_brick_road    finished  win   gems           917317da-bb20-4005-83b5-93d5db7099d1
+  00anvil                finished  loss  gems           649a47c3-5641-4238-971c-280537ba47fa
+  01boss_battle          finished  loss  gems           1d487b55-4082-4cab-ba47-71b3b7a12ee4
+  02gift_wrapping        finished  win   gems           0a06e3b4-5a9a-4470-982f-94f0d7112fd4
+f3995d79 Ding 2/5
