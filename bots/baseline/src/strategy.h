@@ -205,6 +205,12 @@ inline constexpr int party_cluster_camps = 0;
 // game, and ours arrived one at a time (hooks 0 kills to 28 against
 // Olympus; the one win, v93, won that contest).
 inline constexpr bool opening_holds = false;
+// During the opening a champion holds (fighting from where it stands) while
+// any living teammate is out of view or farther than rally_radius, at most
+// rally_max turns a game (0: off): the team reaches the first contest
+// together instead of one at a time.
+inline constexpr int rally_radius = 0;
+inline constexpr int rally_max = 25;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.
 inline constexpr float held_capture_bonus = 4.4312f;

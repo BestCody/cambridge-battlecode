@@ -204,6 +204,24 @@ void Bot::play_worker_turn() {
         return;
     }
     place_lock();
+    // The opening rally (strategy.h rally_radius).
+    if (policy::rally_radius > 0 && !opening_done && opening_group >= 0 && rally_holds < policy::rally_max) {
+        int others = 0, near = 0;
+        for (std::size_t s = 0; s < roster.size() && s < TeamMemory::slots; ++s) {
+            if (s == slot || !roster[s].is_alive())
+                continue;
+            ++others;
+            const int k = slot_ally[s];
+            if (k >= 0 && distance(position, allies[std::size_t(k)].position) <= policy::rally_radius)
+                ++near;
+        }
+        if (others > 0 && near < others) {
+            ++rally_holds;
+            combat(false, -1);
+            note_activity(Activity::idle);
+            return;
+        }
+    }
     if (worker_reinforce()) {
         note_activity(Activity::reinforce);
         return;
