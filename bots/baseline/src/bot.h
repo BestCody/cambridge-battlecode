@@ -580,6 +580,7 @@ class Bot {
     // A centre map: one group holds centre_share of the map's gems and is
     // opening_reach or more steps from our spawn (centre_opening()).
     bool centre_map = false;
+    int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
     bool sweep_back = false; // A contested capture's sweep heads home.
@@ -590,7 +591,7 @@ class Bot {
     DraftPlan opening;
     // Whether the draft's plan holds this map's group and altar measures.
     // A centre map's opening (strategy.h): our own side first.
-    bool centre_opening() const { return centre_map && int(round) < policy::opening_rounds; }
+    bool centre_opening() const { return centre_map && int(round) < opening_rounds_now; }
     bool draft_measured() const {
         return opening.magic == DraftPlan::tag && opening.group_count == groups.size();
     }

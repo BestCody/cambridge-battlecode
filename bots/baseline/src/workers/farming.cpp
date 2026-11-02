@@ -35,7 +35,7 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
-        if (centre_opening() && g.home_distance > policy::opening_reach)
+        if (centre_opening() && g.home_distance > opening_reach_now)
             continue;
         // Without a trip home: what each member spends before it leaves,
         // above the casualty margin and the walk out of the camps' reach
@@ -769,7 +769,7 @@ int Bot::worker_choose_group(int excluded) {
             // A centre map's opening: our own side first (policy::opening_rounds).
             if (far_opening)
                 factor = pick(wasm_f32x4_mul(factor, splat(policy::opening_far_mul)), factor,
-                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(policy::opening_reach))));
+                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(opening_reach_now))));
             factor = pick(wasm_f32x4_mul(factor, splat(policy::enemy_held_camp_bonus)), factor, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).
@@ -842,7 +842,7 @@ int Bot::worker_choose_group(int excluded) {
         std::printf("CHOICE r=%u id=%u pos=%d,%d choice=%d best=%.2f spawn=%d crystal=%d |", round, id(bc::self()),
                     position.x, position.y, choice, best, int(home_field.get(position) == 0), int(hopping));
         for (std::size_t i = 0; i < count; ++i)
-            if (groups[i].unit.gem_value() >= 25)
+            if (groups[i].unit.gem_value() >= 25 || groups[i].unit.gold_value() >= 300)
                 std::printf(" g%zu:s=%.2f p=%d st=%d", i, lanes.scores[i], lanes.path[i], int(groups[i].status));
         std::printf("\n");
     }

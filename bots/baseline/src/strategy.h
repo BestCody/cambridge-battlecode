@@ -334,8 +334,25 @@ inline constexpr unsigned bank_bag = 100000;
 // second. Untested against the top teams beyond one 10-game probe (v80).
 inline constexpr float centre_share = 0.35f;
 inline constexpr int opening_reach = 20;
-inline constexpr int opening_rounds = 0;
+inline constexpr int opening_rounds = 80;
 inline constexpr float opening_far_mul = 0.1f;
+// Routed (opening_route): the opening runs only on the maps listed by print
+// (bot.h opening_map), each with its own reach, and the centre_share rule
+// is not used. 03colosseum (Olympus, 0/3 ranked): the only altar and all
+// 196 gems are eight groups at the centre, 18-25 steps from spawn, and
+// 100-gold wolf camps ring the edge 6-15 steps from spawn; Olympus's
+// Vendetta farmed 122 turns in the first 300 rounds, ours 15-20, and
+// their gold led 2578 to 968 at round 300.
+inline constexpr bool opening_route = true;
+struct OpeningMap {
+    MapPrint print;
+    int reach, rounds;
+};
+// v90 (80 rounds on colosseum): gold at round 300 968 to 1,365, early
+// deaths 6 to 3, still 610-1008; Olympus farms the edge all game.
+inline constexpr OpeningMap opening_maps[] = {
+    {{51, 51, 42, 268}, 15, 300}, // 03colosseum
+};
 // A banker that has not moved for corridor_stalls turns cuts through the
 // cheap camps (strength up to cheap_camp_strength: wolves, elks, golems, not
 // monoliths) between it and the altar (corridor_attack()). 0 switches it off.

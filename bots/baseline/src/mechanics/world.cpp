@@ -611,6 +611,18 @@ void Bot::initialise() {
         // The map's print, against the watch expert's maps (strategy.h).
         const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
                                      int(total + 0.5f)};
+        opening_reach_now = policy::opening_reach;
+        opening_rounds_now = policy::opening_rounds;
+        if constexpr (policy::opening_route) {
+            centre_map = false;
+            for (const auto &m : policy::opening_maps)
+                if (m.print.width == print.width && m.print.height == print.height &&
+                    m.print.groups == print.groups && m.print.gems == print.gems) {
+                    centre_map = true;
+                    opening_reach_now = m.reach;
+                    opening_rounds_now = m.rounds;
+                }
+        }
         watch_map = false;
         for (const auto &m : policy::watch_maps)
             if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
