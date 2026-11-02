@@ -356,9 +356,23 @@ inline constexpr float harvest_enemy_side = 0.3f;
 inline constexpr int harvest_emblems = 3;
 inline constexpr int harvest_until = 500;
 inline constexpr bool harvest_all = false; // every map plays the species (map tables)
+// The maps where the species won games v106 lost on both local opponents
+// (analysis/harvest_all2 against analysis/v106_140, 4 games a map; compare.py):
+// islands 1 to 4, gemfight 0 to 3, yellow-brick-road 1 to 3, anvil 0 to 2,
+// gemcombat1 1 to 3, broken-curve 2 to 4, and +1 with fewer deaths on the rest.
 inline constexpr MapPrint harvest_maps[] = {
-    {37, 31, 13, 258}, // 00anvil
-    {0, 0, 0, 0},      // placeholder: filled from the map tables
+    {37, 31, 13, 258},   // 00anvil
+    {79, 79, 11, 238},   // 00dunes
+    {30, 30, 19, 200},   // 00gemfight
+    {29, 29, 10, 124},   // 00oasis
+    {33, 33, 9, 193},    // 00the-line
+    {50, 41, 31, 1180},  // 01boss-battle
+    {40, 40, 22, 746},   // 01broken-curve
+    {60, 60, 46, 608},   // 01islands
+    {40, 30, 28, 472},   // 01yellow-brick-road
+    {89, 71, 14, 402},   // 02geodes
+    {100, 80, 33, 600},  // 02tangle
+    {31, 31, 6, 126},    // adgato-gemcombat1
 };
 struct OpeningMap {
     MapPrint print;
