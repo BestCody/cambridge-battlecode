@@ -84,7 +84,10 @@ int Bot::worker_choose_group(int excluded) {
     // A group we were walled off from lately is no candidate.
     const int walled = int(round) < stuck_group_until ? stuck_group : -1;
     profiling::Scope scope(profiling::Stage::choose);
-    measure_paths(1);
+    {
+        profiling::Scope paths_scope(profiling::Stage::paths);
+        measure_paths(1);
+    }
     const float gold_value = gold_value_now();
     // Squad assembly: count living allies. After a wipe a lone respawn must not
     // walk straight back into a grouped enemy and feed one champion at a time.
@@ -789,11 +792,14 @@ int Bot::worker_choose_group(int excluded) {
     // hence the margin.
     float best = -1;
     int choice = -1;
-    gather();
-    for (std::size_t i = 0; i < count; ++i)
-        gather_run(i, nullptr);
-    for (std::size_t i = 0; i < padded; i += 4)
-        score_lanes(i);
+    {
+        profiling::Scope gather_scope(profiling::Stage::gather);
+        gather();
+        for (std::size_t i = 0; i < count; ++i)
+            gather_run(i, nullptr);
+        for (std::size_t i = 0; i < padded; i += 4)
+            score_lanes(i);
+    }
     for (;;) {
         best = -1;
         choice = -1;
@@ -807,7 +813,10 @@ int Bot::worker_choose_group(int excluded) {
             }
         if (bounded_best < best - std::abs(best) * 1e-4f || path_search >= 3)
             break;
-        measure_paths(path_search + 1);
+        {
+            profiling::Scope paths_scope(profiling::Stage::paths);
+            measure_paths(path_search + 1);
+        }
         for (std::size_t i = 0; i < padded; i += 4) {
             bool changed = false;
             for (std::size_t k = i; k < i + 4 && k < count; ++k)
@@ -841,6 +850,8 @@ int Bot::worker_choose_group(int excluded) {
         std::printf("\n");
     }
     int party = -1;
+    {
+        profiling::Scope plans_scope(profiling::Stage::plans);
     if (choice >= 0 && best > 0) {
         struct Cohort {
             float at, speed;
@@ -1038,6 +1049,7 @@ int Bot::worker_choose_group(int excluded) {
     // on its way, keeps it.
     if (choice < 0 || choice != target)
         cluster_run.clear();
+    }
     // A party plan's clear is the party's: no siege or run of our own.
     siege_group = choice >= 0 && party < 0 && lanes.siege_won[choice] ? choice : -1;
     request_group = party;
