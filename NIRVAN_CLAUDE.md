@@ -70,6 +70,12 @@ Tools are in `scripts/analysis/`. They run the visualiser's own engine, found by
 | `node inputround.mjs replay.repl26a INPUT` | Actions around a visualiser action number |
 | `node trace.mjs replay.repl26a FROM TO champ,champ` | Chosen champions' steps in an input range |
 | `qparse.py` | `load(rounds.txt)` for your own analysis |
+| `python firstpass.py summary.json` | The first pass below in one go: team timeline, champion totals, emblems, deaths with killers, banks |
+| `python bags.py rounds.txt [min]` | Champions carrying a constant bag for min+ rounds (where it went, whether it died) |
+| `node mapgrid.mjs replay.repl26a` | The map as text: walls, holes, bushes, altars, camps, spawns |
+| `node capstate.mjs replay.repl26a GROUP [FROM TO]` | The engine's capture state of a group over rounds (timer stuck = contested) |
+
+Local replays also carry our stdout (`team-a.stdout` in the `.repl26a` zip, NUL-padded): a `diagnostic=true` config prints STATE/ACTIVITY lines, and CAP/HOLD/SWEEP/STANDOFF/TRIB lines added on 2026-11-01.
 
 **A good first pass on a game:** the timeline of gold, banked gems and deaths at rounds 100/300/500/800; gold and kills per champion; emblem order from `itemCombination`; and for each of our deaths, who was how far away. That table alone found the Marcella carry.
 
@@ -90,7 +96,13 @@ Tools are in `scripts/analysis/`. They run the visualiser's own engine, found by
 
 Details: `docs/macro-experiments.md`, `docs/baseline-ablations.md`.
 
-**State:** `baseline` commit 07ebd07 is v78, live, in follow-newest mode at last check. It wins about 81/140 against `test-bot`. The target the user wants is 100+/140.
+**State (2026-11-02):** `baseline` with the teammate's gold weighting (aa2abcc) wins 87/140 against `test-bot`; with the contested-capture rules below, 88 (paired +4 -3). The target the user wants is 100+/140. The user has authorised committing and deploying any change that helps even on some maps, and prefers mixture-of-experts routing by map class.
+
+**Practice matches, v78 (2026-11-01 evening): 0 of 10** against Intercontinental Fish and Mite on gemfight, elk_arena, corners, vault and gemcombat1, every game lost by their 1,000 gems. Summaries in `analysis/pg4/summ`, replays in `analysis/pg4/m_*`. What the games showed:
+- **00corners against Fish: we banked 0 gems in 1,200 rounds** while collecting 292 and earning 2,809 gold. Fish banked 67 times (8-39 gems a time) at the centre altar, which their whole team sat on. Ours carried bags of 4-34 gems for 70-340 rounds and died with them; the corner altars (14 steps from a capture) were never used, and from spawn the bot heads to the centre altar and meets the group there.
+- **00gemfight against Fish:** the centre is inside a spiral of holes; our melee walk 25-33 rounds to reach it (Heart of Ruin dashes over the hole line in 14), while Fish clears the wolf+gold camp beside its spawn with all five, then the elk group, and arrives at the centre at round 34 with 538 gold at round 100 to our 80. We took the 78-gem capture at round 43 under their attack, and Heart of Ruin recalled home with 39 gems, left spawn with them still in the bag, chased a low enemy, and died at round 115 at their elk camp.
+- **00vault against Mite:** Mite's Marcella captured the whole 343-gem vault in one capture at round 60 and teleported home. Our melee stood idle outside the wall under Cassi's fire. Against test-bot in seat A the game froze 0-0 to round 2,000: both bots held tiles of the vault five apart with the enemy in view, each bot's tile scoring keeping its last safe tile (our ACTIVITY log: fight=1971 turns). Fixed by `standoff_rounds` (below). In seat B our Vesper carried 401 gems to the altar and died 21 turns into the 41-turn tribute.
+- The tribute channel is a turn per 10 gems and there is no partial tribute: big bags are the problem, not the walk. But `bank_bag` (bank at 40 or 80 gems) lost against test-bot (74 and 85/140): the trips cost deaths. Left in at 100000 (off).
 
 **What top teams do** (naviepstokes, dromedaries, Intercontinental Fish):
 - **One carry.** Marcella holds nearly all captures (up to 71% of team gold) and stacks Bruiser early: Treasure or Home, Jungle, Durability, then Bruiser repeatedly. She reaches 3,000 health and lands most kills.
@@ -109,6 +121,11 @@ Details: `docs/macro-experiments.md`, `docs/baseline-ablations.md`.
 - Follow-the-leader: strict follow cost a fifth of captures; a loose leash was neutral.
 - Gold-first phases; gold-heavy expert (gem discounts raise deaths); mid-control flag; boss gem weight and compact cohesion; Prism/Willow priority; Vendetta+Marcella pairing.
 - Closing or leaving when shot with no strike available: 72/140 to 81.
+- `scarce_gold_boost` 1.5 and 2.0 (gold worth more on maps with 800 or less camp gold): 89 and 87 to 87. Nothing.
+- `bank_nearby` 6 and 12 (bank whenever an altar is that close): 88 and 74 to 87, deaths up 19%.
+- `bank_bag` 40 and 80 (go bank at that bag size): 74 and 85 to 88.
+
+**Added 2026-11-02 (neutral against test-bot, 88/140):** `sweep_contested` reads the engine's `capture_state()` on a held capture, so an enemy on the tiles out of view counts as contesting, and the holder walks the tiles toward the enemy spawn and back; `standoff_rounds` closes on an enemy in view on a contested capture after 6 rounds of nobody moving. Vault seat A went from 0-0 at round 2,000 to 343-1037 (test-bot's Prism took the next three vault spawns, 50 rounds apart, while we went home to bank).
 
 **What matters most in `baseline`** (ablation): recall home after a capture (57/140 without it), the long-plan penalty (64), retreating at low health (67), capture holder order, and Prospector and Durability emblems.
 
@@ -119,7 +136,10 @@ Details: `docs/macro-experiments.md`, `docs/baseline-ablations.md`.
 - Mid: groups near an altar and equally far from both spawns are worth 0.75x+ of the rest.
 - Ranked record at last check: 4 picks 5-12, 3 picks 6-4, 5 picks 21-12.
 
-**Open leads, best first:**
+**Open leads, best first (the ones from the practice games come first; the rest are older):**
+0. **Banking against teams that hold the centre.** On corners we banked nothing. Ideas: choose the altar by remembered enemy sightings, not only enemies in view (the bot forgets them at spawn and walks into the group at the centre altar); bank at a corner altar when a capture is near one; keep bags under ~40 where a tribute is at risk. `bank_nearby` and `bank_bag` alone lost against test-bot, so any rule needs the risk side too.
+0. **The opening on centre maps (gemfight, vault):** Fish clears the gold camp beside spawn with everyone first and arrives at the centre as a group of five bodies with 500 gold. We walk to the centre one by one with nothing. Route by map class: a single centre capture worth 60%+ of the map's gems.
+0. **Vault seat A still loses** after the standoff fix: the whole team recalls to bank 343 gems and test-bot's Prism takes the next spawns. One banker, the rest hold.
 1. **`00gemfight` against naviepstokes, lost 127-1,028 (19 deaths to 0).** We led until r85 (took the 78-gem centre at r41). At r85-95 our Vendetta and HoR took Vesper to 415, then she stepped back 3 tiles, Willow healed her to 835, and our melee stood still while she shot Vendetta dead. After that our champions scatter alone to 7-gem clusters with no gold (370 gold by r800 to 4,540), and their group picks them off. Ideas: keep the group together after a lost fight, take gold-bearing camps when poor, finish or leave rather than freeze with a better rule than the failed one.
 2. **The `00vault` freeze.** Seat A against `test-bot` reproduces: both teams stop acting early (ours about r32, test-bot about r180 apart from wards), 0-0 to the tiebreak over 2,000 rounds. Neither bot faults. Unexplained. The map's centre group is 49 gem clusters worth 343 gems: three captures win the game.
 3. **`00corners`:** gold and deaths even, but banked gems 311 to 610 at r800. Probably a banking problem.

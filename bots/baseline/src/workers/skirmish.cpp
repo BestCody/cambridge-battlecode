@@ -159,6 +159,18 @@ bool Bot::worker_skirmish() {
     auto &me = bc::self();
     const bool on_capture = target >= 0 && groups[target].status == CampGroup::capture &&
                             groups[target].tiles().is_set(position);
+    // A capture the engine reports contested, the enemy on it in view and
+    // neither side moving for standoff_rounds: close on it. The tile scoring
+    // below holds the last safe tile on each side; so did test-bot's, and
+    // both stood five tiles apart in the vault from round 36 to 2,000.
+    if (policy::standoff_rounds > 0 && on_capture && groups[target].contested == int(round) &&
+        stalls >= policy::standoff_rounds && !too_dangerous) {
+        if constexpr (policy::diagnostic)
+            std::printf("STANDOFF r=%u id=%u pos=%d,%d victim=%d,%d\n", round, id(bc::self()), position.x,
+                        position.y, victim.position.x, victim.position.y);
+        if (advance_attack(victim.position))
+            return true;
+    }
     const bool attack_ready = me.can_attack();
     bool nothing_ready = !attack_ready;
     for (unsigned i = 0; i < spells.size(); ++i)

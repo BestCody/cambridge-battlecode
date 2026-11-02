@@ -17,7 +17,11 @@ bool Bot::worker_tribute() {
         return false;
     bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Near victory, each champion banks its share of the remaining score.
-    const bool share = float(gems) >= float(remaining) / std::max(std::size_t(1), roster.size());
+    // Or a bag of bank_bag: a tribute channels a turn per 10 gems, and a
+    // big bag dies in the channel (ours stood 21 turns of a 401-gem tribute
+    // on vault before a Prism killed her). The top three bank lots of 8-39.
+    const bool share = float(gems) >= std::min(float(policy::bank_bag),
+                                               float(remaining) / std::max(std::size_t(1), roster.size()));
     bool capture_combo = false, holding = false;
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position)) {
         // Leaving a capture before it pays loses it, unless the tribute
@@ -37,6 +41,12 @@ bool Bot::worker_tribute() {
                         std::size_t(stuck_altar) < altar_routes.size() &&
                         int(altar_routes[stuck_altar].get(position)) <= closest;
     const bool trip = spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled);
+    if constexpr (policy::diagnostic)
+        if (spawn.is_set(position) || banking)
+            std::printf("TRIB r=%u id=%u pos=%d,%d gems=%u closest=%d banking=%d trip=%d share=%d holding=%d "
+                        "stuck=%d stalls=%d\n",
+                        round, id(bc::self()), position.x, position.y, gems, closest, int(banking), int(trip),
+                        int(share), int(holding), stuck_altar, bank_stalls);
     // A holder banks its share once its capture has paid.
     if (!banking && !win && !deadline && !trip && !capture_combo && !(share && !holding))
         return false;

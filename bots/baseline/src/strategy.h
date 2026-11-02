@@ -228,6 +228,17 @@ inline constexpr float marcella_capture_bonus = 100000.0f;
 // 244 gold at round 300 to 1,217.
 inline constexpr unsigned scarce_map_gold = 800;
 inline constexpr float scarce_gold_boost = 1.0f;
+// A capture the engine reports contested while we hold it with no enemy in
+// view is swept (worker_farm()): its holder walks the tiles toward the enemy
+// spawn and back until the enemy is seen. On vault (seat A against test-bot)
+// both teams stood in the 343-gem centre from round 36 to 2,000, 0-0.
+inline constexpr bool sweep_contested = true;
+// Holding a contested capture with its enemy in view and nobody moving for
+// this many rounds, the holder closes on the enemy (worker_skirmish()). 0
+// switches it off.
+inline constexpr int standoff_rounds = 6;
+// A bag this big goes to the altar (worker_tribute()), whatever the trip.
+inline constexpr unsigned bank_bag = 100000;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

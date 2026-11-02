@@ -1142,6 +1142,9 @@ void Bot::worker_farm() {
         publish(code);
     }
     if (g.status == CampGroup::capture) {
+        if constexpr (policy::diagnostic)
+            std::printf("HOLD r=%u id=%u pos=%d,%d on=%d contested=%d enemies=%zu\n", round, id(bc::self()),
+                        position.x, position.y, int(g.tiles().is_set(position)), g.contested, enemies.size());
         if (!g.tiles().is_set(position) && capture_deferred(g) && last_plan != int(round)) {
             const int left = target;
             target = worker_choose_group(target);
@@ -1153,6 +1156,27 @@ void Bot::worker_farm() {
         }
         if (!g.tiles().is_set(position))
             move_to(g.tiles(), g.centre, false, true);
+        // Contested by an enemy out of view (observe_group()): walk the
+        // tiles to the end nearest the enemy spawn and back until it is in
+        // view. The fight is then skirmish's, before farming.
+        else if (policy::sweep_contested && g.contested == int(round) && enemies.empty()) {
+            if constexpr (policy::diagnostic)
+                std::printf("SWEEP r=%u id=%u pos=%d,%d back=%d\n", round, id(bc::self()), position.x, position.y,
+                            int(sweep_back));
+            vec2 far = g.centre;
+            int best = -1;
+            for (const auto p : g.tiles().positions()) {
+                const int d = distance(p, sweep_back ? home_centre : enemy_centre);
+                if (best < 0 || d < best) {
+                    best = d;
+                    far = p;
+                }
+            }
+            if (distance(position, far) <= 1)
+                sweep_back = !sweep_back;
+            else
+                move_to(around(far, 1), far, false, true);
+        }
         // The round we stood on it from (unknown ones count from now): our
         // capture's timer runs from the next round's capture phase at the
         // latest.

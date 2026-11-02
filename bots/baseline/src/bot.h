@@ -56,6 +56,9 @@ struct CampGroup {
           full_splash = 1;
     int seen = -1, respawn = 0, attacked = -10000;
     int holding_since = -1;
+    // The last round the engine reported its capture contested while we held
+    // it (observe_group()): an enemy on the tiles, in view or not.
+    int contested = -1;
     // The round of the last observation that found the group alive with every
     // camp in view asleep and living, and its records then (all read or kept
     // asleep); -10 when the last one did not.
@@ -573,6 +576,8 @@ class Bot {
         altar_goals{bc::uninitialized};
     bc::distance_field home_field, altar_field, origin_field;
     vec2 home_centre{}; // The middle of our spawn region.
+    vec2 enemy_centre{}; // The middle of the enemy's.
+    bool sweep_back = false; // A contested capture's sweep heads home.
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;

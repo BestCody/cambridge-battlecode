@@ -491,6 +491,13 @@ void Bot::initialise() {
             ++count;
         }
         home_centre = count ? vec2{sx / count, sy / count} : position;
+        sx = sy = count = 0;
+        for (const auto p : bc::map::spawn_region(bc::team::enemy).positions()) {
+            sx += p.x;
+            sy += p.y;
+            ++count;
+        }
+        enemy_centre = count ? vec2{sx / count, sy / count} : position;
     }
     search_job_cost = turn_work() - search_start;
     own_spawn = bc::map::spawn_region(bc::team::ally);
@@ -1516,8 +1523,21 @@ void Bot::observe_group(std::size_t i) {
         for (const auto &e : enemies)
             if (group_at(e.position) == int(i))
                 contested = true;
-        if (contested)
+        // The engine's word, which counts enemies out of view: on vault both
+        // teams stood in the 343-gem centre to round 2,000, its clusters
+        // hiding each from the other, each waiting on a timer that never ran.
+        if (policy::sweep_contested && friendly_holder && !contested) {
+            const auto cs = g.unit.capture_state();
+            contested = cs.state == bc::map::camp_group_capture_type::contested ||
+                        cs.state == bc::map::camp_group_capture_type::enemy_capturing;
+            if constexpr (policy::diagnostic)
+                std::printf("CAP r=%u id=%u group=%zu cs=%d timer=%d contested=%d\n", round, id(bc::self()), i,
+                            int(cs.state), cs.timer, int(contested));
+        }
+        if (contested) {
             g.holding_since = -1;
+            g.contested = round;
+        }
         else if (friendly_holder && g.holding_since < 0)
             g.holding_since = round;
         for (auto &c : g.camps)
