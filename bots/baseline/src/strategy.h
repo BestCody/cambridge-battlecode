@@ -214,7 +214,7 @@ inline constexpr std::size_t leg_neighbours = 3;
 // 02tangle's 43-gem elk pocket is 8 steps from our spawn over a wall and 90
 // round it: priced by the walk it scored 0.03 against 0.15 for a 29-gem
 // group 48 steps off, and Nameless took its mirror ten times to our none.
-inline constexpr bool hop_home = true;
+inline constexpr bool hop_home = false;
 // Vesper Vale (its gold bonus, its dash) values gold at
 // vesper_scout_gold_value gems for its first vesper_scout_rounds (the others
 // at early_gold_value): it farms the gold camps early and buys sooner.
@@ -278,6 +278,12 @@ inline constexpr unsigned island_bag = 60;
 // (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
 // Bruiser/Health: 3,200 health by round 166 on 03showdown).
 inline constexpr int marcella_build = 3;
+// Every champion's build cut to its first short_builds emblems, then
+// Bruiser of its repeat's stat (economy.cpp build_for(); 0: the full
+// builds). Olympus's whole roster stacks Bruiser from the third emblem
+// (their Heart of Ruin 6,400 health on hooks); ours buy 5-7 farming
+// emblems first and die to one enemy's burst from 80% health in 4-8 rounds.
+inline constexpr unsigned short_builds = 0;
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of

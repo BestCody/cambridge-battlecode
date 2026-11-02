@@ -19,7 +19,22 @@ struct Build {
     unsigned size;
     Item repeat;
 };
+Build full_build_for(bc::champion_type type);
 Build build_for(bc::champion_type type) {
+    Build b = full_build_for(type);
+    if constexpr (policy::short_builds > 0) {
+        // The repeat's stat, as the Bruiser family of it (strategy.h).
+        if (b.size > policy::short_builds)
+            b.size = policy::short_builds;
+        const Item r = b.repeat;
+        b.repeat = r.strength_points() > r.focus_points() && r.strength_points() > r.health_points()
+                       ? Item::bruiser_shard_of_strength
+                   : r.focus_points() > r.health_points() ? Item::bruiser_shard_of_focus
+                                                          : Item::bruiser_shard_of_health;
+    }
+    return b;
+}
+Build full_build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::vesper_vale:
             return {{{{Item::treasure_shard_of_strength, 5},        // r114-129, 15/15
