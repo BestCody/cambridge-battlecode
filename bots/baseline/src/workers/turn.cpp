@@ -61,9 +61,6 @@ void Bot::play_worker_turn() {
         shared.set_leaving(slot, false);
     }
     if (!me.is_alive()) {
-        if (!was_dead)
-            ++own_deaths;
-        was_dead = true;
         note_activity(Activity::dead);
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
@@ -135,7 +132,6 @@ void Bot::play_worker_turn() {
     tribute_taken = 0;
     tribute_turns = 0;
     const bool at_spawn = own_spawn_tile[tile_index(position)];
-    was_dead = false;
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
         recall_tile = {-1, -1};
@@ -183,10 +179,6 @@ void Bot::play_worker_turn() {
     // stunned Heart of Ruin at 10 hp, ours at 473 of 1000, 00galaxy). Moved
     // without the hurt mode, our deaths doubled.
     hurt_turn = retreating || health_recovery_needed();
-    // The watch score decays each turn (strategy.h watch_window): the fight
-    // adds one on a watching turn.
-    if constexpr (policy::watch_window > 0)
-        watch_score *= 1.0f - 1.0f / float(policy::watch_window);
     // Hurt, the champion is retreating from now on, whoever plays the turn:
     // when the fight took it, the retreat was never latched and the next turn
     // played as if healthy. Hurt, no chase.
@@ -209,24 +201,6 @@ void Bot::play_worker_turn() {
         return;
     }
     place_lock();
-    // The opening rally (strategy.h rally_radius).
-    if (policy::rally_radius > 0 && !opening_done && opening_group >= 0 && rally_holds < policy::rally_max) {
-        int others = 0, near = 0;
-        for (std::size_t s = 0; s < roster.size() && s < TeamMemory::slots; ++s) {
-            if (s == slot || !roster[s].is_alive())
-                continue;
-            ++others;
-            const int k = slot_ally[s];
-            if (k >= 0 && distance(position, allies[std::size_t(k)].position) <= policy::rally_radius)
-                ++near;
-        }
-        if (others > 0 && near < others) {
-            ++rally_holds;
-            combat(false, -1);
-            note_activity(Activity::idle);
-            return;
-        }
-    }
     if (worker_reinforce()) {
         note_activity(Activity::reinforce);
         return;

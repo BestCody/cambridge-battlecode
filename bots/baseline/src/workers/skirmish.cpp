@@ -560,7 +560,7 @@ bool Bot::worker_skirmish() {
     // farming and travel go on. Ghosts weigh on the tiles but start no
     // fight. Without the chase a wounded enemy walked off while we farmed
     // and the teammate that followed it fought alone (00collision, r53-83).
-    bool engaged = false, teammate_threatened = false;
+    bool engaged = false;
     for (const auto &e : enemies) {
         if (engaged)
             break;
@@ -568,7 +568,7 @@ bool Bot::worker_skirmish() {
             continue;
         engaged = acts_on(e, position);
         for (std::size_t j = 0; j < our_count && !engaged; ++j)
-            engaged = teammate_threatened = acts_on(e, ours_list[j].unit->position);
+            engaged = acts_on(e, ours_list[j].unit->position);
         if (!engaged) {
             const auto [theirs, ours] = sides(e.position);
             engaged = ours > theirs;
@@ -609,23 +609,6 @@ bool Bot::worker_skirmish() {
         watch_turns = 0;
         return false;
     }
-    // Lone guard (strategy.h): no initiated fight without a teammate near.
-    if (policy::lone_guard_radius > 0 && here.safety == 2 && !kill && !finish) {
-        bool near = false;
-        for (const auto &a : allies)
-            near = near || (a.health > 0 && distance(position, a.position) <= policy::lone_guard_radius);
-        if (!near) {
-            watch_turns = 0;
-            return false;
-        }
-    }
-    // Feed guard (strategy.h): no initiated fight, only one we are in or
-    // one that kills.
-    if (policy::feed_guard_deaths > 0 && own_deaths >= policy::feed_guard_deaths &&
-        int(round) >= policy::feed_guard_round && here.safety == 2 && !kill && !finish) {
-        watch_turns = 0;
-        return false;
-    }
     // Outnumbered where we stand: the camps by these enemies wait out the
     // sighting (camp choice).
     if (here.safety < 2)
@@ -635,16 +618,8 @@ bool Bot::worker_skirmish() {
     // (farm_in_view); watch_limit such turns in a row end the watch.
     const bool watching = !hurt_turn && here.safety == 2 && !strike_in_reach && !on_capture;
     watch_turns = watching ? watch_turns + 1 : 0;
-    if (watching)
-        watch_score += 1.0f;
-    bool behind = true;
-    if (policy::watch_gap > 0) {
-        behind_pressure();
-        behind = behind_gap >= float(policy::watch_gap);
-    }
-    const bool dancing = policy::watch_window <= 0 || watch_score >= policy::watch_min;
     const bool expert = !policy::watch_route || watch_map;
-    if (watching && target >= 0 && expert && behind && dancing && !(policy::watch_alone && teammate_threatened)) {
+    if (watching && target >= 0 && expert) {
         bool camp_in_reach = false;
         if constexpr (policy::farm_in_view)
             for (const auto &c : groups[target].camps)

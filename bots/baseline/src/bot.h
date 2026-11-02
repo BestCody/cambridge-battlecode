@@ -399,9 +399,6 @@ class Bot {
     // none), and whether the opening is over.
     int opening_group = -2, opening_until = 0;
     bool opening_done = false;
-    int openings_made = 0, opening_last = -1; // later opening groups (strategy.h opening_groups)
-    int rally_holds = 0;
-    int own_deaths = 0; bool was_dead = false; // feed_guard (strategy.h) // turns held for the team during the opening (strategy.h rally_radius)
     int choose_opening(int &until) const;
     // Damage taken while tributing, and the turns of the tribute so far;
     // the damage taken over our last turn.
@@ -585,14 +582,11 @@ class Bot {
     // A centre map: one group holds centre_share of the map's gems and is
     // opening_reach or more steps from our spawn (centre_opening()).
     bool centre_map = false;
-    bool elk_map = false; // elk_share of the gems behind elks or golems (world.cpp)
-    float clear_share_now = policy::team_clear_share, ask_discount_now = policy::party_ask_discount; // routed by elk_map
     int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
     bool sweep_back = false; // A contested capture's sweep heads home.
     int watch_turns = 0; // Fight turns in a row with no enemy to strike from any tile in reach.
-    float watch_score = 0; // About the count of such turns in the last watch_window turns.
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;
@@ -634,7 +628,6 @@ class Bot {
     // behind_pressure() is worked out once a round.
     mutable int behind_round = -1;
     mutable float behind_value = 0;
-    mutable float behind_gap = 0; // Their gems (tributed and carried) less ours, as behind_pressure() counts them.
     // The capture gold multiplier (Vesper's passive, Treasure).
     float gold_bonus = 1;
     // Turn ends our recall takes: five, three with a Home emblem.

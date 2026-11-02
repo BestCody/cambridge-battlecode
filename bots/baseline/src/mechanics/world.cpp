@@ -302,10 +302,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         std::int32_t cooldown = 0;
         bc::detail::check(bc::detail::sdk_champion_cooldown(handle, ability_slot, &cooldown));
         // Castable at its next action: a slot at 1 is not (measured).
-        bool ready = cooldown <= 0;
-        if (policy::burst_soon > 0 && !ready && cooldown <= policy::burst_soon && damage::damaging(s) &&
-            s.kind != bc::ability_kind::attack_reset && focus * s.modifier >= policy::big_burst)
-            ready = true; // strategy.h big_burst
+        const bool ready = cooldown <= 0;
         slot_ready = std::uint8_t(slot_ready | unsigned(ready) << ability_slot);
         const bool cast = cooldown >= s.cooldown - 2;
         if (cast && s.kind == bc::ability_kind::attack_reset)
@@ -611,17 +608,6 @@ void Bot::initialise() {
             }
         }
         centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
-        float elk_gems = 0;
-        for (const auto &g : groups) {
-            bool hard = false;
-            for (const auto &c : g.camps)
-                hard = hard || c.stats.base_strength >= 60;
-            if (hard)
-                elk_gems += float(g.unit.gem_value());
-        }
-        elk_map = total > 0 && elk_gems >= policy::elk_share * total;
-        clear_share_now = policy::elk_map_party && elk_map ? policy::elk_map_clear_share : policy::team_clear_share;
-        ask_discount_now = policy::elk_map_party && elk_map ? policy::elk_map_ask_discount : policy::party_ask_discount;
         // The map's print, against the watch expert's maps (strategy.h).
         const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
                                      int(total + 0.5f)};
@@ -1853,7 +1839,7 @@ bool Bot::visit_clears(const CampGroup &g) const {
     // clearing speed, from where the fewest reach us, at our mitigation;
     // then the walk out.
     const float damage =
-        g.live_work / (dps(g) * clear_share_now) * g.reach_share * camp_mitigation * mitigation;
+        g.live_work / (dps(g) * policy::team_clear_share) * g.reach_share * camp_mitigation * mitigation;
     return damage + visit_cost(g) < health;
 }
 

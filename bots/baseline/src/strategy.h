@@ -154,18 +154,6 @@ inline constexpr float worker_commit_bonus = 1.1102f;
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
 inline constexpr float team_clear_share = 0.61002f;
-// A party plan charges what each asked teammate gives up (our best score at
-// its camp rate) times party_ask_discount: at 1 a teammate's alternative is
-// assumed as good as ours; lower, parties for elks and golems form sooner.
-inline constexpr float party_ask_discount = 1.0f; // 0.5: hard-group maps 3/10 to 5/10, the pool 164 to 159 of 280
-inline constexpr float party_ask_discount_gems = 25.0f; // the discount applies to groups of this many gems or more only
-// Routed (bot.h elk_map: elk_share of the gems behind elks or golems): on
-// those maps the party constants are elk_map_clear_share and
-// elk_map_ask_discount; elsewhere the GA's. Everywhere, 0.85 and 0.5 won the
-// five hard-group maps locally and lost the pool.
-inline constexpr bool elk_map_party = false;
-inline constexpr float elk_map_clear_share = 0.85f;
-inline constexpr float elk_map_ask_discount = 0.5f;
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
@@ -207,43 +195,6 @@ inline constexpr float enemy_side_factor = 0.94067f;
 // Camp choice values a group an enemy champion stands on this much more (a
 // contest we can win there takes its reward from them).
 inline constexpr float enemy_held_camp_bonus = 1.8336f;
-// An enemy's capture of a group with more than contest_max_camps camps is
-// no candidate (0: always): 01yellow_brick_road's two 600-gold roads are 30
-// clusters wide, from our spawn to theirs, and ours left a half-cleared road
-// (score 0.45) for the other road's enemy capture (1.6-1.9), which they
-// could not stop; test-bot and Olympus then took both roads.
-inline constexpr int contest_max_camps = 0; // 12: yellow-brick-road still 0/2 locally, 898 to 706 gems; the-line 382 to 551
-// Party plans (farming.cpp) for a cluster-only group of party_cluster_camps
-// or more camps (0: never; clusters strike nobody, so no plan was ever made
-// for them): yellow_brick_road's 30-cluster roads (3,600 health, 600 gold)
-// take one champion 60-80 rounds and test-bot's five 15.
-inline constexpr int party_cluster_camps = 0;
-// The opening group stays every champion's target when enemies are seen
-// at it (opening_holds; without it the opening ends at first sight and the
-// team spreads): on hooks and packs the first centre contest decides the
-// game, and ours arrived one at a time (hooks 0 kills to 28 against
-// Olympus; the one win, v93, won that contest).
-inline constexpr bool opening_holds = false;
-// During the opening a champion holds (fighting from where it stands) while
-// any living teammate is out of view or farther than rally_radius, at most
-// rally_max turns a game (0: off): the team reaches the first contest
-// together instead of one at a time.
-inline constexpr int rally_radius = 0;
-// Feed guard: a champion that has died feed_guard_deaths times (0: off)
-// after feed_guard_round no longer starts a fight: it fights only where an
-// enemy can act on it or a kill is available (worker_skirmish()). Against
-// Velvet Tributers and Tokenmaxxing ours died 20-36 times a game at 100
-// gold and the bag each to a Willow-backed Vendetta with 17-23 kills.
-inline constexpr int feed_guard_deaths = 0;
-// Lone guard: a champion with no living teammate in view within
-// lone_guard_radius starts no fight (0: off); it fights where an enemy can
-// act on it or a kill is there. Measured (analysis/pg10/spread.py): the
-// teams that beat us attack with a teammate a median 1-2 tiles away (剑桥夜
-// 爬者 on membrane 2% of attacks with none within 4, Velvet on oasis 21%);
-// ours attack at a median 3-4 with none within 4 on 35-48% of attacks.
-inline constexpr int lone_guard_radius = 0;
-inline constexpr int feed_guard_round = 300;
-inline constexpr int rally_max = 25;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.
 inline constexpr float held_capture_bonus = 4.4312f;
@@ -265,13 +216,6 @@ inline constexpr float cohesion_max_spacing = 29.565f;
 // The nearest groups (straight line) whose legs from a group the draft
 // prices for a crystal hop (DraftPlan::leg_saving).
 inline constexpr std::size_t leg_neighbours = 3;
-// A group's distance from spawn (CampGroup::home_distance: the trips home a
-// clear needs, which side of the map it is on, the opening's reach) is its
-// crystal hop walk plus the channel where that is shorter (prepare_hops()).
-// 02tangle's 43-gem elk pocket is 8 steps from our spawn over a wall and 90
-// round it: priced by the walk it scored 0.03 against 0.15 for a 29-gem
-// group 48 steps off, and Nameless took its mirror ten times to our none.
-inline constexpr bool hop_home = false;
 // Vesper Vale (its gold bonus, its dash) values gold at
 // vesper_scout_gold_value gems for its first vesper_scout_rounds (the others
 // at early_gold_value): it farms the gold camps early and buys sooner.
@@ -328,45 +272,12 @@ inline constexpr float wait_bank = 1.5f;
 // banks from spawn; any bag does when the rounds left just cover that
 // (worker_tribute(); 0: never). Ours ended the pond with 370 gems in hand.
 inline constexpr unsigned island_bag = 60;
-// Marcella's build (economy.cpp build_for()): 0 print dont int's farming
-// emblems then Bruiser/Focus; 1 Olympus's (Power/Focus, Jungle/Focus,
-// Durability/Health, then Bruiser/Focus: 26 of them by round 1,000, a
-// 4,000-damage spell, 16 kills to 0 deaths on 00packs); 2 QS2isLaw's
-// (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
-// Bruiser/Health: 3,200 health by round 166 on 03showdown).
-inline constexpr int marcella_build = 3;
-// Every champion's build cut to its first short_builds emblems, then
-// Bruiser of its repeat's stat (economy.cpp build_for(); 0: the full
-// builds). Olympus's whole roster stacks Bruiser from the third emblem
-// (their Heart of Ruin 6,400 health on hooks); ours buy 5-7 farming
-// emblems first and die to one enemy's burst from 80% health in 4-8 rounds.
-inline constexpr unsigned short_builds = 0;
 // Capture first (subscribe to caterpillow, 25-15 over its last 40 ranked
 // games, all six wins studied): every champion's first emblem is Capture of
 // its main stat, at rounds 53-230, then Treasure, Jungle, Bruiser. Capture
 // caps the team's capture timer at 3 turns instead of 10, joining
 // mid-capture included: faster cycles and far less exposure to a reset.
 inline constexpr bool capture_first = true;
-// Vesper's build (economy.cpp): 0 print dont int's seven farming emblems
-// then Bruiser/Strength; 1 Treasure/Strength, Durability/Health, then
-// Bruiser/Health (QS2isLaw's Vesper 10,900 health on the pond, bbas's 6,400
-// on big_world killed a monolith; ours 1,300-2,200 at round 700).
-inline constexpr int vesper_build = 0;
-// On a map where elk_share or more of the gems sit in groups with an elk or
-// golem (strength 60+), every champion buys Jungle/Health first
-// (jungle_first; bot.h elk_map). Alone, an elk group (2,400 health, 60 a
-// turn) needs trips home, so camp choice scores it 0.01-0.04 against 0.1-1.4
-// for wolves and lone clusters (geodes, tangle), and QS2isLaw and Nameless
-// take the elks from round 140 with Jungle/Health early.
-inline constexpr bool jungle_first = false;
-inline constexpr float elk_share = 0.5f;
-// An enemy's damage spell of big_burst damage or more counts as ready for
-// the tile safety test while its cooldown is within burst_soon turns (0:
-// only when ready now). Our champions at 70-80% health died in 4-8 rounds
-// to one stacked carry (Olympus's Marcella: a 4,000-damage spell at range
-// 4 every 8 turns), stepping into its reach the turn before it came back.
-inline constexpr float big_burst = 800.0f;
-inline constexpr int burst_soon = 0;
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of
@@ -390,18 +301,6 @@ inline constexpr MapPrint watch_maps[] = {
     {50, 41, 31, 1180}, // 01boss-battle 1 to 4
     {91, 75, 11, 380},  // 02famine 0 to 3
 };
-// With watch_alone, neither applies while an enemy in view can act on a
-// teammate: the bystander still joins that fight.
-inline constexpr bool watch_alone = false;
-// With watch_gap > 0, the watch rules apply only while the enemy's gems
-// (tributed and carried, behind_pressure()) lead ours by watch_gap or more:
-// the maps where we never farm are the ones we fall behind on.
-inline constexpr int watch_gap = 0;
-// With watch_window > 0, the watch rules apply only once the champion's own
-// watching turns in about the last watch_window turns reach watch_min: the
-// dance detects itself, map by map.
-inline constexpr int watch_window = 0;
-inline constexpr float watch_min = 0.0f;
 // A bag this big goes to the altar (worker_tribute()), whatever the trip.
 inline constexpr unsigned bank_bag = 100000;
 // Centre maps (a group with centre_share of the gems, opening_reach or more
@@ -419,12 +318,6 @@ inline constexpr float centre_share = 0.35f;
 inline constexpr int opening_reach = 20;
 inline constexpr int opening_rounds = 80;
 inline constexpr float opening_far_mul = 0.1f;
-// The team clears its first opening_groups groups together (choose_opening()
-// picks the next after each capture, while round < opening_group_until):
-// the top teams open on the nearest big group with everyone and keep the
-// group for the next one; ours spread after the first.
-inline constexpr int opening_groups = 1;
-inline constexpr int opening_group_until = 200;
 // Routed (opening_route): the opening runs only on the maps listed by print
 // (bot.h opening_map), each with its own reach, and the centre_share rule
 // is not used. 03colosseum (Olympus, 0/3 ranked): the only altar and all

@@ -20,7 +20,7 @@ struct Build {
     Item repeat;
 };
 Build full_build_for(bc::champion_type type);
-Build build_for(bc::champion_type type, bool jungle_first = false) {
+Build build_for(bc::champion_type type) {
     Build b = full_build_for(type);
     if constexpr (policy::capture_first) {
         // Capture of the repeat's stat first (strategy.h); the last step
@@ -54,36 +54,11 @@ Build build_for(bc::champion_type type, bool jungle_first = false) {
             }
         }
     }
-    // Jungle/Health first on an elk map (strategy.h jungle_first): the last
-    // step makes room when the build is full.
-    if (jungle_first && b.size > 0 && b.steps[0].item != Item::jungle_shard_of_health) {
-        if (b.size == b.steps.size())
-            --b.size;
-        for (unsigned i = b.size; i > 0; --i)
-            b.steps[i] = b.steps[i - 1];
-        b.steps[0] = {Item::jungle_shard_of_health, 5};
-        ++b.size;
-    }
-    if constexpr (policy::short_builds > 0) {
-        // The repeat's stat, as the Bruiser family of it (strategy.h).
-        if (b.size > policy::short_builds)
-            b.size = policy::short_builds;
-        const Item r = b.repeat;
-        b.repeat = r.strength_points() > r.focus_points() && r.strength_points() > r.health_points()
-                       ? Item::bruiser_shard_of_strength
-                   : r.focus_points() > r.health_points() ? Item::bruiser_shard_of_focus
-                                                          : Item::bruiser_shard_of_health;
-    }
     return b;
 }
 Build full_build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::vesper_vale:
-            if constexpr (policy::vesper_build == 1)
-                return {{{{Item::treasure_shard_of_strength, 5}, // strategy.h vesper_build
-                          {Item::durability_shard_of_health, 5}}},
-                        2,
-                        Item::bruiser_shard_of_health};
             return {{{{Item::treasure_shard_of_strength, 5},        // r114-129, 15/15
                       {Item::power_shard_of_strength, 5},       // r129-283, 15/15
                       {Item::durability_shard_of_health, 5},    // r301-283, 13/15
@@ -111,34 +86,12 @@ Build full_build_for(bc::champion_type type) {
                     5,
                     Item::bruiser_shard_of_strength};           // 5.2 a game
         case bc::champion_type::marcella:
-            if constexpr (policy::marcella_build == 1)
-                return {{{{Item::power_shard_of_focus, 5},         // Olympus (strategy.h)
-                          {Item::jungle_shard_of_focus, 5},
-                          {Item::durability_shard_of_health, 5}}},
-                        3,
-                        Item::bruiser_shard_of_focus};
-            if constexpr (policy::marcella_build == 3)
+            // Treasure, Durability, then Bruiser/Focus: print dont int's first two,
+            // then Olympus's stacking (its seven farming emblems lost to that in practice).
                 return {{{{Item::treasure_shard_of_focus, 5},     // print dont int's first two, then
                           {Item::durability_shard_of_health, 5}}}, // Olympus's stacking
                         2,
                         Item::bruiser_shard_of_focus};
-            if constexpr (policy::marcella_build == 2)
-                return {{{{Item::prospector_shard_of_health, 5},   // QS2isLaw (strategy.h)
-                          {Item::jungle_shard_of_health, 5},
-                          {Item::capture_shard_of_health, 5},
-                          {Item::durability_shard_of_health, 5},
-                          {Item::monster_shard_of_strength, 5}}},
-                        5,
-                        Item::bruiser_shard_of_health};
-            return {{{{Item::treasure_shard_of_focus, 5},           // r95-182, 16/16
-                      {Item::durability_shard_of_health, 5},    // r190-276, 16/16
-                      {Item::prospector_shard_of_focus, 5},     // r280-408, 12/16
-                      {Item::monster_shard_of_focus, 5},        // r345-421, 14/16
-                      {Item::jungle_shard_of_health, 5},        // r426-459, 12/16
-                      {Item::capture_shard_of_focus, 5},        // r459-528, 12/16
-                      {Item::skirmish_shard_of_focus, 5}}},     // r528-533, 11/16
-                    7,
-                    Item::bruiser_shard_of_focus};              // 27.8 a game
         case bc::champion_type::ryth:
             return {{{{Item::treasure_shard_of_health, 5},      // r140-366, 6/8
                       {Item::durability_shard_of_health, 5}}},  // r506-789, 4/8
@@ -186,15 +139,15 @@ namespace {
 // 900 in 15 of 100 ranked games (13 lost); without the switches 95/140
 // against 86 (paired 16:7, 4M fuel). An emblem begun is finished first:
 // only a finished one gives its passive.
-Item next_item(bc::champion_type type, const Bought &bought, bool jungle_first) {
-    const auto build = build_for(type, jungle_first);
+Item next_item(bc::champion_type type, const Bought &bought) {
+    const auto build = build_for(type);
     for (unsigned i = 0; i < build.size; ++i)
         if (bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count)
             return build.steps[i].item;
     return build.repeat;
 }
-unsigned step_left(bc::champion_type type, const Bought &bought, Item item, bool jungle_first) {
-    const auto build = build_for(type, jungle_first);
+unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
+    const auto build = build_for(type);
     for (unsigned i = 0; i < build.size; ++i)
         if (build.steps[i].item == item && bought[static_cast<unsigned>(item)] < build.steps[i].count)
             return build.steps[i].count - bought[static_cast<unsigned>(item)];
@@ -256,11 +209,10 @@ void Bot::buy_equipment() {
             carrying_lock = bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[1]) == 0;
     }
     while (can_shop) {
-        const bool jungle_first = policy::jungle_first && elk_map;
-        const auto item = next_item(type, bought, jungle_first);
+        const auto item = next_item(type, bought);
         if (me.gold_count() < item.cost())
             break;
-        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item, jungle_first));
+        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item));
         if (!count || !me.can_buy(item, count))
             break;
         me.buy(item, count);

@@ -26,7 +26,7 @@ int Bot::choose_opening(int &until) const {
     for (const auto &k : roster_kits)
         rate += k.camp_rate;
     const float members = float(std::max<std::size_t>(1, roster_kits.size()));
-    const float speed = std::max(1.0f, rate * clear_share_now);
+    const float speed = std::max(1.0f, rate * policy::team_clear_share);
     const float gem_weight = gem_reward_weight(opening);
     const int capture_time = rules::settings().capture_time;
     int best = -1;
@@ -35,8 +35,6 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
-        if (g.status != CampGroup::alive || i == std::size_t(opening_last))
-            continue; // A later opening group (strategy.h opening_groups): not the one just taken.
         if (centre_opening() && g.home_distance > opening_reach_now)
             continue;
         // Without a trip home: what each member spends before it leaves,
@@ -74,27 +72,12 @@ int Bot::worker_choose_group(int excluded) {
         if (opening_group == -2)
             opening_group = choose_opening(opening_until);
         if (opening_group >= 0 && opening_group != excluded && int(round) <= opening_until &&
-            (policy::opening_holds || !enemy_near_lately(opening_group)) &&
+            !enemy_near_lately(opening_group) &&
             groups[std::size_t(opening_group)].status == CampGroup::alive) {
             last_plan = round;
             siege_group = -1;
             cluster_run.clear();
             return opening_group;
-        }
-        // The next opening group, while the team still has openings to make
-        // and the round allows (strategy.h opening_groups).
-        if (policy::opening_groups > 1 && openings_made + 1 < policy::opening_groups && opening_group >= 0 &&
-            int(round) < policy::opening_group_until && !enemy_near_lately(opening_group)) {
-            ++openings_made;
-            opening_last = opening_group;
-            opening_group = choose_opening(opening_until);
-            if (opening_group >= 0) {
-                opening_until += int(round);
-                last_plan = round;
-                siege_group = -1;
-                cluster_run.clear();
-                return opening_group;
-            }
         }
         opening_done = true;
     }
@@ -323,14 +306,7 @@ int Bot::worker_choose_group(int excluded) {
             return walk;
         if (on_spawn && float(walk - group_hops[i]) > threshold)
             walk = group_hops[i];
-        int planned = hop_rounds(groups[i].centre);
-        // The approach plans its hop toward the nearest camp, not the
-        // centre (strategy.h hop_home): off spawn, a group chosen for its
-        // hop read as its walk again and was dropped a step later.
-        if constexpr (policy::hop_home)
-            for (const auto &c : groups[i].camps)
-                planned = std::min(planned, hop_rounds(c.position));
-        return std::min(walk, planned);
+        return std::min(walk, hop_rounds(groups[i].centre));
     };
     // Teammates' claims since our last choice: one that changed has ended
     // (claim_ended: the round we saw it end).
@@ -503,7 +479,7 @@ int Bot::worker_choose_group(int excluded) {
                 rate += our_focus * spell.modifier * (g.splash - 1) / float(spell.cooldown);
         rate += dash_rate * std::min(2.0f, float(g.camps.size()));
         const float remaining = g.status == CampGroup::cooling ? g.max_health : g.health;
-        return std::max(remaining / std::max(1.0f, rate * our_multiplier * clear_share_now),
+        return std::max(remaining / std::max(1.0f, rate * our_multiplier * policy::team_clear_share),
                         float(g.camps.size()));
     };
     // Group k's run: the reward and time its members add (none without a
@@ -577,11 +553,6 @@ int Bot::worker_choose_group(int excluded) {
                                        wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(walled)));
-            // An enemy capture of a group of more than contest_max_camps
-            // camps is not contested (strategy.h): a 30-cluster road.
-            if constexpr (policy::contest_max_camps > 0)
-                skip = wasm_v128_or(skip, wasm_v128_and(enemy_here, wasm_f32x4_gt(wasm_v128_load(&lanes.camp_count[i]),
-                                                                                  splat(float(policy::contest_max_camps)))));
             v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(our_range)), no_bits);
             travel_steps = pick(path, travel_steps, is_held); // Holding means standing on a tile.
             const v128_t splash = wasm_v128_load(&lanes.splash[i]),
@@ -606,9 +577,9 @@ int Bot::worker_choose_group(int excluded) {
             // Clearing speeds (damage a round on the group): ours and the
             // claimants' summed, each at team_clear_share of its rate.
             const v128_t speed = wasm_f32x4_pmax(
-                one, wasm_f32x4_mul(wasm_f32x4_mul(rate, splat(our_multiplier)), splat(clear_share_now)));
+                one, wasm_f32x4_mul(wasm_f32x4_mul(rate, splat(our_multiplier)), splat(policy::team_clear_share)));
             const v128_t claim_speed =
-                wasm_f32x4_mul(wasm_v128_load(&lanes.claim_rate[i]), splat(clear_share_now));
+                wasm_f32x4_mul(wasm_v128_load(&lanes.claim_rate[i]), splat(policy::team_clear_share));
             const v128_t claimed = wasm_f32x4_gt(claim_speed, zero);
             // A champion with a dash travels the faster, and so waits the
             // longer for a respawn.
@@ -883,26 +854,24 @@ int Bot::worker_choose_group(int excluded) {
         for (unsigned s = 0; s < kits; ++s)
             if (s != slot && living(s) && mates[s].free)
                 least_asked = std::min(least_asked, mate_rate[s]);
-        const float least_given_up = party_best * least_asked / our_rate * std::min(1.0f, ask_discount_now); // the per-group discount is applied below
+        const float least_given_up = party_best * least_asked / our_rate;
         // And the fastest a party can clear: every free teammate striking.
         float all_mates_speed = 0;
         for (unsigned s = 0; s < kits; ++s)
             if (s != slot && living(s) && mates[s].free)
-                all_mates_speed += mate_rate[s] * clear_share_now;
+                all_mates_speed += mate_rate[s] * policy::team_clear_share;
         for (std::size_t i = 0; i < count && least_asked != std::numeric_limits<float>::infinity(); ++i) {
             const auto &g = groups[i];
             // Groups whose walk is measured, with a request code to ask with.
-            const bool cluster_party = policy::party_cluster_camps > 0 && lanes.striker_work[i] <= 0 &&
-                                       lanes.camp_count[i] >= float(policy::party_cluster_camps);
             if (lanes.scores[i] == skipped || group_bounded[i] || g.status == CampGroup::capture ||
-                (lanes.striker_work[i] <= 0 && !cluster_party) || !shared.camp_request(int(i)))
+                lanes.striker_work[i] <= 0 || !shared.camp_request(int(i)))
                 continue;
             float rate = flat_dps;
             for (const auto &spell : kit)
                 if (spell.kind == bc::ability_kind::aoe_damage)
                     rate += our_focus * spell.modifier * (lanes.splash[i] - 1) / float(spell.cooldown);
             rate += dash_rate * std::min(2.0f, lanes.camp_count[i]);
-            const float speed = std::max(1.0f, rate * our_multiplier * clear_share_now);
+            const float speed = std::max(1.0f, rate * our_multiplier * policy::team_clear_share);
             const float start = g.status == CampGroup::cooling ? std::max(0.0f, float(g.respawn - now)) : 0.0f;
             const float settle = float(capture_time + 1) + lanes.altar[i];
             const float reward = lanes.gem_reward[i] + gold_weight * lanes.gold[i];
@@ -913,7 +882,7 @@ int Bot::worker_choose_group(int excluded) {
                 time = walk + belief * (time - walk);
                 return belief * reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
             };
-            const float claim_speed = lanes.claim_rate[i] * clear_share_now;
+            const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             // No plan here ends its clear before `start` and a round a camp
             // shared by everyone who could come, nor before its health at
             // all of them striking (less a rounding margin), nor settles
@@ -987,9 +956,8 @@ int Bot::worker_choose_group(int excluded) {
             for (unsigned k = 0; k <= n; ++k) {
                 if (k > 0) {
                     const auto &m = mates[soon[k - 1].second];
-                    party_speed += mate_rate[soon[k - 1].second] * clear_share_now;
-                    rate_asked += mate_rate[soon[k - 1].second] *
-                                  (g.unit.gem_value() >= policy::party_ask_discount_gems ? ask_discount_now : 1.0f);
+                    party_speed += mate_rate[soon[k - 1].second] * policy::team_clear_share;
+                    rate_asked += mate_rate[soon[k - 1].second];
                     // A bigger party gives up more: once this one's best
                     // possible value (the bound above) less what it asks
                     // cannot beat the best, no bigger one can.
@@ -1843,7 +1811,6 @@ float Bot::behind_pressure() const {
         if (ghost_seen[i] && !(i < enemy_respawn.size() && enemy_respawn[i] >= 0))
             theirs += ghost_seen[i]->tributing ? 0.0f : float(ghost_seen[i]->gems);
     const float win = float(rules::settings().winning_gems);
-    behind_gap = theirs - ours;
     behind_value = std::clamp((theirs - ours) / std::max(1.0f, win - theirs), 0.0f, 1.0f);
     return behind_value;
 }
