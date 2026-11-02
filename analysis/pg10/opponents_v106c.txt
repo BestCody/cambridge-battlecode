@@ -1,0 +1,5 @@
+ESTRO2 e8aea141-4c4e-4841-998d-ad002227398e 00corners,02geodes,01the_farm,00elkring,00rows b,a,b,a,b
+DING2 626450a6-dab1-46a3-b4f4-0df7867e275f 03colosseum,00anvil,02famine,00packs,02tangle b,a,b,a,b
+VELV2 118dbffc-87ec-48a6-ac9c-dc1e371ba364 00expanse,00ambush,02famine,00galaxy,01hooks b,a,b,a,b
+TOKEN2 a1e82708-dfd3-4609-8b9a-69f652d12185 00collision,adgato_gemcombat1,01hooks,00corners,02geodes a,b,a,b,a
+NAVIE2 aab88deb-381c-4dad-a439-20e8695fa132 adgato_gemcombat3,00corners,00gemfight,01elk_arena,00vault b,a,b,a,b
