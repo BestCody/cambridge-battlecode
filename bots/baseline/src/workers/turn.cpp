@@ -178,13 +178,19 @@ void Bot::play_worker_turn() {
     // retreat ran first: it walked away from enemies we were finishing (a
     // stunned Heart of Ruin at 10 hp, ours at 473 of 1000, 00galaxy). Moved
     // without the hurt mode, our deaths doubled.
+    if (harvest_map && !harvest_ready) {
+        harvest_ready = int(round) >= policy::harvest_until || finished_emblems() >= policy::harvest_emblems;
+        if constexpr (policy::diagnostic)
+            if (harvest_ready)
+                std::printf("HARVEST r=%u id=%u ready emblems=%d\n", round, id(bc::self()), finished_emblems());
+    }
     hurt_turn = retreating || health_recovery_needed();
     // Hurt, the champion is retreating from now on, whoever plays the turn:
     // when the fight took it, the retreat was never latched and the next turn
     // played as if healthy. Hurt, no chase.
     retreating = retreating || hurt_turn;
     worker_update_formation();
-    if (worker_skirmish() || (!hurt_turn && worker_pursue())) {
+    if (worker_skirmish() || (!hurt_turn && !harvesting() && worker_pursue())) {
         note_activity(Activity::fight);
         return;
     }

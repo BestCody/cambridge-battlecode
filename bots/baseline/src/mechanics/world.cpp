@@ -623,6 +623,11 @@ void Bot::initialise() {
                     opening_rounds_now = m.rounds;
                 }
         }
+        harvest_map = policy::harvest_all;
+        for (const auto &m : policy::harvest_maps)
+            if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
+                m.gems == print.gems)
+                harvest_map = true;
         watch_map = false;
         for (const auto &m : policy::watch_maps)
             if (m.width == print.width && m.height == print.height && m.groups == print.groups &&

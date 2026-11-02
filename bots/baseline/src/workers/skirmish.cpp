@@ -132,6 +132,16 @@ bool Bot::worker_skirmish() {
     // 1.5% walking home.
     if (too_dangerous && !overridden)
         return hurt_turn ? worker_escape() : leave_fight(victim.position);
+    // The harvest species, not ready (strategy.h harvest_*): no fight that is
+    // not a kill or a finish; in an enemy's reach it breaks contact, otherwise
+    // it farms on.
+    if (harvesting() && !kill && !finish) {
+        const std::uint32_t threats = threat_bits();
+        if (threats == 0)
+            return false;
+        if (!duel_won(threats, pool))
+            return leave_fight(victim.position);
+    }
     // The fight, as XSquare's open Battlecode micro decides it (2022-2024
     // winners'; most top teams ran a copy): no fight-or-flee rule and no
     // aggression factor, but every tile we can end on, scored each turn

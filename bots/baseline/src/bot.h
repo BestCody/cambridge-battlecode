@@ -585,6 +585,17 @@ class Bot {
     int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
+    bool harvest_map = false, harvest_ready = false; // the harvest species (strategy.h harvest_*)
+    bool harvesting() const { return harvest_map && !harvest_ready; }
+    // The cohesion hazard in force: the species keeps the team within the
+    // camp spacing of each other's claims in both of its phases.
+    float cohesion_hazard_now() const { return harvest_map ? policy::harvest_cohesion : policy::cohesion_hazard; }
+    int finished_emblems() const {
+        int n = 0;
+        for (const unsigned b : bought)
+            n += b >= 5;
+        return n;
+    }
     bool sweep_back = false; // A contested capture's sweep heads home.
     int watch_turns = 0; // Fight turns in a row with no enemy to strike from any tile in reach.
     std::vector<bc::distance_field> altar_routes;

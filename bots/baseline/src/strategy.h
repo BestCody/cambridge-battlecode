@@ -333,6 +333,33 @@ inline constexpr float opening_far_mul = 0.1f;
 // Vendetta farmed 122 turns in the first 300 rounds, ours 15-20, and
 // their gold led 2578 to 968 at round 300.
 inline constexpr bool opening_route = true;
+// The harvest species (a second way to play, routed by map print like the
+// watch expert): until a champion is ready it farms gold on our half of
+// the map at harvest_gold_value gems a gold (camp choice), discounts the
+// enemy's half by harvest_enemy_side instead of enemy_side_factor, takes
+// no fight that is not a kill, a finish or a duel the duel model wins with
+// the allies in reach (in an enemy's reach otherwise it breaks contact, out
+// of reach it farms on) and chases nothing. Ready is
+// harvest_emblems finished emblems or round harvest_until. The top teams'
+// pattern on contested-centre maps (Intercontinental Fish on quarry: own
+// side gold first, regroup, hit the enemy while it clears the centre; MFF1
+// and caterpillow bank nothing before round 800 on one_gem, stampede and
+// homonoliths and win on gold and kills). Candidate maps: most of the gems
+// in the middle band and some gold on our half (analysis/mapfeat).
+inline constexpr float harvest_gold_value = 0.6f;
+inline constexpr float harvest_near_enemy = 0.1f; // a group with an enemy seen near it lately, while harvesting
+// The species' cohesion hazard (cohesion_hazard's form), in both phases: in
+// every death stepped through (anvil, oasis, hooks) the victim's teammates
+// were 10-24 tiles away.
+inline constexpr float harvest_cohesion = 0.1f;
+inline constexpr float harvest_enemy_side = 0.3f;
+inline constexpr int harvest_emblems = 3;
+inline constexpr int harvest_until = 500;
+inline constexpr bool harvest_all = false; // every map plays the species (map tables)
+inline constexpr MapPrint harvest_maps[] = {
+    {37, 31, 13, 258}, // 00anvil
+    {0, 0, 0, 0},      // placeholder: filled from the map tables
+};
 struct OpeningMap {
     MapPrint print;
     int reach, rounds;
