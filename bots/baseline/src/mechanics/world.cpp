@@ -274,7 +274,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
     // teleport then acts as usual (a recall leaves). A recall with time left
     // can still be cancelled, as some teams do on every turn: an enemy's
     // showing the time of a recall that just started is left to observe() to
-    // tell from a fake; none of ours fakes one.
+    // tell from a fake, and a teammate's is told by its report there.
     // The engine writes every entry, so the array is not zero-filled first.
     std::array<std::uint32_t, static_cast<std::size_t>(bc::item_type::count)> items;
     bc::detail::check(bc::detail::sdk_champion_items(handle, items.data()));
@@ -1253,10 +1253,13 @@ void Bot::observe() {
     mark_camp_zones();
     note_altar_locks();
     shared.read();
-    // None of ours fakes a recall: a teammate's recall is a channel.
+    // A teammate's recall is real when it reports one, or rides a capture's
+    // recall home: every champion ends its turns in a recall it cancels at
+    // the next (fake_recall()).
     for (std::size_t i = 0; i < allies.size(); ++i)
         if (allies[i].recalling)
-            allies[i].channel = true;
+            allies[i].channel =
+                shared.get(ally_slot[i]) == TeamMemory::recall || shared.leaving(ally_slot[i]);
     ghosts.clear();
     ghost_last.clear();
     sighted_ghosts = 0;
@@ -1834,7 +1837,7 @@ void Bot::publish(unsigned claim) {
     // A capture's holder keeps its claim through fights, banking and stuns:
     // teammates leave a claimed capture to it (capture_outranked()), and two
     // on the tiles split the reward. A recall still says it is leaving.
-    if (claim != TeamMemory::homeward && TeamMemory::requested_force(claim, groups.size()) == 0 && target >= 0 &&
+    if (claim != TeamMemory::recall && TeamMemory::requested_force(claim, groups.size()) == 0 && target >= 0 &&
         target < int(TeamMemory::bank) - 1 &&
         groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position) &&
         bc::self().is_alive())

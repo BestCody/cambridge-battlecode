@@ -11,7 +11,7 @@ bool Bot::worker_escape() {
     // A champion caught while it goes keeps reporting the fight, so help can
     // still come.
     if (!worker_update_formation())
-        publish(TeamMemory::homeward);
+        publish(TeamMemory::recall);
     if (own_spawn_tile[tile_index(position)]) {
         if (health >= max_health) {
             retreating = false;
@@ -46,10 +46,20 @@ void Bot::play_worker_turn() {
     auto &me = bc::self();
     const float before = health; // As our last turn left it.
     note_activity(Activity::idle); // Overwritten by whatever this turn ends up doing.
+    // The recall our last turn ended in goes first: a channel blocks every
+    // other action, shopping included. A hit or a stun may have ended it. One
+    // carrying a capture's holder home runs on.
+    if (faking && !homeward)
+        (void)bc::detail::sdk_cancel_channel();
+    capture_recall |= faking && homeward;
+    faking = homeward = false;
     track_enemy_respawns(); // Needs no vision: also while dead, recalling or banking.
-    // A capture's recall that ended (home, hit, stunned or dead) is over.
-    if (capture_recall && !me.is_recalling())
+    // A capture's recall that ended (home, hit, stunned or dead) stops
+    // telling teammates it is leaving.
+    if (capture_recall && !me.is_recalling()) {
         capture_recall = false;
+        shared.set_leaving(slot, false);
+    }
     if (!me.is_alive()) {
         note_activity(Activity::dead);
         recall_tile = {-1, -1};
@@ -70,9 +80,11 @@ void Bot::play_worker_turn() {
     if (state.contains(bc::champion_state::recalling) || state.contains(bc::champion_state::teleporting)) {
         note_activity(Activity::recall);
         // A capture's holder riding its recall home keeps its claim, so
-        // teammates leave the capture to it; a hop keeps its claim too.
-        if (!capture_recall && !state.contains(bc::champion_state::teleporting))
-            publish(TeamMemory::homeward);
+        // teammates leave the capture to it, and says it is leaving.
+        if (capture_recall)
+            shared.set_leaving(slot, true);
+        else if (!state.contains(bc::champion_state::teleporting)) // A hop keeps its claim.
+            publish(TeamMemory::recall);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         return;
@@ -207,19 +219,24 @@ void Bot::play_worker_turn() {
                                                                              : Activity::travel);
 }
 
-void Bot::capture_ride() {
-    // A capture's holder goes home on a recall (home_after_capture()). A
-    // channel blocks every later action, so it is the turn's last; one
-    // already going needs none, and a stun refuses it.
-    if (!homeward)
-        return;
-    homeward = false;
+void Bot::fake_recall() {
+    // Every turn ends in a recall that the next cancels as it starts: an
+    // enemy that reads a recall as a champion leaving (ours did) sees one on
+    // each of ours. Teammates tell a real recall by its report. A channel
+    // blocks every later action, so it is the turn's last; one already
+    // going needs none, and a stun refuses it.
+    const auto &spawn = own_spawn;
     const auto state = bc::self().state();
     if (!state.contains(bc::champion_state::alive) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems) || state.contains(bc::champion_state::teleporting) ||
-        own_spawn.is_set(position) || bc::self().buffs().has_stun())
+        spawn.is_set(position))
         return;
-    capture_recall = bc::detail::sdk_recall() == 0;
+    faking = bc::detail::sdk_recall() == 0;
+    // A capture's holder riding this recall home says it is leaving at once:
+    // teammates later in the round would otherwise read a fake recall and
+    // step on beside it.
+    if (faking && homeward)
+        shared.set_leaving(slot, true);
 }
 
 void Bot::note_activity(Activity activity) {

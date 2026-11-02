@@ -165,7 +165,7 @@ int Bot::worker_choose_group(int excluded) {
                 // At its claimants' speed together, not its own alone.
                 m.busy = h.health / std::max({1.0f, mate_rate[s], claim_rates[std::size_t(m.claim)]}) +
                          float(rules::settings().capture_time + 1);
-        } else if (code == TeamMemory::homeward)
+        } else if (code == TeamMemory::recall)
             m.busy = float(recall_turns);
         if (const int k = slot_ally[s]; k >= 0) {
             const auto &ally = allies[std::size_t(k)];
@@ -1574,8 +1574,8 @@ bool Bot::outranks(const ObservedUnit &ally, bool arriving, const CampGroup &g) 
 }
 
 bool Bot::home_after_capture(const CampGroup &g) const {
-    // The holder of a capture goes home on a recall this turn ends in
-    // (capture_ride()). The capture pays at a round
+    // The holder of a capture goes home on the recall this turn ends in
+    // (fake_recall()) instead of cancelling it. The capture pays at a round
     // start, five capture phases after its timer starts, and the recall
     // lands at our turn five turn ends after it starts, so starting it in
     // the round the timer starts lands it in the round of the reward, after
