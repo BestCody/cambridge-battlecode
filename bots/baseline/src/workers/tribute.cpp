@@ -13,26 +13,8 @@ bool Bot::worker_tribute() {
         std::max(1, int(rules::settings().winning_gems) - int(bc::global_submitted_gems(bc::team::ally)));
     bool win = int(gems) >= remaining;
     const bool reachable = closest != bc::distance_field::unreachable;
-    if (!reachable && !win) {
-        // No altar on foot (02the_pond: four groups on an island inside a
-        // ring of holes, reached by a crystal hop; ours stood there to the
-        // end with 370 gems): a bag of island_bag, or any bag near the end,
-        // goes home by recall and banks from spawn (strategy.h island_bag).
-        if (policy::island_bag > 0 && gems > 0 && !me.is_recalling()) {
-            const int from_home = int(altar_walk().get(home_centre));
-            const bool last_trip = from_home != bc::distance_field::unreachable &&
-                                   int(rules::settings().max_rounds - round) <=
-                                       recall_turns + from_home + channel_duration(gems) + 10;
-            if (gems >= policy::island_bag || last_trip) {
-                if constexpr (policy::diagnostic)
-                    std::printf("ISLAND r=%u id=%u pos=%d,%d gems=%u last=%d\n", round, id(bc::self()), position.x,
-                                position.y, gems, int(last_trip));
-                retreating = true;
-                return worker_escape();
-            }
-        }
+    if (!reachable && !win)
         return false;
-    }
     bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Near victory, each champion banks its share of the remaining score.
     const bool share = float(gems) >= float(remaining) / std::max(std::size_t(1), roster.size());
@@ -54,16 +36,7 @@ bool Bot::worker_tribute() {
     const bool walled = stuck_altar >= 0 && int(round) < stuck_altar_until &&
                         std::size_t(stuck_altar) < altar_routes.size() &&
                         int(altar_routes[stuck_altar].get(position)) <= closest;
-    // Or while the target waits to respawn, when the wait covers the round
-    // trip (strategy.h wait_bank).
-    const bool wait_bank = policy::wait_bank > 0 && target >= 0 && groups[target].status == CampGroup::cooling &&
-                           float(groups[target].respawn - int(round)) * policy::wait_bank >=
-                               float(2 * closest + channel_duration(gems));
-    // The nearby trip not with an enemy in view (bank_nearby_clear): hooks'
-    // only altar is in the centre room, and at 3 steps ours channelled
-    // tributes in the middle of the centre fight (locally 2/2 to 0/2).
-    const bool clear = !policy::bank_nearby_clear || enemies.empty();
-    const bool trip = spawn.is_set(position) || (((closest <= policy::bank_nearby && clear) || wait_bank) && !holding && !walled);
+    const bool trip = spawn.is_set(position) || (closest <= policy::bank_nearby && !holding && !walled);
     if constexpr (policy::diagnostic)
         if (spawn.is_set(position) || banking)
             std::printf("TRIB r=%u id=%u pos=%d,%d gems=%u closest=%d banking=%d trip=%d share=%d holding=%d "

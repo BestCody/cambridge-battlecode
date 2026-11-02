@@ -132,16 +132,6 @@ bool Bot::worker_skirmish() {
     // 1.5% walking home.
     if (too_dangerous && !overridden)
         return hurt_turn ? worker_escape() : leave_fight(victim.position);
-    // The harvest species, not ready (strategy.h harvest_*): no fight that is
-    // not a kill or a finish; in an enemy's reach it breaks contact, otherwise
-    // it farms on.
-    if (harvesting() && !kill && !finish) {
-        const std::uint32_t threats = threat_bits();
-        if (threats == 0)
-            return false;
-        if (!duel_won(threats, pool))
-            return leave_fight(victim.position);
-    }
     // The fight, as XSquare's open Battlecode micro decides it (2022-2024
     // winners'; most top teams ran a copy): no fight-or-flee rule and no
     // aggression factor, but every tile we can end on, scored each turn
@@ -587,21 +577,20 @@ bool Bot::worker_skirmish() {
     vec2 stand = position;
     Score best_score = score(position);
     const Score here = best_score;
-    bool strike_in_reach = here.strike && !nothing_ready;
     if (!on_capture && me.can_move()) {
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
         for (const vec2 tile : step_positions()) {
             if (tile == position)
                 continue;
             const Score s = score(tile);
-            strike_in_reach = strike_in_reach || (s.strike && !nothing_ready);
+            engaged = engaged || (s.strike && !nothing_ready);
             if (s > best_score) {
                 best_score = s;
                 stand = tile;
             }
         }
     }
-    engaged = engaged || strike_in_reach;
+    engaged = engaged || (here.strike && !nothing_ready);
     // Hurt, a fight only for a kill this turn: otherwise the retreat walks us
     // home. Hurt champions that stood on the safest tile within a step when
     // an enemy could hit them (XSquare's units back off a tile at a time,
@@ -615,42 +604,12 @@ bool Bot::worker_skirmish() {
                     stand.y, best_score.safety, best_score.kills, best_score.strike, best_score.taken,
                     best_score.ours, sides(stand).first);
     });
-    if (!engaged) {
-        watch_turns = 0;
+    if (!engaged)
         return false;
-    }
     // Outnumbered where we stand: the camps by these enemies wait out the
     // sighting (camp choice).
     if (here.safety < 2)
         worker_track_sightings();
-    // Watching (strategy.h): safe here, no enemy to strike from any tile in
-    // reach, not holding a capture. A camp of ours in attack reach is farmed
-    // (farm_in_view); watch_limit such turns in a row end the watch.
-    const bool watching = !hurt_turn && here.safety == 2 && !strike_in_reach && !on_capture;
-    watch_turns = watching ? watch_turns + 1 : 0;
-    const bool expert = !policy::watch_route || watch_map;
-    if (watching && target >= 0 && expert) {
-        bool camp_in_reach = false;
-        if constexpr (policy::farm_in_view)
-            for (const auto &c : groups[target].camps)
-                if (c.health > 0 && distance(position, c.position) <= range)
-                    camp_in_reach = true;
-        if (camp_in_reach || (policy::watch_limit > 0 && watch_turns > policy::watch_limit)) {
-            if constexpr (policy::diagnostic)
-                std::printf("WATCH r=%u id=%u pos=%d,%d turns=%d camp=%d\n", round, id(bc::self()), position.x,
-                            position.y, watch_turns, int(camp_in_reach));
-            return false;
-        }
-    }
-    // A bag with a bank trip pending (strategy.h watch_bank): the tribute,
-    // not the watch. The pursuit needs an empty view, so none follows.
-    if (policy::watch_bank && watching && gems > 0 &&
-        (banking || own_spawn.is_set(position) || int(altar_walk().get(position)) <= policy::bank_nearby)) {
-        if constexpr (policy::diagnostic)
-            std::printf("WATCHBANK r=%u id=%u pos=%d,%d gems=%u turns=%d\n", round, id(bc::self()), position.x,
-                        position.y, gems, watch_turns);
-        return false;
-    }
     // No safe tile within a step and no kill: a group's reach and move cover
     // every tile one step takes us to, so the step cannot leave it; the
     // retreat (a step out of reach, else the escape home) takes over. Held
