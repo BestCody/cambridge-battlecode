@@ -312,7 +312,7 @@ inline constexpr unsigned short_builds = 0;
 // then Bruiser/Strength; 1 Treasure/Strength, Durability/Health, then
 // Bruiser/Health (QS2isLaw's Vesper 10,900 health on the pond, bbas's 6,400
 // on big_world killed a monolith; ours 1,300-2,200 at round 700).
-inline constexpr int vesper_build = 1;
+inline constexpr int vesper_build = 0;
 // On a map where elk_share or more of the gems sit in groups with an elk or
 // golem (strength 60+), every champion buys Jungle/Health first
 // (jungle_first; bot.h elk_map). Alone, an elk group (2,400 health, 60 a
