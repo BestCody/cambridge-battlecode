@@ -795,7 +795,10 @@ float Bot::gold_value_now() const {
     if (type == bc::champion_type::vesper_vale && int(round) < policy::vesper_scout_rounds)
         return policy::vesper_scout_gold_value * scarcity;
     const float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
-    return (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * scarcity;
+    // As much more as a gold makes us stronger than it makes a teammate:
+    // each shard of Marcella's build adds 14 focus to a 2 x focus spell, of
+    // Ryth's a share of health (gold_type_weight()).
+    return (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * gold_type_weight() * scarcity;
 }
 
 float Bot::hop_threshold() const {

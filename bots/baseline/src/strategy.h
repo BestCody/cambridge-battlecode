@@ -528,6 +528,9 @@ inline float gem_reward_weight(const DraftPlan &plan) {
 // its ready burst, its healing), over its mitigation. Four formulas left our
 // own shields and healing out where an enemy's counted them: a lone Willow
 // undervalued itself.
+// The fighting power a champion of `type` gains along its build, per gold,
+// as a share of its design's (economy.cpp).
+float build_gain_per_gold(bc::champion_type type, const bc::champion_stats &design, const std::array<Spell, 2> &spells);
 inline float unit_power(float pool, float rate, float burst, float heal, float mitigation) {
     return std::sqrt(std::max(1.0f, pool) * (rate + burst * 0.2f + heal) / mitigation);
 }
