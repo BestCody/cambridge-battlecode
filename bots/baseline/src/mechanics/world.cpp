@@ -624,10 +624,13 @@ void Bot::initialise() {
                 }
         }
         harvest_map = policy::harvest_all;
+        harvest_gate_alone = false;
         for (const auto &m : policy::harvest_maps)
-            if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
-                m.gems == print.gems)
+            if (m.print.width == print.width && m.print.height == print.height &&
+                m.print.groups == print.groups && m.print.gems == print.gems) {
                 harvest_map = true;
+                harvest_gate_alone = m.gate_alone;
+            }
         watch_map = false;
         for (const auto &m : policy::watch_maps)
             if (m.width == print.width && m.height == print.height && m.groups == print.groups &&

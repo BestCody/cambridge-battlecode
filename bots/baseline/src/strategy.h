@@ -350,6 +350,7 @@ inline constexpr float harvest_near_enemy = 0.1f; // a group with an enemy seen 
 // every death stepped through (anvil, oasis, hooks) the victim's teammates
 // were 10-24 tiles away.
 inline constexpr float harvest_cohesion = 0.1f;
+inline constexpr int harvest_alone_range = 4; // the fight gate applies with no healthy teammate this near
 inline constexpr float harvest_enemy_side = 0.3f;
 inline constexpr int harvest_emblems = 3;
 inline constexpr int harvest_until = 500;
@@ -358,19 +359,28 @@ inline constexpr bool harvest_all = false; // every map plays the species (map t
 // (analysis/harvest_all2 against analysis/v106_140, 4 games a map; compare.py):
 // islands 1 to 4, gemfight 0 to 3, yellow-brick-road 1 to 3, anvil 0 to 2,
 // gemcombat1 1 to 3, broken-curve 2 to 4, and +1 with fewer deaths on the rest.
-inline constexpr MapPrint harvest_maps[] = {
-    {37, 31, 13, 258},   // 00anvil
-    {79, 79, 11, 238},   // 00dunes
-    {30, 30, 19, 200},   // 00gemfight
-    {29, 29, 10, 124},   // 00oasis
-    {33, 33, 9, 193},    // 00the-line
-    {50, 41, 31, 1180},  // 01boss-battle
-    {40, 40, 22, 746},   // 01broken-curve
-    {60, 60, 46, 608},   // 01islands
-    {40, 30, 28, 472},   // 01yellow-brick-road
-    {89, 71, 14, 402},   // 02geodes
-    {100, 80, 33, 600},  // 02tangle
-    {31, 31, 6, 126},    // adgato-gemcombat1
+// gate_alone: the fight gate applies only with no healthy teammate within
+// harvest_alone_range (with teammates near the micro fights as usual). On
+// anvil and gemfight 2/4 and 3/4 to 4/4 each; on broken-curve 4/4 to 1/4,
+// yellow-brick-road 3/4 to 1/4, gemcombat1 3/4 to 1/4 (analysis/hv5), so it
+// is a per-map choice.
+struct HarvestMap {
+    MapPrint print;
+    bool gate_alone;
+};
+inline constexpr HarvestMap harvest_maps[] = {
+    {{37, 31, 13, 258}, true},    // 00anvil
+    {{79, 79, 11, 238}, false},   // 00dunes
+    {{30, 30, 19, 200}, true},    // 00gemfight
+    {{29, 29, 10, 124}, false},   // 00oasis
+    {{33, 33, 9, 193}, false},    // 00the-line
+    {{50, 41, 31, 1180}, false},  // 01boss-battle
+    {{40, 40, 22, 746}, false},   // 01broken-curve
+    {{60, 60, 46, 608}, false},   // 01islands
+    {{40, 30, 28, 472}, false},   // 01yellow-brick-road
+    {{89, 71, 14, 402}, false},   // 02geodes
+    {{100, 80, 33, 600}, false},  // 02tangle
+    {{31, 31, 6, 126}, false},    // adgato-gemcombat1
 };
 struct OpeningMap {
     MapPrint print;

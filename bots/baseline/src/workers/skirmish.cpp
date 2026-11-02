@@ -136,11 +136,23 @@ bool Bot::worker_skirmish() {
     // not a kill or a finish; in an enemy's reach it breaks contact, otherwise
     // it farms on.
     if (harvesting() && !kill && !finish) {
-        const std::uint32_t threats = threat_bits();
-        if (threats == 0)
-            return false;
-        if (!duel_won(threats, pool))
-            return leave_fight(victim.position);
+        // Alone (no healthy teammate within harvest_alone_range) only: with
+        // teammates near, the micro below fights as usual. gemfight against
+        // Tokenmaxxing's five-champion dive: v106 fought back and killed the
+        // Twins three times; the gate on every fight fed 20 deaths.
+        bool alone = true;
+        if (harvest_gate_alone)
+            for (const auto &a : allies)
+                if (!a.channel && a.health >= a.max_health * policy::retreat_health &&
+                    distance(position, a.position) <= policy::harvest_alone_range)
+                    alone = false;
+        if (alone) {
+            const std::uint32_t threats = threat_bits();
+            if (threats == 0)
+                return false;
+            if (!duel_won(threats, pool))
+                return leave_fight(victim.position);
+        }
     }
     // The fight, as XSquare's open Battlecode micro decides it (2022-2024
     // winners'; most top teams ran a copy): no fight-or-flee rule and no

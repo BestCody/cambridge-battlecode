@@ -584,7 +584,7 @@ class Bot {
     int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
-    bool harvest_map = false, harvest_ready = false; // the harvest species (strategy.h harvest_*)
+    bool harvest_map = false, harvest_ready = false, harvest_gate_alone = false; // the harvest species (strategy.h harvest_*)
     bool harvesting() const { return harvest_map && !harvest_ready; }
     // The cohesion hazard in force: the species keeps the team within the
     // camp spacing of each other's claims in both of its phases.
