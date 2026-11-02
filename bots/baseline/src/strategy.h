@@ -223,6 +223,13 @@ inline constexpr int rally_radius = 0;
 // Velvet Tributers and Tokenmaxxing ours died 20-36 times a game at 100
 // gold and the bag each to a Willow-backed Vendetta with 17-23 kills.
 inline constexpr int feed_guard_deaths = 0;
+// Lone guard: a champion with no living teammate in view within
+// lone_guard_radius starts no fight (0: off); it fights where an enemy can
+// act on it or a kill is there. Measured (analysis/pg10/spread.py): the
+// teams that beat us attack with a teammate a median 1-2 tiles away (剑桥夜
+// 爬者 on membrane 2% of attacks with none within 4, Velvet on oasis 21%);
+// ours attack at a median 3-4 with none within 4 on 35-48% of attacks.
+inline constexpr int lone_guard_radius = 0;
 inline constexpr int feed_guard_round = 300;
 inline constexpr int rally_max = 25;
 // Camp choice values the capture we stand on and hold this much more, so a

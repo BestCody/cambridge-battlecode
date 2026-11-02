@@ -609,6 +609,16 @@ bool Bot::worker_skirmish() {
         watch_turns = 0;
         return false;
     }
+    // Lone guard (strategy.h): no initiated fight without a teammate near.
+    if (policy::lone_guard_radius > 0 && here.safety == 2 && !kill && !finish) {
+        bool near = false;
+        for (const auto &a : allies)
+            near = near || (a.health > 0 && distance(position, a.position) <= policy::lone_guard_radius);
+        if (!near) {
+            watch_turns = 0;
+            return false;
+        }
+    }
     // Feed guard (strategy.h): no initiated fight, only one we are in or
     // one that kills.
     if (policy::feed_guard_deaths > 0 && own_deaths >= policy::feed_guard_deaths &&
