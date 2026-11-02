@@ -197,7 +197,7 @@ inline constexpr int contest_max_camps = 0; // 12: yellow-brick-road still 0/2 l
 // or more camps (0: never; clusters strike nobody, so no plan was ever made
 // for them): yellow_brick_road's 30-cluster roads (3,600 health, 600 gold)
 // take one champion 60-80 rounds and test-bot's five 15.
-inline constexpr int party_cluster_camps = 8;
+inline constexpr int party_cluster_camps = 0;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.
 inline constexpr float held_capture_bonus = 4.4312f;
