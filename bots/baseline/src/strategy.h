@@ -20,8 +20,12 @@ namespace policy {
 // choice of gold-only groups (20% of their captures before round 300, 15% to
 // round 800, 30% after, counted from the round dumps); 0.65 / 0.10 gave ours
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
-inline constexpr float early_gold_value = 0.17645f;
+inline constexpr float early_gold_value = 0.35f; // 0.17645 before v106: see the note below
 inline constexpr float late_gold_value = 0.1f;
+// 0.35 early (v106): the peers that beat us (estrogen :3, QS2isLaw, MFF1)
+// out-gold us two to one by round 300 and win the fights with the stats;
+// locally 81/140 against test-bot and 79/140 against the stacker to 77 and 75
+// at 0.17645 (analysis/gold_140).
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
 inline constexpr float pursue_health = 0.35402f;
@@ -272,12 +276,15 @@ inline constexpr float wait_bank = 1.5f;
 // banks from spawn; any bag does when the rounds left just cover that
 // (worker_tribute(); 0: never). Ours ended the pond with 370 gems in hand.
 inline constexpr unsigned island_bag = 60;
-// Capture first (subscribe to caterpillow, 25-15 over its last 40 ranked
-// games, all six wins studied): every champion's first emblem is Capture of
-// its main stat, at rounds 53-230, then Treasure, Jungle, Bruiser. Capture
-// caps the team's capture timer at 3 turns instead of 10, joining
-// mid-capture included: faster cycles and far less exposure to a reset.
-inline constexpr bool capture_first = true;
+// The emblems every champion buys first, of its main stat, in this order,
+// ahead of its own build (economy.cpp build_for; a build's own step of the
+// family moves to the front). Capture (subscribe to caterpillow, 25-15 over
+// its last 40 ranked games, all six wins studied; v104, 15/30 in practice
+// against v79's 12/30) caps the team's capture timer at 3 turns instead of
+// 10, joining mid-capture included. Prospector (estrogen :3 and QS2isLaw buy
+// it first on every champion at rounds 42-300, MFF1's Marcella too) gives
+// 25% more gold and gems from every capture.
+inline constexpr std::array<bc::item_passive, 2> front_passives = {bc::item_passive::prospector, bc::item_passive::capture};
 // Where the watch rules run (bot.h watch_map). Everywhere, they move the
 // weak maps and lose as much elsewhere (280 games against test-bot at two
 // fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of

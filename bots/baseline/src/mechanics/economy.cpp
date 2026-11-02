@@ -20,39 +20,44 @@ struct Build {
     Item repeat;
 };
 Build full_build_for(bc::champion_type type);
+// The shard of `family` in the stat `like` grows most.
+Item shard_of(bc::item_passive family, Item like) {
+    const bool strength = like.strength_points() > like.focus_points() && like.strength_points() > like.health_points();
+    const bool focus = !strength && like.focus_points() > like.health_points();
+    switch (family) {
+        case bc::item_passive::capture:
+            return strength ? Item::capture_shard_of_strength : focus ? Item::capture_shard_of_focus : Item::capture_shard_of_health;
+        case bc::item_passive::prospector:
+            return strength ? Item::prospector_shard_of_strength : focus ? Item::prospector_shard_of_focus : Item::prospector_shard_of_health;
+        default:
+            return like;
+    }
+}
 Build build_for(bc::champion_type type) {
     Build b = full_build_for(type);
-    if constexpr (policy::capture_first) {
-        // Capture of the repeat's stat first (strategy.h); the last step
-        // makes room when the build is full.
-        const Item r = b.repeat;
-        const Item cap = r.strength_points() > r.focus_points() && r.strength_points() > r.health_points()
-                             ? Item::capture_shard_of_strength
-                         : r.focus_points() > r.health_points() ? Item::capture_shard_of_focus
-                                                                : Item::capture_shard_of_health;
-        bool present = false;
+    // The front emblems (strategy.h front_passives), the last listed moved
+    // to the front first so the first listed ends up first. A build's own
+    // step of the family moves; otherwise the shard of the repeat's stat is
+    // prepended, and the last step makes room when the build is full.
+    const Item r = b.repeat;
+    for (std::size_t n = policy::front_passives.size(); n > 0; --n) {
+        const auto family = policy::front_passives[n - 1];
+        if (b.size == 0 || b.steps[0].item.passive() == family)
+            continue;
+        unsigned at = b.size;
         for (unsigned i = 0; i < b.size; ++i)
-            present = present || b.steps[i].item.passive() == bc::item_passive::capture;
-        if (b.size > 0 && b.steps[0].item.passive() != bc::item_passive::capture) {
-            if (present) {
-                // Move the build's own Capture step to the front.
-                unsigned at = 0;
-                for (unsigned i = 0; i < b.size; ++i)
-                    if (b.steps[i].item.passive() == bc::item_passive::capture)
-                        at = i;
-                const BuildStep step = b.steps[at];
-                for (unsigned i = at; i > 0; --i)
-                    b.steps[i] = b.steps[i - 1];
-                b.steps[0] = step;
-            } else {
-                if (b.size == b.steps.size())
-                    --b.size;
-                for (unsigned i = b.size; i > 0; --i)
-                    b.steps[i] = b.steps[i - 1];
-                b.steps[0] = {cap, 5};
-                ++b.size;
-            }
+            if (b.steps[i].item.passive() == family)
+                at = i;
+        if (at == b.size) {
+            if (b.size == b.steps.size())
+                --b.size;
+            b.steps[b.size] = {shard_of(family, r), 5};
+            at = b.size++;
         }
+        const BuildStep step = b.steps[at];
+        for (unsigned i = at; i > 0; --i)
+            b.steps[i] = b.steps[i - 1];
+        b.steps[0] = step;
     }
     return b;
 }
