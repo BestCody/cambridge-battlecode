@@ -217,6 +217,13 @@ inline constexpr bool opening_holds = false;
 // rally_max turns a game (0: off): the team reaches the first contest
 // together instead of one at a time.
 inline constexpr int rally_radius = 0;
+// Feed guard: a champion that has died feed_guard_deaths times (0: off)
+// after feed_guard_round no longer starts a fight: it fights only where an
+// enemy can act on it or a kill is available (worker_skirmish()). Against
+// Velvet Tributers and Tokenmaxxing ours died 20-36 times a game at 100
+// gold and the bag each to a Willow-backed Vendetta with 17-23 kills.
+inline constexpr int feed_guard_deaths = 0;
+inline constexpr int feed_guard_round = 300;
 inline constexpr int rally_max = 25;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.

@@ -399,7 +399,8 @@ class Bot {
     // none), and whether the opening is over.
     int opening_group = -2, opening_until = 0;
     bool opening_done = false;
-    int rally_holds = 0; // turns held for the team during the opening (strategy.h rally_radius)
+    int rally_holds = 0;
+    int own_deaths = 0; bool was_dead = false; // feed_guard (strategy.h) // turns held for the team during the opening (strategy.h rally_radius)
     int choose_opening(int &until) const;
     // Damage taken while tributing, and the turns of the tribute so far;
     // the damage taken over our last turn.

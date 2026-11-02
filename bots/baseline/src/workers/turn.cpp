@@ -61,6 +61,9 @@ void Bot::play_worker_turn() {
         shared.set_leaving(slot, false);
     }
     if (!me.is_alive()) {
+        if (!was_dead)
+            ++own_deaths;
+        was_dead = true;
         note_activity(Activity::dead);
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
@@ -132,6 +135,7 @@ void Bot::play_worker_turn() {
     tribute_taken = 0;
     tribute_turns = 0;
     const bool at_spawn = own_spawn_tile[tile_index(position)];
+    was_dead = false;
     // Home (or dead): the last recall's tile no longer marks one a hit cancelled.
     if (at_spawn)
         recall_tile = {-1, -1};

@@ -609,6 +609,13 @@ bool Bot::worker_skirmish() {
         watch_turns = 0;
         return false;
     }
+    // Feed guard (strategy.h): no initiated fight, only one we are in or
+    // one that kills.
+    if (policy::feed_guard_deaths > 0 && own_deaths >= policy::feed_guard_deaths &&
+        int(round) >= policy::feed_guard_round && here.safety == 2 && !kill && !finish) {
+        watch_turns = 0;
+        return false;
+    }
     // Outnumbered where we stand: the camps by these enemies wait out the
     // sighting (camp choice).
     if (here.safety < 2)
