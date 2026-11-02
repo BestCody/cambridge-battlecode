@@ -153,12 +153,19 @@ inline constexpr float worker_commit_bonus = 1.1102f;
 // Camp choice clears a camp at the team's summed camp rate (ours and its
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
-inline constexpr float team_clear_share = 0.85f;
+inline constexpr float team_clear_share = 0.61002f;
 // A party plan charges what each asked teammate gives up (our best score at
 // its camp rate) times party_ask_discount: at 1 a teammate's alternative is
 // assumed as good as ours; lower, parties for elks and golems form sooner.
 inline constexpr float party_ask_discount = 1.0f; // 0.5: hard-group maps 3/10 to 5/10, the pool 164 to 159 of 280
 inline constexpr float party_ask_discount_gems = 25.0f; // the discount applies to groups of this many gems or more only
+// Routed (bot.h elk_map: elk_share of the gems behind elks or golems): on
+// those maps the party constants are elk_map_clear_share and
+// elk_map_ask_discount; elsewhere the GA's. Everywhere, 0.85 and 0.5 won the
+// five hard-group maps locally and lost the pool.
+inline constexpr bool elk_map_party = false;
+inline constexpr float elk_map_clear_share = 0.85f;
+inline constexpr float elk_map_ask_discount = 0.5f;
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut

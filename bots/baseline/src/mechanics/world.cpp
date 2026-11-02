@@ -620,6 +620,8 @@ void Bot::initialise() {
                 elk_gems += float(g.unit.gem_value());
         }
         elk_map = total > 0 && elk_gems >= policy::elk_share * total;
+        clear_share_now = policy::elk_map_party && elk_map ? policy::elk_map_clear_share : policy::team_clear_share;
+        ask_discount_now = policy::elk_map_party && elk_map ? policy::elk_map_ask_discount : policy::party_ask_discount;
         // The map's print, against the watch expert's maps (strategy.h).
         const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
                                      int(total + 0.5f)};
@@ -1851,7 +1853,7 @@ bool Bot::visit_clears(const CampGroup &g) const {
     // clearing speed, from where the fewest reach us, at our mitigation;
     // then the walk out.
     const float damage =
-        g.live_work / (dps(g) * policy::team_clear_share) * g.reach_share * camp_mitigation * mitigation;
+        g.live_work / (dps(g) * clear_share_now) * g.reach_share * camp_mitigation * mitigation;
     return damage + visit_cost(g) < health;
 }
 

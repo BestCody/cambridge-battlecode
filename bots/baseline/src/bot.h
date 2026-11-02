@@ -586,6 +586,7 @@ class Bot {
     // opening_reach or more steps from our spawn (centre_opening()).
     bool centre_map = false;
     bool elk_map = false; // elk_share of the gems behind elks or golems (world.cpp)
+    float clear_share_now = policy::team_clear_share, ask_discount_now = policy::party_ask_discount; // routed by elk_map
     int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;
