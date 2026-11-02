@@ -299,7 +299,7 @@ inline constexpr int burst_soon = 0;
 // by the map's print (width, height, camp groups, gems: the SDK gives no
 // name): the maps where the rules gained 2+ of 4 games at both budgets.
 // With watch_route off the rules run on every map.
-inline constexpr bool watch_route = true;
+inline constexpr bool watch_route = false;
 struct MapPrint {
     int width, height, groups, gems;
 };
