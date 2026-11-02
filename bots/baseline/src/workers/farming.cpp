@@ -559,6 +559,11 @@ int Bot::worker_choose_group(int excluded) {
                                        wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(walled)));
+            // An enemy capture of a group of more than contest_max_camps
+            // camps is not contested (strategy.h): a 30-cluster road.
+            if constexpr (policy::contest_max_camps > 0)
+                skip = wasm_v128_or(skip, wasm_v128_and(enemy_here, wasm_f32x4_gt(wasm_v128_load(&lanes.camp_count[i]),
+                                                                                  splat(float(policy::contest_max_camps)))));
             v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(our_range)), no_bits);
             travel_steps = pick(path, travel_steps, is_held); // Holding means standing on a tile.
             const v128_t splash = wasm_v128_load(&lanes.splash[i]),
@@ -869,8 +874,10 @@ int Bot::worker_choose_group(int excluded) {
         for (std::size_t i = 0; i < count && least_asked != std::numeric_limits<float>::infinity(); ++i) {
             const auto &g = groups[i];
             // Groups whose walk is measured, with a request code to ask with.
+            const bool cluster_party = policy::party_cluster_camps > 0 && lanes.striker_work[i] <= 0 &&
+                                       lanes.camp_count[i] >= float(policy::party_cluster_camps);
             if (lanes.scores[i] == skipped || group_bounded[i] || g.status == CampGroup::capture ||
-                lanes.striker_work[i] <= 0 || !shared.camp_request(int(i)))
+                (lanes.striker_work[i] <= 0 && !cluster_party) || !shared.camp_request(int(i)))
                 continue;
             float rate = flat_dps;
             for (const auto &spell : kit)
