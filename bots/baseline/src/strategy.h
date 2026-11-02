@@ -158,6 +158,7 @@ inline constexpr float team_clear_share = 0.85f;
 // its camp rate) times party_ask_discount: at 1 a teammate's alternative is
 // assumed as good as ours; lower, parties for elks and golems form sooner.
 inline constexpr float party_ask_discount = 1.0f; // 0.5: hard-group maps 3/10 to 5/10, the pool 164 to 159 of 280
+inline constexpr float party_ask_discount_gems = 25.0f; // the discount applies to groups of this many gems or more only
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut

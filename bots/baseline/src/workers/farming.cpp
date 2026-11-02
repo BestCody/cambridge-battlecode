@@ -883,7 +883,7 @@ int Bot::worker_choose_group(int excluded) {
         for (unsigned s = 0; s < kits; ++s)
             if (s != slot && living(s) && mates[s].free)
                 least_asked = std::min(least_asked, mate_rate[s]);
-        const float least_given_up = party_best * least_asked / our_rate * policy::party_ask_discount;
+        const float least_given_up = party_best * least_asked / our_rate * std::min(1.0f, policy::party_ask_discount); // the per-group discount is applied below
         // And the fastest a party can clear: every free teammate striking.
         float all_mates_speed = 0;
         for (unsigned s = 0; s < kits; ++s)
@@ -988,7 +988,8 @@ int Bot::worker_choose_group(int excluded) {
                 if (k > 0) {
                     const auto &m = mates[soon[k - 1].second];
                     party_speed += mate_rate[soon[k - 1].second] * policy::team_clear_share;
-                    rate_asked += mate_rate[soon[k - 1].second] * policy::party_ask_discount;
+                    rate_asked += mate_rate[soon[k - 1].second] *
+                                  (g.unit.gem_value() >= policy::party_ask_discount_gems ? policy::party_ask_discount : 1.0f);
                     // A bigger party gives up more: once this one's best
                     // possible value (the bound above) less what it asks
                     // cannot beat the best, no bigger one can.
