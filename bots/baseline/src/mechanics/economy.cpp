@@ -20,8 +20,18 @@ struct Build {
     Item repeat;
 };
 Build full_build_for(bc::champion_type type);
-Build build_for(bc::champion_type type) {
+Build build_for(bc::champion_type type, bool jungle_first = false) {
     Build b = full_build_for(type);
+    // Jungle/Health first on an elk map (strategy.h jungle_first): the last
+    // step makes room when the build is full.
+    if (jungle_first && b.size > 0 && b.steps[0].item != Item::jungle_shard_of_health) {
+        if (b.size == b.steps.size())
+            --b.size;
+        for (unsigned i = b.size; i > 0; --i)
+            b.steps[i] = b.steps[i - 1];
+        b.steps[0] = {Item::jungle_shard_of_health, 5};
+        ++b.size;
+    }
     if constexpr (policy::short_builds > 0) {
         // The repeat's stat, as the Bruiser family of it (strategy.h).
         if (b.size > policy::short_builds)
@@ -139,15 +149,15 @@ namespace {
 // 900 in 15 of 100 ranked games (13 lost); without the switches 95/140
 // against 86 (paired 16:7, 4M fuel). An emblem begun is finished first:
 // only a finished one gives its passive.
-Item next_item(bc::champion_type type, const Bought &bought) {
-    const auto build = build_for(type);
+Item next_item(bc::champion_type type, const Bought &bought, bool jungle_first) {
+    const auto build = build_for(type, jungle_first);
     for (unsigned i = 0; i < build.size; ++i)
         if (bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count)
             return build.steps[i].item;
     return build.repeat;
 }
-unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
-    const auto build = build_for(type);
+unsigned step_left(bc::champion_type type, const Bought &bought, Item item, bool jungle_first) {
+    const auto build = build_for(type, jungle_first);
     for (unsigned i = 0; i < build.size; ++i)
         if (build.steps[i].item == item && bought[static_cast<unsigned>(item)] < build.steps[i].count)
             return build.steps[i].count - bought[static_cast<unsigned>(item)];
@@ -209,10 +219,11 @@ void Bot::buy_equipment() {
             carrying_lock = bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[1]) == 0;
     }
     while (can_shop) {
-        const auto item = next_item(type, bought);
+        const bool jungle_first = policy::jungle_first && elk_map;
+        const auto item = next_item(type, bought, jungle_first);
         if (me.gold_count() < item.cost())
             break;
-        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item));
+        const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item, jungle_first));
         if (!count || !me.can_buy(item, count))
             break;
         me.buy(item, count);

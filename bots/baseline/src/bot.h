@@ -580,6 +580,7 @@ class Bot {
     // A centre map: one group holds centre_share of the map's gems and is
     // opening_reach or more steps from our spawn (centre_opening()).
     bool centre_map = false;
+    bool elk_map = false; // elk_share of the gems behind elks or golems (world.cpp)
     int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // A map in strategy.h watch_maps: the watch rules run (worker_skirmish()).
     bool watch_map = false;

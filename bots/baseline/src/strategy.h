@@ -284,6 +284,14 @@ inline constexpr int marcella_build = 3;
 // (their Heart of Ruin 6,400 health on hooks); ours buy 5-7 farming
 // emblems first and die to one enemy's burst from 80% health in 4-8 rounds.
 inline constexpr unsigned short_builds = 0;
+// On a map where elk_share or more of the gems sit in groups with an elk or
+// golem (strength 60+), every champion buys Jungle/Health first
+// (jungle_first; bot.h elk_map). Alone, an elk group (2,400 health, 60 a
+// turn) needs trips home, so camp choice scores it 0.01-0.04 against 0.1-1.4
+// for wolves and lone clusters (geodes, tangle), and QS2isLaw and Nameless
+// take the elks from round 140 with Jungle/Health early.
+inline constexpr bool jungle_first = false;
+inline constexpr float elk_share = 0.5f;
 // An enemy's damage spell of big_burst damage or more counts as ready for
 // the tile safety test while its cooldown is within burst_soon turns (0:
 // only when ready now). Our champions at 70-80% health died in 4-8 rounds

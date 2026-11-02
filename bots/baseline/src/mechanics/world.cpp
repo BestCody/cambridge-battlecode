@@ -611,6 +611,15 @@ void Bot::initialise() {
             }
         }
         centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
+        float elk_gems = 0;
+        for (const auto &g : groups) {
+            bool hard = false;
+            for (const auto &c : g.camps)
+                hard = hard || c.stats.base_strength >= 60;
+            if (hard)
+                elk_gems += float(g.unit.gem_value());
+        }
+        elk_map = total > 0 && elk_gems >= policy::elk_share * total;
         // The map's print, against the watch expert's maps (strategy.h).
         const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
                                      int(total + 0.5f)};
