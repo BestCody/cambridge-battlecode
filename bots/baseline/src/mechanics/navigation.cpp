@@ -399,10 +399,10 @@ void Bot::retreat_to_spawn() {
         hit && (position == recall_tile || (incoming(position) == 0 && !threatened.is_set(position)));
     const bool safe = !threatened.is_set(position) && incoming(position) == 0 && !cancelled;
     const int walk = home_field.get(position);
-    // A recall ends the fight report.
+    // A recall reports itself as on the way home.
     if (safe && walk > recall_turns * stats.base_move_speed) {
         me.recall();
-        publish(0);
+        publish(TeamMemory::homeward);
         recall_tile = position;
         return;
     }
@@ -425,7 +425,7 @@ void Bot::retreat_to_spawn() {
         // Occupancy can block a short walk home. Do not wait on that route when
         // this tile already permits the recall that fulfils the same recovery.
         me.recall();
-        publish(0);
+        publish(TeamMemory::homeward);
         recall_tile = position;
         return;
     }

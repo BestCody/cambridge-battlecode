@@ -1833,8 +1833,8 @@ int Bot::threat_target(std::size_t k) const {
 void Bot::publish(unsigned claim) {
     // A capture's holder keeps its claim through fights, banking and stuns:
     // teammates leave a claimed capture to it (capture_outranked()), and two
-    // on the tiles split the reward.
-    if (TeamMemory::requested_force(claim, groups.size()) == 0 && target >= 0 &&
+    // on the tiles split the reward. A recall still says it is leaving.
+    if (claim != TeamMemory::homeward && TeamMemory::requested_force(claim, groups.size()) == 0 && target >= 0 &&
         target < int(TeamMemory::bank) - 1 &&
         groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position) &&
         bc::self().is_alive())

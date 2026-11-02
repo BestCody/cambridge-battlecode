@@ -165,7 +165,8 @@ int Bot::worker_choose_group(int excluded) {
                 // At its claimants' speed together, not its own alone.
                 m.busy = h.health / std::max({1.0f, mate_rate[s], claim_rates[std::size_t(m.claim)]}) +
                          float(rules::settings().capture_time + 1);
-        }
+        } else if (code == TeamMemory::homeward)
+            m.busy = float(recall_turns);
         if (const int k = slot_ally[s]; k >= 0) {
             const auto &ally = allies[std::size_t(k)];
             m.where = ally.position;
