@@ -477,10 +477,9 @@ class Bot {
     std::array<int, 8> recall_tick{};
     std::array<std::int8_t, 8> recall_seen{};
     std::array<bool, 8> recall_real{};
-    // This turn ends in a recall to be cancelled as the next one starts
-    // (fake_recall()), unless it carries a capture's holder home
-    // (home_after_capture()).
-    bool faking = false, homeward = false, capture_recall = false;
+    // This turn ends in a recall carrying a capture's holder home
+    // (home_after_capture(), capture_ride()), and one is running.
+    bool homeward = false, capture_recall = false;
     // The capture group we stand on (worker_farm()) and the round we stood on
     // it from (-1: none).
     int capture_group = -1, capture_since = -1;
@@ -971,7 +970,7 @@ class Bot {
     // Worker controller (workers/): every champion's independent policy.
     void play_worker_turn();
     void worker_priority();
-    void fake_recall();
+    void capture_ride();
     void worker_report();
     bool worker_escape();
     // excluded: a group never chosen (-1: none).

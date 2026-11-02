@@ -41,7 +41,7 @@ void Bot::take_turn() {
     try {
         play_worker_turn();
         worker_priority();
-        fake_recall();
+        capture_ride();
     } catch (const ChampionGone &) {
         // Killed by one of its own actions: the background work still runs.
     }

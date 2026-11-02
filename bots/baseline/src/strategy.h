@@ -332,15 +332,13 @@ inline Spell describe(const bc::ability &a) {
 // Fixed wire format. Slots are allied champion handles in ascending order: five
 // 11-bit fields (our rosters have at most five bodies: no twin pick), each a
 // 10-bit claim and one flag. The flag of a fight request is set while an enemy
-// can hit that champion next round (attacked); of any other claim, while it
-// rides a capture's recall home (leaving: its claim kept, so teammates leave
-// the capture to it). Readers ask for attacked only with a request and for
-// leaving only of a recalling holder's claim, so one bit holds both.
-// Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
+// can hit that champion next round (attacked); any other claim's is clear.
+// Zero is idle; the top codes are unavailable/bank/homeward (on the way home,
+// walking or recalling: not to be counted on), never camp identifiers.
 struct TeamMemory {
     static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
     static constexpr unsigned field = bits + 1, field_mask = (1u << field) - 1;
-    static constexpr unsigned bank = mask - 1, recall = mask;
+    static constexpr unsigned bank = mask - 1, homeward = mask;
     static constexpr unsigned unavailable = mask - 2;
     static constexpr unsigned slots = 5;
     // Normal objective claims retain their original codes. Extra codes carry
@@ -421,15 +419,10 @@ struct TeamMemory {
         own_attacked = value;
         write(slot, get(slot));
     }
-    bool leaving(unsigned slot) const { return flag(slot) && !is_request(get(slot)); }
-    void set_leaving(unsigned slot, bool value) {
-        own_leaving = value;
-        write(slot, get(slot));
-    }
 
   private:
-    // Our own flags, kept here: the field holds the one its claim carries.
-    bool own_attacked = false, own_leaving = false;
+    // Our own flag, kept here: the field holds it with a request.
+    bool own_attacked = false;
     unsigned request_low = 1, request_high = 0;
     unsigned camp_base = mask;
     std::vector<int> camp_list, camp_of;
@@ -439,7 +432,7 @@ struct TeamMemory {
         // turn.
         if (slot >= slots)
             return;
-        const bool carried = is_request(code) ? own_attacked : own_leaving;
+        const bool carried = is_request(code) && own_attacked;
         const std::uint64_t value = code | unsigned(carried) << bits;
         if (((raw >> (slot * field)) & field_mask) == value)
             return;

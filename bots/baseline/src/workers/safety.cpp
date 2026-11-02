@@ -241,7 +241,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
     std::uint32_t staying = 0;
     for (std::size_t k = 0; k < allies.size(); ++k) {
         const auto &a = allies[k];
-        if (a.channel || shared.get(ally_slot[k]) == TeamMemory::recall ||
+        if (a.channel || shared.get(ally_slot[k]) == TeamMemory::homeward ||
             a.health < a.max_health * policy::retreat_health)
             continue;
         const auto risk = exit_risk(a.position, a.health, a.mitigation, a.camp_mitigation, unsigned(a.gems), a.immune);
