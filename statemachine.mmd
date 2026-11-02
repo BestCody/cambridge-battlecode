@@ -1,71 +1,73 @@
 stateDiagram-v2
-    state "First turn" as FirstTurn
-    state "Tribute channel" as Tribute
-    state "Recall channel" as Recall
-    state "At spawn" as Spawn
+    %% The committed bot (bots/baseline): the modes a champion is in between
+    %% turns, and the events that move it. Thresholds live in strategy.h.
 
-    [*] --> Draft
-    Draft --> FirstTurn: roster by team size (3, 4 or 5)
-    FirstTurn --> Field: turn 2
+    [*] --> Alive
 
-    state Field {
-        state pick <<choice>>
-        [*] --> pick
-        pick --> Fight: enemy in view, or a hurt runner to follow
-        pick --> BankTrip: gems to bank
-        pick --> Reinforce: teammate under attack asks for help
-        pick --> Farm: otherwise
+    state Alive {
+        state "At spawn" as Spawn
+        state "Farming" as Farming
+        state "Fighting" as Fighting
+        state "Retreating" as Retreating
+        state "Banking" as Banking
 
-        state Fight {
-            state "Farm on out of reach" as FarmOn
-            state odds <<choice>>
-            [*] --> odds
-            odds --> Engage: favourable, or a kill to finish
-            odds --> Stand: stronger and can reach us, duel won
-            odds --> Run: stronger and can reach us, duel lost
-            odds --> FarmOn: stronger, not in reach yet
+        [*] --> Spawn
+        Spawn --> Farming: healed and shopped
+
+        state Farming {
+            direction LR
+            state "Choose group" as choose
+            state "Travel" as travel
+            state "Clear" as clear
+            state "Hold capture" as hold
+            state "Wait respawn" as wait
+            [*] --> choose
+            choose --> travel
+            travel --> clear: in reach
+            clear --> hold: cleared
+            hold --> wait: paid
+            wait --> clear: respawns
+            wait --> choose: another group
         }
 
-        state Farm {
-            state "Clear camps" as Clear
-            state "Hold capture" as Hold
-            state "Wait for respawn" as Wait
-            [*] --> Travel
-            Travel --> Clear: in reach
-            Clear --> Hold: cleared
-            Hold --> Wait: paid
-            Wait --> Clear: respawns
-            Wait --> Travel: another group
-        }
+        Farming --> Fighting: enemy in view
+        Fighting --> Farming: nothing left to fight
+        Farming --> Banking: bag trigger
+        Banking --> Farming: banked, or stuck
+        Banking --> Fighting: under fire at the altar
+        Fighting --> Retreating: hurt, or too dangerous
+        Farming --> Retreating: hurt
+        Banking --> Retreating: the channel left would kill us
+        Retreating --> Fighting: caught and the duel is won
+        Retreating --> Spawn: walks or recalls home
+        Farming --> Spawn: capture paid, recalls home
     }
 
-    Field --> Tribute: bank trip reaches a safe altar, or capture combo
-    Tribute --> Field: banked
-    Tribute --> Retreat: rest of the channel would kill us
+    Alive --> Dead: killed
+    Dead --> Alive: respawns
 
-    Field --> Retreat: health below 35%, or camp hits on the way out would kill
-    Field --> Recall: capture recall, no enemy within 8 and (health below 80%, trip under 25 rounds, or 150+ gold)
-    Retreat --> Recall: no chaser can reach within 3 turns
-    Recall --> Retreat: a hit cancels it
-    Retreat --> Spawn: walks in
-    Recall --> Spawn: lands after 5 turns, 3 with Home emblem
-    Spawn --> Field: full health (with gems, bank on the way out)
-
-    Field --> Dead: killed
-    Retreat --> Dead: killed
-    Recall --> Dead: killed
-    Tribute --> Dead: killed
-    Dead --> Spawn: respawn after 60 ticks
-
-    note right of Field
-        Re-chosen every turn: Fight, then Bank, then Reinforce, then Farm.
-        Every turn ends in a fake recall that the next turn cancels.
+    note right of Spawn
+        Heals to full, buys all it can afford, strikes what reaches it.
+        Within a turn, when several apply: fight, retreat, bank, help, farm.
     end note
-    note left of Spawn
-        Heals to full, buys all it can afford,
-        strikes enemies that reach it.
+    note right of Farming
+        Group choice: reward per round of walk, clear and capture, discounted
+        by enemies on the way; a party or a cluster run when better.
+        Hold: step on unless an ally outranks; go home when nobody is near
+        and hurt, rich, or on a short trip.
     end note
-    note right of Retreat
-        Recalls when safe, walks if home is near,
-        fights back when caught and the duel is won.
+    note right of Fighting
+        Also entered to chase a lone runner, or to help a teammate under
+        attack (a sighting alone brings nobody).
+        Each turn: victim, risk gate, tile score, then step, dash, combo,
+        spell, attack. Hurt: own strength counts zero, safest tile.
+    end note
+    note left of Retreating
+        Latched until healed at spawn. Keeps reporting the fight.
+        Recalls when out of reach and home is far, else walks.
+    end note
+    note left of Banking
+        Trigger: deadline, near-victory share, capture combo, winning bag,
+        or gems on the way out of spawn. Altar: nearest by walk,
+        enemies nearby count against it.
     end note

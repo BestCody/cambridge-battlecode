@@ -35,8 +35,6 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
-        if (centre_opening() && g.home_distance > policy::opening_reach)
-            continue;
         // Without a trip home: what each member spends before it leaves,
         // above the casualty margin and the walk out of the camps' reach
         // under their fire from its attack range (the leave rule's,
@@ -187,7 +185,6 @@ int Bot::worker_choose_group(int excluded) {
     const float gem_weight = gem_reward_weight(opening);
     const float behind = behind_pressure();
     const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;
-    const bool far_opening = centre_opening();
     const int capture_time = rules::settings().capture_time;
     // A group's helpers are the teammates claiming it, and those a party
     // plan asks for (its request): no teammate is expected unasked.
@@ -759,10 +756,6 @@ int Bot::worker_choose_group(int excluded) {
                     factor, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_v128_load(&lanes.cohesion[i]),
                                                                splat(policy::cohesion_hazard))));
             factor = pick(wasm_f32x4_mul(factor, splat(enemy_side_mul)), factor, wasm_v128_load(&lanes.enemy_side[i]));
-            // A centre map's opening: our own side first (policy::opening_rounds).
-            if (far_opening)
-                factor = pick(wasm_f32x4_mul(factor, splat(policy::opening_far_mul)), factor,
-                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(policy::opening_reach))));
             factor = pick(wasm_f32x4_mul(factor, splat(policy::enemy_held_camp_bonus)), factor, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).

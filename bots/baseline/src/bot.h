@@ -577,16 +577,11 @@ class Bot {
     bc::distance_field home_field, altar_field, origin_field;
     vec2 home_centre{}; // The middle of our spawn region.
     vec2 enemy_centre{}; // The middle of the enemy's.
-    // A centre map: one group holds centre_share of the map's gems and is
-    // opening_reach or more steps from our spawn (centre_opening()).
-    bool centre_map = false;
     bool sweep_back = false; // A contested capture's sweep heads home.
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
     DraftPlan opening;
     // Whether the draft's plan holds this map's group and altar measures.
-    // A centre map's opening (strategy.h): our own side first.
-    bool centre_opening() const { return centre_map && int(round) < policy::opening_rounds; }
     bool draft_measured() const {
         return opening.magic == DraftPlan::tag && opening.group_count == groups.size();
     }
@@ -1050,8 +1045,6 @@ class Bot {
     float reported_power(vec2 at) const;
     bool worker_reinforce();
     bool worker_tribute();
-    // Banking blocked by camps: cut through the cheap ones nearer the altar.
-    bool corridor_attack(vec2 altar);
     void note_activity(Activity activity);
     // safety.cpp: danger from enemy champions, remembered sightings, and
     // stepping away.

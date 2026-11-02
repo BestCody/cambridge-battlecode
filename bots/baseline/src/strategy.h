@@ -237,29 +237,6 @@ inline constexpr bool sweep_contested = true;
 // this many rounds, the holder closes on the enemy (worker_skirmish()). 0
 // switches it off.
 inline constexpr int standoff_rounds = 6;
-// A bag this big goes to the altar (worker_tribute()), whatever the trip.
-inline constexpr unsigned bank_bag = 100000;
-// Centre maps (a group with centre_share of the gems, opening_reach or more
-// steps from spawn: gemfight's 78-gem centre is 30 steps through a spiral of
-// holes, vault's 343). For the first opening_rounds, groups past
-// opening_reach are worth opening_far_mul in camp choice and left out of the
-// opening group: Intercontinental Fish clears the wolf and gold camps beside
-// its spawn with all five, then the elk group, and reaches the centre as a
-// group with 500 gold; ours walked there one by one with nothing and lost
-// the fight (practice 2026-11-01, 0 of 10). 0 rounds switches it off.
-// Against test-bot, which rushes the centre too, 80 rounds lost 85/140 to
-// 91 (paired +3 -9: both gemfight seats, pilgrimage, tangle): we arrive
-// second. Untested against the top teams beyond one 10-game probe (v80).
-inline constexpr float centre_share = 0.35f;
-inline constexpr int opening_reach = 20;
-inline constexpr int opening_rounds = 0;
-inline constexpr float opening_far_mul = 0.1f;
-// A banker that has not moved for corridor_stalls turns cuts through the
-// cheap camps (strength up to cheap_camp_strength: wolves, elks, golems, not
-// monoliths) between it and the altar (corridor_attack()). 0 switches it off.
-// On the-pack the gap we cut let test-bot bank too, with the bigger bags:
-// seat A 37-1024 (was 0-1184), seat B 96-1144 (was 0-0, ours on the tiebreak).
-inline constexpr int corridor_stalls = 0;
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks

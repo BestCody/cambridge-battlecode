@@ -17,11 +17,7 @@ bool Bot::worker_tribute() {
         return false;
     bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Near victory, each champion banks its share of the remaining score.
-    // Or a bag of bank_bag: a tribute channels a turn per 10 gems, and a
-    // big bag dies in the channel (ours stood 21 turns of a 401-gem tribute
-    // on vault before a Prism killed her). The top three bank lots of 8-39.
-    const bool share = float(gems) >= std::min(float(policy::bank_bag),
-                                               float(remaining) / std::max(std::size_t(1), roster.size()));
+    const bool share = float(gems) >= float(remaining) / std::max(std::size_t(1), roster.size());
     bool capture_combo = false, holding = false;
     if (target >= 0 && groups[target].status == CampGroup::capture && groups[target].tiles().is_set(position)) {
         // Leaving a capture before it pays loses it, unless the tribute
@@ -153,39 +149,8 @@ bool Bot::worker_tribute() {
     const vec2 bank_from = position;
     move_to(approach, selected, false, true);
     bank_stalls = position == bank_from && me.can_attack() && me.can_cast() ? bank_stalls + 1 : 0;
-    // Camps in the way (02the-pack: the altar inside two rings of 48 wolves;
-    // the walk fields ignore camps, so the route ends at one and the bag
-    // waited at spawn 372 rounds): cut a corridor through the cheap camps
-    // nearer the altar than we stand, as test-bot's Vendetta did in 38 hits
-    // before it banked.
-    if (policy::corridor_stalls > 0 && bank_stalls >= policy::corridor_stalls && corridor_attack(selected))
-        bank_stalls = policy::corridor_stalls;
     ward_ahead(selected);
     return true;
-}
-
-bool Bot::corridor_attack(vec2 altar) {
-    const auto &field = altar_walk();
-    const int here = int(field.get(position));
-    const ObservedUnit *cut = nullptr;
-    int nearest = std::numeric_limits<int>::max();
-    for (const auto &c : camps) {
-        if (c.health <= 0 || c.strength > policy::cheap_camp_strength || int(field.get(c.position)) >= here)
-            continue;
-        const int d = distance(position, c.position);
-        if (d < nearest) {
-            nearest = d;
-            cut = &c;
-        }
-    }
-    if (!cut)
-        return false;
-    const int group = group_at(cut->position);
-    if (nearest <= range && group >= 0)
-        return combat(false, group);
-    return move_to(around(cut->position, float(range)), cut->position, false, true) ||
-           (group >= 0 && combat(false, group));
-    (void)altar;
 }
 
 void Bot::note_altar_locks() {
