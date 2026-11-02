@@ -277,7 +277,7 @@ inline constexpr unsigned island_bag = 60;
 // 4,000-damage spell, 16 kills to 0 deaths on 00packs); 2 QS2isLaw's
 // (Prospector, Jungle, Capture, Durability of Health, Monster/Strength, then
 // Bruiser/Health: 3,200 health by round 166 on 03showdown).
-inline constexpr int marcella_build = 1;
+inline constexpr int marcella_build = 3;
 // Every champion's build cut to its first short_builds emblems, then
 // Bruiser of its repeat's stat (economy.cpp build_for(); 0: the full
 // builds). Olympus's whole roster stacks Bruiser from the third emblem
