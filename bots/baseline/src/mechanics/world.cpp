@@ -595,6 +595,20 @@ void Bot::initialise() {
             }
         }
     }
+    {
+        // A centre map (bot.h): the opening farms our own side first.
+        float total = 0, richest = 0;
+        int richest_walk = 0;
+        for (const auto &g : groups) {
+            const float gems = float(g.unit.gem_value());
+            total += gems;
+            if (gems > richest) {
+                richest = gems;
+                richest_walk = g.home_distance;
+            }
+        }
+        centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
+    }
     // Camp tiles and their groups, each camp's tile index, and the camps of
     // spawn-reachable groups. The masks are written here and imported once
     // each: setting a tile costs an engine call. tile_group is never filled:
