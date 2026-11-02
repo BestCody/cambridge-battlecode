@@ -146,7 +146,7 @@ inline constexpr float worker_commit_bonus = 1.1102f;
 // Camp choice clears a camp at the team's summed camp rate (ours and its
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
-inline constexpr float team_clear_share = 0.61002f;
+inline constexpr float team_clear_share = 0.85f; // 0.61002 (GA): elk maps locally 1/8 to 4/8 at 0.85
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
