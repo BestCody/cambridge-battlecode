@@ -72,7 +72,8 @@ int Bot::worker_choose_group(int excluded) {
         if (opening_group == -2)
             opening_group = choose_opening(opening_until);
         if (opening_group >= 0 && opening_group != excluded && int(round) <= opening_until &&
-            !enemy_near_lately(opening_group) && groups[std::size_t(opening_group)].status == CampGroup::alive) {
+            (policy::opening_holds || !enemy_near_lately(opening_group)) &&
+            groups[std::size_t(opening_group)].status == CampGroup::alive) {
             last_plan = round;
             siege_group = -1;
             cluster_run.clear();

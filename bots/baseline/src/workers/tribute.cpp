@@ -63,7 +63,11 @@ bool Bot::worker_tribute() {
     const bool wait_bank = policy::wait_bank > 0 && target >= 0 && groups[target].status == CampGroup::cooling &&
                            float(groups[target].respawn - int(round)) * policy::wait_bank >=
                                float(2 * closest + channel_duration(gems));
-    const bool trip = spawn.is_set(position) || ((closest <= policy::bank_nearby || wait_bank) && !holding && !walled);
+    // The nearby trip not with an enemy in view (bank_nearby_clear): hooks'
+    // only altar is in the centre room, and at 3 steps ours channelled
+    // tributes in the middle of the centre fight (locally 2/2 to 0/2).
+    const bool clear = !policy::bank_nearby_clear || enemies.empty();
+    const bool trip = spawn.is_set(position) || (((closest <= policy::bank_nearby && clear) || wait_bank) && !holding && !walled);
     if constexpr (policy::diagnostic)
         if (spawn.is_set(position) || banking)
             std::printf("TRIB r=%u id=%u pos=%d,%d gems=%u closest=%d banking=%d trip=%d share=%d holding=%d "

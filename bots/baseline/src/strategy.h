@@ -130,6 +130,7 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
+inline constexpr bool bank_nearby_clear = false; // the nearby trip only with no enemy in view (tribute.cpp)
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
@@ -198,6 +199,12 @@ inline constexpr int contest_max_camps = 0; // 12: yellow-brick-road still 0/2 l
 // for them): yellow_brick_road's 30-cluster roads (3,600 health, 600 gold)
 // take one champion 60-80 rounds and test-bot's five 15.
 inline constexpr int party_cluster_camps = 0;
+// The opening group stays every champion's target when enemies are seen
+// at it (opening_holds; without it the opening ends at first sight and the
+// team spreads): on hooks and packs the first centre contest decides the
+// game, and ours arrived one at a time (hooks 0 kills to 28 against
+// Olympus; the one win, v93, won that contest).
+inline constexpr bool opening_holds = false;
 // Camp choice values the capture we stand on and hold this much more, so a
 // holder stays until it pays.
 inline constexpr float held_capture_bonus = 4.4312f;
