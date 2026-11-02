@@ -1,0 +1,6 @@
+ESTRO e8aea141-4c4e-4841-998d-ad002227398e 00the_line,00expanse,00ambush,02famine,02cuts a,b,a,b,a
+TOKEN a1e82708-dfd3-4609-8b9a-69f652d12185 02arena,02famine,03honeycomb,01gold_rush,00happy_halloween b,a,b,a,b
+DING 626450a6-dab1-46a3-b4f4-0df7867e275f 00vault,01big_world,03membrane,00gemfight,02the_pond a,b,a,b,a
+DEADB f92d0bbd-519e-4f8b-b8bd-0d909f4ca0ee 02tangle,03showdown,00gem_fields,02treasure_box,03contours b,a,b,a,b
+VELVET 118dbffc-87ec-48a6-ac9c-dc1e371ba364 adgato_gemcombat3,00oasis,02geodes,00corners,00packs a,b,a,b,a
+SKIBI 67e6d408-0d7f-4f95-af3d-c2b7bad5e8aa 00galaxy,00gem_fields,00fragment,00corners,01elk_arena b,a,b,a,b

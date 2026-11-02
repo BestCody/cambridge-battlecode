@@ -35,6 +35,8 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
+        if (centre_opening() && g.home_distance > opening_reach_now)
+            continue;
         // Without a trip home: what each member spends before it leaves,
         // above the casualty margin and the walk out of the camps' reach
         // under their fire from its attack range (the leave rule's,
@@ -70,7 +72,8 @@ int Bot::worker_choose_group(int excluded) {
         if (opening_group == -2)
             opening_group = choose_opening(opening_until);
         if (opening_group >= 0 && opening_group != excluded && int(round) <= opening_until &&
-            !enemy_near_lately(opening_group) && groups[std::size_t(opening_group)].status == CampGroup::alive) {
+            !enemy_near_lately(opening_group) &&
+            groups[std::size_t(opening_group)].status == CampGroup::alive) {
             last_plan = round;
             siege_group = -1;
             cluster_run.clear();
@@ -81,7 +84,10 @@ int Bot::worker_choose_group(int excluded) {
     // A group we were walled off from lately is no candidate.
     const int walled = int(round) < stuck_group_until ? stuck_group : -1;
     profiling::Scope scope(profiling::Stage::choose);
-    measure_paths(1);
+    {
+        profiling::Scope paths_scope(profiling::Stage::paths);
+        measure_paths(1);
+    }
     const float gold_value = gold_value_now();
     // Squad assembly: count living allies. After a wipe a lone respawn must not
     // walk straight back into a grouped enemy and feed one champion at a time.
@@ -106,7 +112,7 @@ int Bot::worker_choose_group(int excluded) {
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
         if (const int c = mate_claim(s); c >= 0) {
             ++claims[c];
-            if constexpr (policy::cohesion_hazard > 0)
+            if (cohesion_hazard_now() > 0)
                 claimed_groups.push_back(c);
         }
     // Each teammate's damage per round on camps (from its live strength and
@@ -183,7 +189,9 @@ int Bot::worker_choose_group(int excluded) {
     const int here = group_at(position);
     const float gem_weight = gem_reward_weight(opening);
     const float behind = behind_pressure();
-    const float enemy_side_mul = policy::enemy_side_factor + (1.0f - policy::enemy_side_factor) * behind;
+    const float side_factor = harvesting() ? policy::harvest_enemy_side : policy::enemy_side_factor;
+    const float enemy_side_mul = side_factor + (1.0f - side_factor) * behind;
+    const bool far_opening = centre_opening();
     const int capture_time = rules::settings().capture_time;
     // A group's helpers are the teammates claiming it, and those a party
     // plan asks for (its request): no teammate is expected unasked.
@@ -344,7 +352,7 @@ int Bot::worker_choose_group(int excluded) {
             // Tiles past the camp spacing to the nearest teammate's claim
             // (none worked out while the penalty is off).
             lanes.cohesion[i] = 0.0f;
-            if (policy::cohesion_hazard > 0 && opening.spacing <= policy::cohesion_max_spacing &&
+            if (cohesion_hazard_now() > 0 && opening.spacing <= policy::cohesion_max_spacing &&
                 !(whole ? g.hard : g.live_hard)) {
                 float nearest_claim = std::numeric_limits<float>::infinity();
                 for (const int claimed : claimed_groups)
@@ -750,11 +758,14 @@ int Bot::worker_choose_group(int excluded) {
             skip = wasm_v128_or(skip, wasm_v128_andnot(wasm_f32x4_lt(each_with, splat(100.0f)), is_held));
             // The score's multipliers, kept for the party plans.
             v128_t factor = wasm_f32x4_div(one, wasm_f32x4_add(one, wasm_f32x4_mul(ours_at, splat(travel_hazard))));
-            if constexpr (policy::cohesion_hazard > 0)
+            if (const float hazard = cohesion_hazard_now(); hazard > 0)
                 factor = wasm_f32x4_div(
-                    factor, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_v128_load(&lanes.cohesion[i]),
-                                                               splat(policy::cohesion_hazard))));
+                    factor, wasm_f32x4_add(one, wasm_f32x4_mul(wasm_v128_load(&lanes.cohesion[i]), splat(hazard))));
             factor = pick(wasm_f32x4_mul(factor, splat(enemy_side_mul)), factor, wasm_v128_load(&lanes.enemy_side[i]));
+            // A centre map's opening: our own side first (policy::opening_rounds).
+            if (far_opening)
+                factor = pick(wasm_f32x4_mul(factor, splat(policy::opening_far_mul)), factor,
+                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(opening_reach_now))));
             factor = pick(wasm_f32x4_mul(factor, splat(policy::enemy_held_camp_bonus)), factor, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).
@@ -771,6 +782,14 @@ int Bot::worker_choose_group(int excluded) {
             factor = pick(wasm_f32x4_mul(factor, splat(policy::held_capture_bonus)), factor, wasm_v128_and(is_held, is_here));
             wasm_v128_store(&lanes.factor[i], factor);
             wasm_v128_store(&lanes.scores[i], pick(splat(skipped), wasm_f32x4_mul(value, factor), skip));
+            // The harvest species farms away from the enemy: a group with an
+            // enemy seen near it lately is priced at harvest_near_enemy of
+            // itself (hooks: ours hovered 35 rounds at the edge of the
+            // enemy's reach beside its gold camp instead of farming elsewhere).
+            if (harvesting())
+                for (std::size_t k = i; k < i + 4 && k < count; ++k)
+                    if (lanes.scores[k] != skipped && lanes.scores[k] > 0 && enemy_near_lately(int(k)))
+                        lanes.scores[k] *= policy::harvest_near_enemy;
         }
     };
     // A group whose walk is still a lower bound (past the bounded search)
@@ -780,11 +799,14 @@ int Bot::worker_choose_group(int excluded) {
     // hence the margin.
     float best = -1;
     int choice = -1;
-    gather();
-    for (std::size_t i = 0; i < count; ++i)
-        gather_run(i, nullptr);
-    for (std::size_t i = 0; i < padded; i += 4)
-        score_lanes(i);
+    {
+        profiling::Scope gather_scope(profiling::Stage::gather);
+        gather();
+        for (std::size_t i = 0; i < count; ++i)
+            gather_run(i, nullptr);
+        for (std::size_t i = 0; i < padded; i += 4)
+            score_lanes(i);
+    }
     for (;;) {
         best = -1;
         choice = -1;
@@ -798,7 +820,10 @@ int Bot::worker_choose_group(int excluded) {
             }
         if (bounded_best < best - std::abs(best) * 1e-4f || path_search >= 3)
             break;
-        measure_paths(path_search + 1);
+        {
+            profiling::Scope paths_scope(profiling::Stage::paths);
+            measure_paths(path_search + 1);
+        }
         for (std::size_t i = 0; i < padded; i += 4) {
             bool changed = false;
             for (std::size_t k = i; k < i + 4 && k < count; ++k)
@@ -823,7 +848,17 @@ int Bot::worker_choose_group(int excluded) {
     // Planned offline on print dont int's 34 case games, this took 16 of 22
     // near multi-elk groups by round 400 (claimants only 10), parties of
     // 3.0 early and 2.1 from round 400 (print 3.2-4.0, 2.3).
+    if constexpr (policy::diagnostic) {
+        std::printf("CHOICE r=%u id=%u pos=%d,%d choice=%d best=%.2f spawn=%d crystal=%d |", round, id(bc::self()),
+                    position.x, position.y, choice, best, int(home_field.get(position) == 0), int(hopping));
+        for (std::size_t i = 0; i < count; ++i)
+            if (groups[i].unit.gem_value() >= 25 || groups[i].unit.gold_value() >= 300)
+                std::printf(" g%zu:s=%.2f p=%d st=%d", i, lanes.scores[i], lanes.path[i], int(groups[i].status));
+        std::printf("\n");
+    }
     int party = -1;
+    {
+        profiling::Scope plans_scope(profiling::Stage::plans);
     if (choice >= 0 && best > 0) {
         struct Cohort {
             float at, speed;
@@ -996,6 +1031,12 @@ int Bot::worker_choose_group(int excluded) {
                     continue;
                 }
                 const float time = end + trips * trip_time / std::max(1.0f, fronts) + settle;
+                if constexpr (policy::diagnostic)
+                    if (g.unit.gem_value() >= 25 && round % 25 == 0)
+                        std::printf("PARTY r=%u id=%u g=%zu k=%u end=%.0f trips=%.0f each=%.0f damage=%.0f first=%.0f time=%.0f left=%.0f "
+                                    "value=%.3f without=%.3f factor=%.2f asked=%.3f best=%.3f\n",
+                                    round, id(bc::self()), i, k, end, trips, each, damage, first, time, rounds_left,
+                                    plan_value(time), without, lanes.factor[i], party_best * rate_asked / our_rate, best);
                 if (time > rounds_left)
                     continue;
                 const float score =
@@ -1015,6 +1056,7 @@ int Bot::worker_choose_group(int excluded) {
     // on its way, keeps it.
     if (choice < 0 || choice != target)
         cluster_run.clear();
+    }
     // A party plan's clear is the party's: no siege or run of our own.
     siege_group = choice >= 0 && party < 0 && lanes.siege_won[choice] ? choice : -1;
     request_group = party;
@@ -1057,7 +1099,9 @@ void Bot::worker_farm() {
             // Reads only, so their order changes nothing: the tests without
             // engine calls first.
             const auto ready = bc::champion_state::can_attack | bc::champion_state::can_cast;
-            const bool idle = bot.position == from && t >= 0 &&
+            const bool bounced = policy::bounce_stalls && bot.position == bot.before_previous && bot.position != from;
+            bot.bounces = bounced ? bot.bounces + 1 : 0;
+            const bool idle = (bot.position == from || bot.bounces >= policy::bounce_min) && t >= 0 &&
                               distance(bot.position, bot.groups[t].centre) > bot.range + 2 && self.is_alive() &&
                               self.state().contains(ready) && !bot.groups[t].tiles().is_set(bot.position);
             bot.farm_stalls = idle ? bot.farm_stalls + 1 : 0;

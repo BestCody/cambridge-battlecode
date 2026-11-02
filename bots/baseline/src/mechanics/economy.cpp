@@ -19,7 +19,49 @@ struct Build {
     unsigned size;
     Item repeat;
 };
+Build full_build_for(bc::champion_type type);
+// The shard of `family` in the stat `like` grows most.
+Item shard_of(bc::item_passive family, Item like) {
+    const bool strength = like.strength_points() > like.focus_points() && like.strength_points() > like.health_points();
+    const bool focus = !strength && like.focus_points() > like.health_points();
+    switch (family) {
+        case bc::item_passive::capture:
+            return strength ? Item::capture_shard_of_strength : focus ? Item::capture_shard_of_focus : Item::capture_shard_of_health;
+        case bc::item_passive::prospector:
+            return strength ? Item::prospector_shard_of_strength : focus ? Item::prospector_shard_of_focus : Item::prospector_shard_of_health;
+        default:
+            return like;
+    }
+}
 Build build_for(bc::champion_type type) {
+    Build b = full_build_for(type);
+    // The front emblems (strategy.h front_passives), the last listed moved
+    // to the front first so the first listed ends up first. A build's own
+    // step of the family moves; otherwise the shard of the repeat's stat is
+    // prepended, and the last step makes room when the build is full.
+    const Item r = b.repeat;
+    for (std::size_t n = policy::front_passives.size(); n > 0; --n) {
+        const auto family = policy::front_passives[n - 1];
+        if (b.size == 0 || b.steps[0].item.passive() == family)
+            continue;
+        unsigned at = b.size;
+        for (unsigned i = 0; i < b.size; ++i)
+            if (b.steps[i].item.passive() == family)
+                at = i;
+        if (at == b.size) {
+            if (b.size == b.steps.size())
+                --b.size;
+            b.steps[b.size] = {shard_of(family, r), 5};
+            at = b.size++;
+        }
+        const BuildStep step = b.steps[at];
+        for (unsigned i = at; i > 0; --i)
+            b.steps[i] = b.steps[i - 1];
+        b.steps[0] = step;
+    }
+    return b;
+}
+Build full_build_for(bc::champion_type type) {
     switch (type) {
         case bc::champion_type::vesper_vale:
             return {{{{Item::treasure_shard_of_strength, 5},        // r114-129, 15/15
@@ -49,15 +91,12 @@ Build build_for(bc::champion_type type) {
                     5,
                     Item::bruiser_shard_of_strength};           // 5.2 a game
         case bc::champion_type::marcella:
-            return {{{{Item::treasure_shard_of_focus, 5},           // r95-182, 16/16
-                      {Item::durability_shard_of_health, 5},    // r190-276, 16/16
-                      {Item::prospector_shard_of_focus, 5},     // r280-408, 12/16
-                      {Item::monster_shard_of_focus, 5},        // r345-421, 14/16
-                      {Item::jungle_shard_of_health, 5},        // r426-459, 12/16
-                      {Item::capture_shard_of_focus, 5},        // r459-528, 12/16
-                      {Item::skirmish_shard_of_focus, 5}}},     // r528-533, 11/16
-                    7,
-                    Item::bruiser_shard_of_focus};              // 27.8 a game
+            // Treasure, Durability, then Bruiser/Focus: print dont int's first two,
+            // then Olympus's stacking (its seven farming emblems lost to that in practice).
+                return {{{{Item::treasure_shard_of_focus, 5},     // print dont int's first two, then
+                          {Item::durability_shard_of_health, 5}}}, // Olympus's stacking
+                        2,
+                        Item::bruiser_shard_of_focus};
         case bc::champion_type::ryth:
             return {{{{Item::treasure_shard_of_health, 5},      // r140-366, 6/8
                       {Item::durability_shard_of_health, 5}}},  // r506-789, 4/8

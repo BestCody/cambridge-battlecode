@@ -1,0 +1,5 @@
+03one_gem b Rogue_Lock_Pickers 623461a2-ff58-468b-8736-592c723d53ca
+00split b Rogue_Lock_Pickers a778e9f2-763a-43ee-afd7-2c58e082d06c
+00stampede b Rogue_Lock_Pickers 2bfdb243-1793-4a8c-a0cc-5cdad9871201
+03shrines b EE 72bf3aa3-7493-4bb9-a8ef-2a6e6b2122f4
+00corners b EE b95f86ab-2885-4a9d-a8bd-98d9b0627c7a

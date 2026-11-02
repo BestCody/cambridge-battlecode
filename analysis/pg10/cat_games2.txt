@@ -1,0 +1,6 @@
+00quadrants b Noobot 86588de0-e7ca-49d6-9c69-e9685d3e95c5
+00vault b Noobot 69827d9c-f63c-4a89-8481-a51546fde00f
+03homonoliths b Noobot 075cd2d2-a1dd-434e-97c8-22fc147cde7d
+02treasure_box b Noobot 2495a8d9-42b9-4768-a2e4-ca8c0d882ce0
+01broken_curve a SSSA 0c3f4940-50e4-44a0-b0af-ab8465dfa087
+02uncharted_lands a SSSA 44967fe0-5b9a-4640-ad60-4b5d04a94f87

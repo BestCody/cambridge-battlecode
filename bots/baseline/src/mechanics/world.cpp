@@ -595,6 +595,48 @@ void Bot::initialise() {
             }
         }
     }
+    {
+        // A centre map (bot.h): the opening farms our own side first.
+        float total = 0, richest = 0;
+        int richest_walk = 0;
+        for (const auto &g : groups) {
+            const float gems = float(g.unit.gem_value());
+            total += gems;
+            if (gems > richest) {
+                richest = gems;
+                richest_walk = g.home_distance;
+            }
+        }
+        centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
+        // The map's print, against the watch expert's maps (strategy.h).
+        const policy::MapPrint print{int(bc::map::width()), int(bc::map::height()), int(groups.size()),
+                                     int(total + 0.5f)};
+        opening_reach_now = policy::opening_reach;
+        opening_rounds_now = policy::opening_rounds;
+        if constexpr (policy::opening_route) {
+            centre_map = false;
+            for (const auto &m : policy::opening_maps)
+                if (m.print.width == print.width && m.print.height == print.height &&
+                    m.print.groups == print.groups && m.print.gems == print.gems) {
+                    centre_map = true;
+                    opening_reach_now = m.reach;
+                    opening_rounds_now = m.rounds;
+                }
+        }
+        harvest_map = policy::harvest_all;
+        for (const auto &m : policy::harvest_maps)
+            if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
+                m.gems == print.gems)
+                harvest_map = true;
+        watch_map = false;
+        for (const auto &m : policy::watch_maps)
+            if (m.width == print.width && m.height == print.height && m.groups == print.groups &&
+                m.gems == print.gems)
+                watch_map = true;
+        if constexpr (policy::diagnostic)
+            std::printf("MAPPRINT w=%d h=%d groups=%d gems=%d watch=%d\n", print.width, print.height,
+                        print.groups, print.gems, int(watch_map));
+    }
     // Camp tiles and their groups, each camp's tile index, and the camps of
     // spawn-reachable groups. The masks are written here and imported once
     // each: setting a tile costs an engine call. tile_group is never filled:

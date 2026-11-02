@@ -20,8 +20,12 @@ namespace policy {
 // choice of gold-only groups (20% of their captures before round 300, 15% to
 // round 800, 30% after, counted from the round dumps); 0.65 / 0.10 gave ours
 // 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
-inline constexpr float early_gold_value = 0.17645f;
+inline constexpr float early_gold_value = 0.35f; // 0.17645 before v106: see the note below
 inline constexpr float late_gold_value = 0.1f;
+// 0.35 early (v106): the peers that beat us (estrogen :3, QS2isLaw, MFF1)
+// out-gold us two to one by round 300 and win the fights with the stats;
+// locally 81/140 against test-bot and 79/140 against the stacker to 77 and 75
+// at 0.17645 (analysis/gold_140).
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).
 inline constexpr float pursue_health = 0.35402f;
@@ -65,6 +69,13 @@ inline constexpr int recall_chase_turns = 6;
 // Turns of a walk to a target or an altar that make no step (walled off by
 // camp bodies) before it is left out for stuck_rounds.
 inline constexpr int stuck_turns = 2;
+// A farm turn that ends on the tile of two turns ago counts as a stall too
+// (bounce_stalls): on 00split a Vendetta stepped into an elk's reach and
+// back out, (17,27) and (18,28), for 390 rounds at constant health with 7
+// gems, farming nothing, because only a turn without a step counted.
+inline constexpr bool bounce_stalls = true;
+// ... after bounce_min bounces in a row (every bounce counted: 81/140 to 74, the fight's step in and out).
+inline constexpr int bounce_min = 6;
 inline constexpr int stuck_rounds = 15;
 // Hard camps (golems and monoliths: hard_camp_health or more): a clear of one
 // under way is seen through (worker_farm()). Alone a golem (5,000 health, 120
@@ -129,7 +140,8 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // Banking: whatever a champion carries is banked on its way out from spawn
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
-inline constexpr int bank_nearby = 1;
+inline constexpr int bank_nearby = 3;
+inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
@@ -203,7 +215,7 @@ inline constexpr float step_incoming_weight = 0.038261f;
 // most cohesion_max_spacing (dense ones). Hard groups are left to the party
 // plans. Off (0) until the GA tunes it: 0.03 everywhere was level (83/140),
 // +3 on dense maps and -3 on sparse.
-inline constexpr float cohesion_hazard = 0.0f;
+inline constexpr float cohesion_hazard = 0.0f; // 0.03: 88/140 at fuel 100,000 but 79 at 94,000; 0.05 83, 0.08 81: noise (2026-11-02)
 inline constexpr float cohesion_max_spacing = 29.565f;
 // The nearest groups (straight line) whose legs from a group the draft
 // prices for a crystal hop (DraftPlan::leg_saving).
@@ -237,6 +249,138 @@ inline constexpr bool sweep_contested = true;
 // this many rounds, the holder closes on the enemy (worker_skirmish()). 0
 // switches it off.
 inline constexpr int standoff_rounds = 6;
+// Watching: the fight claims the turn with an enemy in view that can act on
+// a teammate, or a side we outweigh, while no enemy can be struck from any
+// tile a step reaches. On 00the-line (both teams in view all game along a
+// 161-gem line) ours watched 70% of their turns and never farmed: a
+// Marcella at 542 of 1,200 walked beside the line 25 rounds with no enemy
+// within 3 tiles and no hit. A watching champion, safe where it stands,
+// farms its camp when one is in its attack reach (farm_in_view), and after
+// watch_limit strike-less turns in a row (0: never).
+inline constexpr bool farm_in_view = true;
+inline constexpr int watch_limit = 4;
+// A carrier watching with a bank trip pending (on spawn, already banking, or
+// an altar within bank_nearby steps) yields the turn to the tribute, on
+// every map: ours stood ten rounds beside spawn with 56 gems while a
+// Vendetta hovered 6-8 tiles off, the altar three tiles away (00packs
+// against Olympus r287-300; the bag was carried 193 rounds).
+inline constexpr bool watch_bank = true;
+// A bag beside a camp waiting to respawn goes to the altar when the wait,
+// times wait_bank, covers the round trip and the channel (0: never): on
+// 03ultrastarvation (four 7-gem camps, 50-round respawns, one altar 30 steps
+// off) ours sat 800 rounds beside its camp with 14 gems, banking 44 all game
+// to QS2isLaw's 242 in 24 small lots.
+inline constexpr float wait_bank = 1.5f;
+// With no altar reachable on foot (an island of camps inside holes, reached
+// by a crystal hop: 02the_pond), a bag of island_bag gems recalls home and
+// banks from spawn; any bag does when the rounds left just cover that
+// (worker_tribute(); 0: never). Ours ended the pond with 370 gems in hand.
+inline constexpr unsigned island_bag = 60;
+// The emblems every champion buys first, of its main stat, in this order,
+// ahead of its own build (economy.cpp build_for; a build's own step of the
+// family moves to the front). Capture (subscribe to caterpillow, 25-15 over
+// its last 40 ranked games, all six wins studied; v104, 15/30 in practice
+// against v79's 12/30) caps the team's capture timer at 3 turns instead of
+// 10, joining mid-capture included. Prospector (estrogen :3 and QS2isLaw buy
+// it first on every champion at rounds 42-300, MFF1's Marcella too) gives
+// 25% more gold and gems from every capture.
+inline constexpr std::array<bc::item_passive, 2> front_passives = {bc::item_passive::prospector, bc::item_passive::capture};
+// Where the watch rules run (bot.h watch_map). Everywhere, they move the
+// weak maps and lose as much elsewhere (280 games against test-bot at two
+// fuel budgets: current 180, rules 177; the ten maps we never won 2 to 20 of
+// 40, the rest 178 to 157), and no map feature or in-game signal (gem gap,
+// the champion's own watching rate) separates the two. So an expert, routed
+// by the map's print (width, height, camp groups, gems: the SDK gives no
+// name): the maps where the rules gained 2+ of 4 games at both budgets.
+// With watch_route off the rules run on every map.
+inline constexpr bool watch_route = true;
+struct MapPrint {
+    int width, height, groups, gems;
+};
+inline constexpr MapPrint watch_maps[] = {
+    {37, 31, 13, 258},  // 00anvil 0 to 2 of 4
+    {41, 41, 20, 280},  // 00collision 0 to 3
+    {40, 40, 14, 200},  // 00interlock 1 to 2
+    {29, 29, 10, 124},  // 00oasis 0 to 3
+    {30, 30, 14, 334},  // 00reverse-spiral 0 to 2
+    {31, 31, 7, 359},   // 00vault 0 to 4
+    {41, 61, 8, 252},   // adgato-gemcombat4 0 to 4
+    {50, 41, 31, 1180}, // 01boss-battle 1 to 4
+    {91, 75, 11, 380},  // 02famine 0 to 3
+};
+// Centre maps (a group with centre_share of the gems, opening_reach or more
+// steps from spawn: gemfight's 78-gem centre is 30 steps through a spiral of
+// holes, vault's 343). For the first opening_rounds, groups past
+// opening_reach are worth opening_far_mul in camp choice and left out of the
+// opening group: Intercontinental Fish clears the wolf and gold camps beside
+// its spawn with all five, then the elk group, and reaches the centre as a
+// group with 500 gold; ours walked there one by one with nothing and lost
+// the fight (practice 2026-11-01, 0 of 10). 0 rounds switches it off.
+// Against test-bot, which rushes the centre too, 80 rounds lost 85/140 to
+// 91 (paired +3 -9: both gemfight seats, pilgrimage, tangle): we arrive
+// second. Untested against the top teams beyond one 10-game probe (v80).
+inline constexpr float centre_share = 0.35f;
+inline constexpr int opening_reach = 20;
+inline constexpr int opening_rounds = 80;
+inline constexpr float opening_far_mul = 0.1f;
+// Routed (opening_route): the opening runs only on the maps listed by print
+// (bot.h opening_map), each with its own reach, and the centre_share rule
+// is not used. 03colosseum (Olympus, 0/3 ranked): the only altar and all
+// 196 gems are eight groups at the centre, 18-25 steps from spawn, and
+// 100-gold wolf camps ring the edge 6-15 steps from spawn; Olympus's
+// Vendetta farmed 122 turns in the first 300 rounds, ours 15-20, and
+// their gold led 2578 to 968 at round 300.
+inline constexpr bool opening_route = true;
+// The harvest species (a second way to play, routed by map print like the
+// watch expert): until a champion is ready it farms gold on our half of
+// the map at harvest_gold_value gems a gold (camp choice), discounts the
+// enemy's half by harvest_enemy_side instead of enemy_side_factor, takes
+// no fight that is not a kill, a finish or a duel the duel model wins with
+// the allies in reach (in an enemy's reach otherwise it breaks contact, out
+// of reach it farms on) and chases nothing. Ready is
+// harvest_emblems finished emblems or round harvest_until. The top teams'
+// pattern on contested-centre maps (Intercontinental Fish on quarry: own
+// side gold first, regroup, hit the enemy while it clears the centre; MFF1
+// and caterpillow bank nothing before round 800 on one_gem, stampede and
+// homonoliths and win on gold and kills). Candidate maps: most of the gems
+// in the middle band and some gold on our half (analysis/mapfeat).
+inline constexpr float harvest_gold_value = 0.6f;
+inline constexpr float harvest_near_enemy = 0.1f; // a group with an enemy seen near it lately, while harvesting
+// The species' cohesion hazard (cohesion_hazard's form), in both phases: in
+// every death stepped through (anvil, oasis, hooks) the victim's teammates
+// were 10-24 tiles away.
+inline constexpr float harvest_cohesion = 0.1f;
+inline constexpr float harvest_enemy_side = 0.3f;
+inline constexpr int harvest_emblems = 3;
+inline constexpr int harvest_until = 500;
+inline constexpr bool harvest_all = false; // every map plays the species (map tables)
+// The maps where the species won games v106 lost on both local opponents
+// (analysis/harvest_all2 against analysis/v106_140, 4 games a map; compare.py):
+// islands 1 to 4, gemfight 0 to 3, yellow-brick-road 1 to 3, anvil 0 to 2,
+// gemcombat1 1 to 3, broken-curve 2 to 4, and +1 with fewer deaths on the rest.
+inline constexpr MapPrint harvest_maps[] = {
+    {37, 31, 13, 258},   // 00anvil
+    {79, 79, 11, 238},   // 00dunes
+    {30, 30, 19, 200},   // 00gemfight
+    {29, 29, 10, 124},   // 00oasis
+    {33, 33, 9, 193},    // 00the-line
+    {50, 41, 31, 1180},  // 01boss-battle
+    {40, 40, 22, 746},   // 01broken-curve
+    {60, 60, 46, 608},   // 01islands
+    {40, 30, 28, 472},   // 01yellow-brick-road
+    {89, 71, 14, 402},   // 02geodes
+    {100, 80, 33, 600},  // 02tangle
+    {31, 31, 6, 126},    // adgato-gemcombat1
+};
+struct OpeningMap {
+    MapPrint print;
+    int reach, rounds;
+};
+// v90 (80 rounds on colosseum): gold at round 300 968 to 1,365, early
+// deaths 6 to 3, still 610-1008; Olympus farms the edge all game.
+inline constexpr OpeningMap opening_maps[] = {
+    {{51, 51, 42, 268}, 15, 80}, // 03colosseum (300 rounds: 383-1017, worse)
+};
 } // namespace policy
 
 // Next-round action order. Tiers are disjoint so plain damage never outranks
