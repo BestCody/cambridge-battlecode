@@ -91,6 +91,17 @@ struct CampGroup {
     // group alone from our attack range (Bot::initialise()): only camps whose
     // reach covers the tile we strike from hit us.
     float reach_share = 1;
+    // A dash-only pocket (policy::pocket_rounds, Bot::prepare_pockets()):
+    // the tile outside to dash from, the tile inside to land on, the dash
+    // steps between them (0: no pocket), the pocket's walking region and
+    // its tiles (the camps', the landing and the open tiles beside the camps).
+    vec2 entry_out{-1, -1}, entry_in{-1, -1};
+    int entry_steps = 0;
+    std::uint16_t entry_region = 0;
+    std::vector<vec2> inside;
+    // Every striker of the group is in our attack range of one of our own
+    // spawn tiles (policy::spawn_siege_margin).
+    bool spawn_strike = false;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -899,6 +910,7 @@ class Bot {
         int round = 0, takeoff_walk = 0, rounds = bc::distance_field::unreachable;
     } hop_plan;
     bool walking_to_hop = false;
+    bool walking_in_pocket = false; // pocket_move() is walking: no second pocket_move().
     // Our income so far (buy_equipment() adds what each turn brought): gold
     // and gems gained, and what we held after the last turn's shopping.
     float earned_gold = 0, earned_gems = 0;
@@ -1029,6 +1041,10 @@ class Bot {
     // near it within policy::worker_sighting_memory rounds.
     bool teammate_claims(int group) const;
     bool enemy_near_lately(int group) const;
+    // The spawn-strike rules apply only where the only gems sit behind
+    // fortresses: on every map, a wolf or elk group beside spawn priced free
+    // cost 88/140 to 78.
+    bool spawn_siege_map() const { return fortress_gems(opening); }
     // Fewer of ours alive (the count given) than of theirs, on a map with
     // several altars. Both counts are exact: the rosters, no estimate.
     bool bodies_down(int ours) const;
@@ -1046,6 +1062,24 @@ class Bot {
     int mate_claim(unsigned s) const;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
+    // Pocket groups (strategy.h pocket_rounds): found once the walking
+    // regions are labelled; then one walk field a turn is rebuilt with the
+    // entry as a root (pocket_field_step()), and every group's field gets
+    // the pockets' inside tiles (pocket_patch()).
+    bool pockets_ready = false;
+    std::vector<int> pocket_groups;
+    std::size_t pocket_cursor = 0;
+    void prepare_pockets();
+    void pocket_field_step();
+    void pocket_patch(std::size_t group);
+    // The steps our dash covers (0 without one).
+    int dash_steps() const;
+    // move_to() with no walk to the goals: into a pocket the goals are in
+    // (to its entry, then the dash in) or out of the one we stand in (to its
+    // landing, then the dash out). 1 acted, 0 waiting (the dash cooling, the
+    // landing occupied), -1 no pocket concerned.
+    int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
+    bool cast_dash_to(vec2 to);
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).

@@ -155,6 +155,16 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
     auto &visited = search_visited;
     subtract_into(search_goals, goals, blocked);
     field.compute_to(blocked, search_goals, origin_at(position), visited);
+    // No walk: into a pocket the goals are in, or out of the one we stand
+    // in, by a dash over its holes (prepare_pockets()).
+    if (pockets_ready && !pocket_groups.empty() && !walking_in_pocket &&
+        field.get(position) == bc::distance_field::unreachable) {
+        walking_in_pocket = true;
+        const int acted = pocket_move(goals, urgent, engaged_group);
+        walking_in_pocket = false;
+        if (acted >= 0)
+            return acted > 0;
+    }
     // With a crystal, the way there may be a hop (not when urgent: its
     // channel holds us still for three turns).
     if (!urgent && !walking_to_hop && carrying_crystal()) {
@@ -269,8 +279,23 @@ void Bot::drop_waking_landings(bc::bitboard &landings, int reach, float radius, 
 }
 
 bool Bot::health_recovery_needed() const {
-    if (own_spawn_tile[tile_index(position)])
+    if (own_spawn_tile[tile_index(position)]) {
+        // Spawn heals to full at the turn's end. Striking our target's camps
+        // from here with no enemy in view, a hit we outlast is no reason to wait.
+        if (spawn_siege_map() && enemies.empty() && target >= 0) {
+            float reaching = 0;
+            bool striking = false;
+            for (const auto &c : camps)
+                if (c.strength > 0 && !camp_dormant(c) && group_at(c.position) == target) {
+                    if (distance(position, c.position) <= c.range)
+                        reaching += c.strength;
+                    striking = striking || distance(position, c.position) <= range;
+                }
+            if (striking && health > reaching * camp_mitigation * mitigation * policy::spawn_siege_margin)
+                return false;
+        }
         return health < max_health;
+    }
     // Also home when the health left only covers the damage it is taking
     // (camp damage included) for the rounds it takes to walk out of reach of
     // the awake camps hitting us (two at least): camps do not chase, but a
@@ -1117,6 +1142,66 @@ bool Bot::take_hop() {
         blocked |= bc::vision::champion_tiles();
         blocked.set(destination);
         blocked.set(position, false);
+    }
+    return false;
+}
+
+int Bot::dash_steps() const {
+    int steps = 0;
+    for (const auto &s : spells)
+        if (s.kind == bc::ability_kind::dash)
+            steps = std::max(steps, int(s.range));
+    return steps;
+}
+
+int Bot::pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group) {
+    const std::uint16_t here = walk_region_at(position.x, position.y);
+    // Inside a pocket, with the goals outside it (a goal inside would have a
+    // walk): to the landing, then the dash out to the entry.
+    for (const int i : pocket_groups) {
+        const auto &g = groups[std::size_t(i)];
+        if (g.entry_region != here)
+            continue;
+        if (position != g.entry_in)
+            return move_to(around(g.entry_in, 0), g.entry_in, urgent, false, engaged_group) ? 1 : 0;
+        return cast_dash_to(g.entry_out) ? 1 : 0;
+    }
+    // Outside: the goals in a pocket (its landing or its camps' tiles): to
+    // the entry, walking (a travel dash on the way would be cooling on
+    // arrival), then the dash in.
+    if (dash_steps() <= 0)
+        return -1;
+    for (const int i : pocket_groups) {
+        const auto &g = groups[std::size_t(i)];
+        if (g.entry_steps > dash_steps())
+            continue;
+        bool wanted = goals.is_set(g.entry_in);
+        for (const vec2 t : g.inside)
+            wanted = wanted || goals.is_set(t);
+        if (!wanted)
+            continue;
+        if (position != g.entry_out)
+            return move_to(around(g.entry_out, 0), g.entry_out, urgent, false, engaged_group) ? 1 : 0;
+        return cast_dash_to(g.entry_in) ? 1 : 0;
+    }
+    return -1;
+}
+
+bool Bot::cast_dash_to(vec2 to) {
+    auto &me = bc::self();
+    const bool can_cast = me.can_cast();
+    for (auto a : me.abilities()) {
+        if (!a.is_dash() || !ready(a, can_cast))
+            continue;
+        const auto design = describe(a);
+        if ((walked && design.exclusive) || distance(position, to) > int(design.range) || blocked.is_set(to))
+            return false;
+        if (!a.use(to))
+            return false;
+        refresh_self();
+        if (design.exclusive)
+            walked = true;
+        return true;
     }
     return false;
 }

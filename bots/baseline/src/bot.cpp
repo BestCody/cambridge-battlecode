@@ -76,6 +76,10 @@ void Bot::take_turn() {
             profiling::Scope job(profiling::Stage::sieges);
             if (!hops_ready)
                 prepare_hops();
+            else if (!pockets_ready && regions_ready)
+                prepare_pockets();
+            else if (pockets_ready && pocket_cursor < pocket_groups.size())
+                pocket_field_step();
             else
                 prepare_sieges();
         }

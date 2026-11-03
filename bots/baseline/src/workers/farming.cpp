@@ -303,7 +303,15 @@ int Bot::worker_choose_group(int excluded) {
     const bool hopping = carrying_crystal();
     const bool on_spawn = hopping && hops_ready && home_field.get(position) == 0;
     const float threshold = hopping ? hop_threshold() : 0.0f;
+    const int our_dash = dash_steps();
     const auto hop_walk = [&](std::size_t i, int walk) {
+        // A pocket group (prepare_pockets()): a dash of its steps or no
+        // walk; with one, the dash in and the cooldown before the dash out.
+        if (const int steps = groups[i].entry_steps; steps > 0) {
+            if (our_dash < steps || walk == bc::distance_field::unreachable)
+                return int(bc::distance_field::unreachable);
+            return walk + policy::pocket_rounds;
+        }
         if (!hopping)
             return walk;
         if (on_spawn && float(walk - group_hops[i]) > threshold)
@@ -345,7 +353,9 @@ int Bot::worker_choose_group(int excluded) {
             // has no living camps, and was read as no hard group, reach 0).
             const bool whole = g.status != CampGroup::alive;
             remaining[i] = whole ? g.max_health : g.health;
-            lanes.striker_work[i] = whole ? g.whole_work : g.live_work;
+            // Struck from our spawn a group costs nothing: no striker work, no
+            // pressure on the walk out.
+            lanes.striker_work[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : whole ? g.whole_work : g.live_work;
             lanes.reach_share[i] = g.reach_share;
             lanes.reach[i] = float(whole ? g.reach : g.live_reach);
             // Tiles past the camp spacing to the nearest teammate's claim
@@ -360,7 +370,7 @@ int Bot::worker_choose_group(int excluded) {
                     lanes.cohesion[i] = std::max(0.0f, nearest_claim - opening.spacing);
             }
             splash[i] = g.splash;
-            pressure[i] = g.pressure;
+            pressure[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : g.pressure;
             claim[i] = float(claims[i]);
         }
         for (std::size_t i = 0; i < count; ++i)
@@ -780,6 +790,12 @@ int Bot::worker_choose_group(int excluded) {
             factor = pick(wasm_f32x4_mul(factor, splat(policy::held_capture_bonus)), factor, wasm_v128_and(is_held, is_here));
             wasm_v128_store(&lanes.factor[i], factor);
             wasm_v128_store(&lanes.scores[i], pick(splat(skipped), wasm_f32x4_mul(value, factor), skip));
+            // The fortress at our spawn on a map with no other gem source is
+            // the whole team's job while it stands.
+            if (spawn_siege_map())
+                for (std::size_t k = i; k < i + 4 && k < count; ++k)
+                    if (groups[k].spawn_strike && groups[k].status == CampGroup::alive && lanes.scores[k] != skipped)
+                        lanes.scores[k] = std::max(lanes.scores[k], policy::spawn_siege_score);
         }
     };
     // A group whose walk is still a lower bound (past the bounded search)
@@ -1130,6 +1146,11 @@ void Bot::worker_farm() {
         capture_since = -1;
     if (target < 0) {
         publish(0);
+        // Nothing chosen from inside a pocket (prepare_pockets()): out of it
+        // towards home, so the next choice is made where walks exist.
+        if (pockets_ready && !pocket_groups.empty() && me.can_move() &&
+            home_field.get(position) == bc::distance_field::unreachable)
+            move_to(own_spawn, home_centre, false, false);
         return;
     }
     auto &g = groups[target];

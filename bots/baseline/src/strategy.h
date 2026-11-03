@@ -67,6 +67,18 @@ inline constexpr int recall_chase_turns = 6;
 // Turns of a walk to a target or an altar that make no step (walled off by
 // camp bodies) before it is left out for stuck_rounds.
 inline constexpr int stuck_turns = 2;
+// Camps struck from our own spawn tiles cost nothing: spawn heals to full at
+// each turn end. 03homonoliths (ranked, 0-1200): the only gems are a 600-gem,
+// 60,000-health, 600-strength monolith stack inside each spawn region; the
+// enemy chipped theirs from round 11 and took it at rounds 415 and 870, ours
+// walked past it and farmed 20-gold clusters: a champion on spawn with any
+// health missing waited to heal, was struck at the round's start, and waited
+// again. On a map whose only gems sit behind fortresses (fortress_gems), such a
+// group has no striker work and no pressure, a hit we outlast by
+// spawn_siege_margin is no reason to wait, and the living fortress at our spawn
+// scores at least spawn_siege_score (scores run 0.1-2): the whole team on it.
+inline constexpr float spawn_siege_margin = 1.5f;
+inline constexpr float spawn_siege_score = 10.0f;
 inline constexpr int stuck_rounds = 15;
 // Hard camps (golems and monoliths: hard_camp_health or more): a clear of one
 // under way is seen through (worker_farm()). Alone a golem (5,000 health, 120
@@ -132,6 +144,13 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 1;
+// A winning bag channels under fire only when the channel is this short (tribute.cpp).
+inline constexpr int win_channel_turns = 4;
+// With no altar reachable on foot (an island of camps inside holes, reached
+// by a crystal hop: 02the_pond), a bag of island_bag gems recalls home and
+// banks from spawn; any bag does when the rounds left just cover that
+// (worker_tribute()). Ours ended the pond with 370 gems in hand.
+inline constexpr unsigned island_bag = 60;
 // Exit risk's bag margin (exit_risk()): a round of the enemies' hits per
 // this many gems carried. (Was the Prism's full bag, 200.)
 inline constexpr unsigned exit_bag_gems = 216;
@@ -156,6 +175,14 @@ inline constexpr float dash_travel_scale = 0.69475f;
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
 inline constexpr float plan_hazard = 0.020924f;
+// Pocket groups (Bot::prepare_pockets()): a group no walk from spawn reaches,
+// inside a ring of holes a dash crosses (01big_world's 21-gem cluster triples,
+// the-pond's four cluster groups, islands, fracture, membrane). Intercontinental
+// Fish (ladder #2) dashes in, clears, captures and dashes out: four such
+// captures by round 600 on big_world, where we take none. A champion with a
+// dash of the entry's steps prices the group at its walk to the entry plus
+// pocket_rounds (the dash in and the cooldown before the dash out).
+inline constexpr int pocket_rounds = 3;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of

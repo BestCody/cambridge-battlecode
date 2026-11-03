@@ -13,8 +13,21 @@ bool Bot::worker_tribute() {
         std::max(1, int(rules::settings().winning_gems) - int(bc::global_submitted_gems(bc::team::ally)));
     bool win = int(gems) >= remaining;
     const bool reachable = closest != bc::distance_field::unreachable;
-    if (!reachable && !win)
+    if (!reachable && !win) {
+        // No altar on foot: a bag of island_bag, or any bag near the end, goes
+        // home by recall and banks from spawn.
+        if (gems > 0 && !me.is_recalling()) {
+            const int from_home = int(altar_walk().get(home_centre));
+            const bool last_trip = from_home != bc::distance_field::unreachable &&
+                                   int(rules::settings().max_rounds - round) <=
+                                       recall_turns + from_home + channel_duration(gems) + 10;
+            if (gems >= policy::island_bag || last_trip) {
+                retreating = true;
+                return worker_escape();
+            }
+        }
         return false;
+    }
     bool deadline = int(rules::settings().max_rounds - round) <= closest + channel_duration(gems) + 5;
     // Near victory, each champion banks its share of the remaining score.
     const bool share = float(gems) >= float(remaining) / std::max(std::size_t(1), roster.size());
@@ -121,7 +134,12 @@ bool Bot::worker_tribute() {
         float hazard = incoming(position);
         // At the start, the damage our last turn took, for the whole channel
         // (the turns of it then measure what comes).
-        if (health > taken_last * float(channel_duration(gems) + 1) || win || hazard == 0) {
+        // A winning bag starts under fire only when its channel is short
+        // (strategy.h win_channel_turns): anvil, at 998 banked, our Marcella
+        // twice began the 20-turn channel of a 200-gem bag beside the centre
+        // altar with the enemy in reach, was hit, and lost the bag both times.
+        const bool win_now = win && (hazard == 0 || channel_duration(gems) <= policy::win_channel_turns);
+        if (health > taken_last * float(channel_duration(gems) + 1) || win_now || hazard == 0) {
             if constexpr (policy::diagnostic)
                 if (capture_combo)
                     std::printf("CAPTURE_TRIBUTE r=%u gems=%u group=%d\n", round, gems, target);
