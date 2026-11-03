@@ -100,6 +100,11 @@ bool Bot::worker_tribute() {
     }
     if (selected.x < 0) {
         banking = false;
+        // A winning bag with no altar on foot or by hop goes home by recall.
+        if (win && !reachable && !me.is_recalling()) {
+            retreating = true;
+            return worker_escape();
+        }
         return false;
     }
     // A holder banks only where the tribute starts beside its capture.

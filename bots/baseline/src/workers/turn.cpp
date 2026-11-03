@@ -110,8 +110,13 @@ void Bot::play_worker_turn() {
         tribute_taken += taken_last;
         ++tribute_turns;
         const float rate = tribute_taken / float(tribute_turns);
-        if (health < rate * (wins ? 1.0f : float(me.remaining_channel_time() + 1))) {
-            me.cancel_submit_gems();
+        // The state read above is stale once observe() overran into the next
+        // round, where a lock or a stun can have ended the channel: read it
+        // again without throwing, and act only in the round we started in.
+        std::int32_t left = 0;
+        const bool live = bc::detail::sdk_champion_channel_time(id(me), &left) == 0;
+        if (live && bc::round_number() == round && health < rate * (wins ? 1.0f : float(left + 1)) &&
+            bc::detail::sdk_cancel_channel() == 0) {
             retreating = true;
             worker_escape();
         }
@@ -156,8 +161,8 @@ void Bot::play_worker_turn() {
     // A guaranteed winning deposit has higher value than any additional kill.
     if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems) {
         banking = true;
-        worker_tribute();
-        return;
+        if (worker_tribute())
+            return;
     }
     // XSquare's order: the fight first, a hurt champion playing it in hurt
     // mode (no strength of its own on our side, the safest tile, a fight only
