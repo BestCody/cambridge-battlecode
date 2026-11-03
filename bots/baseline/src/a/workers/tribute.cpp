@@ -181,7 +181,9 @@ bool Bot::worker_tribute() {
         return false;
     }
     // Score altar choices first; build a route mask only for the selected one.
-    const auto approach = around(selected, rules::settings().submit_gems_range);
+    static bc::bitboard approach{bc::uninitialized};
+    approach.clear();
+    approach.draw_chebyshev(selected, rules::settings().submit_gems_range);
     const vec2 bank_from = position;
     move_to(approach, selected, false, true);
     bank_stalls = position == bank_from && me.can_attack() && me.can_cast() ? bank_stalls + 1 : 0;
@@ -202,7 +204,7 @@ void Bot::note_altar_locks() {
                 if (distance(e.position, altars[i]) <= reach)
                     altar_enemy_bank[i] = int(round);
     for (std::size_t i = 0; i < altars.size(); ++i)
-        if (visible.is_set(altars[i]))
+        if (tile_in_view[altar_tile[i]])
             altar_locked[i] = bc::vision::has_altar_lock(altars[i]) ? int(round) : -1000;
 }
 

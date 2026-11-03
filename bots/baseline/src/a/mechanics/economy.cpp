@@ -192,23 +192,31 @@ void Bot::refresh_equipment() {
     }
 }
 
-void Bot::buy_equipment() {
+void Bot::buy_equipment(bool alive) {
     profiling::Scope scope(profiling::Stage::buy);
     auto &me = bc::self();
     // They sell only at spawn or while dead, so elsewhere the purchase loop
     // could only fail. An altar lock first when an altar wants one
     // (lock_wanted()), as willow best girl buys them (about 8 a game).
-    // Shopping neither kills nor revives: life is read once.
-    const bool alive = me.is_alive();
-    const bool can_shop = !alive || own_spawn.is_set(me.position());
+    // Off the shop nothing below changes us: this read of ourselves, the gold
+    // and the gems serve the rest of the turn (each is read once).
+    bc::detail::champion_info own;
+    if (alive) {
+        own = read_champion(me);
+        if (own.x < 0 || own.y < 0)
+            throw ChampionGone{};
+    }
+    const bool can_shop = !alive || own_spawn_tile[tile_index({own.x, own.y})];
     // Income (hop_threshold()): what the gold and the gems carried grew by
     // since our last turn's shopping (only shopping and banking spend them).
-    {
-        const unsigned gold = me.gold_count(), carried = me.gem_count();
-        earned_gold += float(gold > gold_seen ? gold - gold_seen : 0);
-        earned_gems += float(carried > gems_seen ? carried - gems_seen : 0);
-        gems_seen = carried;
-    }
+    std::uint32_t gold = 0, carried = 0;
+    bc::detail::check(bc::detail::sdk_champion_gold(handle_of(me), &gold));
+    bc::detail::check(bc::detail::sdk_champion_gems(handle_of(me), &carried));
+    if (gold > gold_seen)
+        earned_gold += float(gold - gold_seen);
+    if (carried > gems_seen)
+        earned_gems += float(carried - gems_seen);
+    gems_seen = carried;
     if (can_shop && alive) {
         carrying_lock = me.consumables()[bc::consumable_type::altar_lock].count() > 0;
         bool wanted = false;
@@ -237,19 +245,25 @@ void Bot::buy_equipment() {
     // Or where a leg out of the group we farm (DraftPlan::leg_saving) saves
     // more rounds than a hop costs: walls between camp areas that no hop
     // from spawn crosses.
-    const bool leg_crystal = target >= 0 && draft_measured() &&
-                             float(opening.leg_rounds(std::size_t(target))) > hop_threshold();
-    if (can_shop && alive && (hops_useful || leg_crystal) && !carrying_crystal() &&
-        me.gold_count() >= bc::consumable_type::tp_crystal.cost())
+    if (can_shop && alive &&
+        (hops_useful || (target >= 0 && draft_measured() &&
+                         float(opening.leg_rounds(std::size_t(target))) > hop_threshold())) &&
+        !carrying_crystal() && me.gold_count() >= bc::consumable_type::tp_crystal.cost())
         bc::detail::sdk_buy_consumable(bc::detail::raw_consumable_ids[0]);
     // Item stats change only when items do.
     if (equipment_dirty) {
         refresh_equipment();
         equipment_dirty = false;
     }
-    gold_seen = me.gold_count();
-    if (alive)
-        refresh_self();
+    if (can_shop) {
+        gold_seen = me.gold_count();
+        if (alive)
+            refresh_self();
+    } else {
+        gold_seen = gold;
+        take_self(own);
+        gems = carried;
+    }
 }
 
 void Bot::ward_ahead(vec2 goal) {
@@ -278,7 +292,14 @@ void Bot::ward_ahead(vec2 goal) {
     unseen_tile.load(search_goals);
     // Put vision into the next brush/approach instead of repeatedly scanning all
     // hypothetical fields of view (which would consume the tactical budget).
-    for (auto p : placements.positions()) {
+    static std::vector<vec2> placement_list;
+    if (placement_list.empty()) {
+        const std::size_t side = 2 * std::size_t(bc::constants::ward_placement_radius) + 3;
+        placement_list.resize(side * side);
+    }
+    const std::uint32_t placement_count = placements.positions_into(placement_list);
+    for (std::uint32_t k = 0; k < placement_count; ++k) {
+        const vec2 p = placement_list[k];
         // Allied wards are not shared through vision. Partition placement
         // tiles by stable team slot so two allies can never reserve one tile.
         if (unsigned(p.x + p.y) % roster.size() != slot)

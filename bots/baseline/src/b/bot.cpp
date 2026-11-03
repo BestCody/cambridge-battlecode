@@ -29,7 +29,7 @@ void Bot::take_turn() {
         // the walk to the nearby camps for their first choice, and move from
         // the next turn.
         initialise();
-        buy_equipment();
+        buy_equipment(bc::self().is_alive());
         worker_priority();
         // The search the first camp choice starts from, as far as the second
         // bound: the doubled fuel of this turn takes the walks a choice would

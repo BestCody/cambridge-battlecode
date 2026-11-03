@@ -256,6 +256,45 @@ struct DraftState {
             plan.group_splash[i] = static_cast<std::uint8_t>(std::min(shape, 255));
         }
         plan.group_count = static_cast<std::uint16_t>(groups.size());
+        measure_reaches(groups, static_blocked);
+    }
+
+    void measure_reaches(const std::vector<bc::map::camp_group> &groups, const bc::bitboard &static_blocked) {
+        // What Bot::measure_reach() would find on each champion's first turn,
+        // for the attack ranges of the roster, as many groups as the plan
+        // has room for.
+        const auto bodies = compositions::expand(compositions::roster_for(bc::draft::team_size()).picks);
+        std::size_t kinds = 0;
+        for (unsigned b = 0; b < bodies.count && kinds < DraftPlan::reach_kinds; ++b) {
+            const auto range = bc::champion_designs[static_cast<std::size_t>(bodies.types[b])].base_stats().base_attack_range;
+            if (kinds == 0 || range != plan.reach_ranges[0])
+                plan.reach_ranges[kinds++] = static_cast<std::int8_t>(range);
+        }
+        TileBits open, camp_tile, own_spawn_tile;
+        open.load(~static_blocked);
+        own_spawn_tile.load(bc::map::spawn_region(bc::team::ally));
+        {
+            bc::bitboard camp_tiles;
+            for (const auto &g : groups)
+                for (const auto &c : g)
+                    camp_tiles.set(c.spawn_position());
+            camp_tile.load(camp_tiles);
+        }
+        const int w = bc::map::width(), h = bc::map::height();
+        std::vector<ReachStriker> strikers;
+        for (std::size_t i = 0; i < groups.size() && i < plan.reach_room(); ++i) {
+            strikers.clear();
+            for (const auto &c : groups[i]) {
+                const auto stats = c.base_stats();
+                if (stats.base_strength > 0)
+                    strikers.push_back({float(stats.base_strength), float(stats.base_health), c.spawn_position(),
+                                        int(stats.base_attack_range)});
+            }
+            for (std::size_t kind = 0; kind < kinds; ++kind) {
+                const auto measure = reach_measure(strikers, plan.reach_ranges[kind], w, h, open, camp_tile, own_spawn_tile);
+                plan.set_reach(i, kind, measure.share, measure.spawn_strike);
+            }
+        }
     }
 
     void write_roster(const compositions::Entry &entry) {

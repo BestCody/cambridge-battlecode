@@ -18,15 +18,13 @@ CampGroup::CampGroup(bc::map::camp_group g, std::span<CampMemory> members)
         centre += m.position;
         max_health += m.health;
         pressure += m.stats.base_strength;
+        hard = hard || float(m.stats.base_health) >= policy::hard_camp_health;
+        reach = std::max(reach, int(m.stats.base_attack_range));
     }
     if (!camps.empty())
         centre /= static_cast<int>(camps.size());
     health = max_health;
     max_pressure = pressure;
-    for (const auto &m : camps) {
-        hard = hard || float(m.stats.base_health) >= policy::hard_camp_health;
-        reach = std::max(reach, int(m.stats.base_attack_range));
-    }
     whole_work = striker_work(*this, true);
     // Every camp lives at the start: the living facts are the whole's. (Worked
     // out again, they took the first turn past its fuel on a 130-group map.)
@@ -67,6 +65,14 @@ void CampGroup::set_splash(float shape) {
 }
 
 namespace {
+// A whole number of sixteen-byte lanes zeroed (a memory fill costs about a fuel
+// a byte, a lane's store about seven).
+void clear_lanes(std::uint8_t *lanes, std::size_t bytes) {
+    const v128_t zero = wasm_i32x4_splat(0);
+    for (std::size_t i = 0; i < bytes; i += 16)
+        wasm_v128_store(lanes + i, zero);
+}
+
 // Padding lanes: a reach no distance meets, and a tile far from every other.
 constexpr std::int16_t no_reach = std::numeric_limits<std::int16_t>::min();
 constexpr std::int32_t far_tile = 1 << 29;
@@ -122,7 +128,7 @@ const Kit &kit_of(const bc::champion &c, bc::champion_type type) {
 // unit::buffs() decodes every record into a map of variants; this reads the
 // same records and keeps the stun and shield (the last of each kind).
 struct BuffState {
-    bool stunned = false, shielded = false;
+    bool stunned = false, shielded = false, enhanced = false;
     int stun_time = 0;
     float shield = 0;
 };
@@ -141,6 +147,7 @@ BuffState read_buff_state(const std::variant<const bc::champion *, const bc::cam
                 state.stun_time = duration;
                 break;
             case bc::buff_types::enhanced_attack:
+                state.enhanced = true;
                 break;
             default:
                 throw std::runtime_error("unknown engine buff kind");
@@ -192,13 +199,52 @@ const ItemEffect &item_effect(bc::item_type item) {
 }
 } // namespace
 
-void read_buffs(ObservedUnit &out) {
-    const auto state = read_buff_state(out.ref);
-    out.stunned = state.stunned;
-    out.stun_time = state.stunned ? state.stun_time : -1;
-    if (state.shielded)
-        out.shield = state.shield;
+namespace {
+void champion_buffs(ObservedUnit &out, std::uint32_t handle) {
+    std::array<bc::detail::buff_data, static_cast<std::size_t>(bc::buff_types::count)> raw;
+    std::uint32_t count = 0;
+    bc::detail::check(bc::detail::sdk_champion_buff_data(handle, raw.data(), raw.size(), &count));
+    if (count > raw.size())
+        throw std::runtime_error("invalid engine buff count");
+    for (std::uint32_t i = 0; i < count; ++i)
+        switch (static_cast<bc::buff_types>(raw[i].type)) {
+            case bc::buff_types::shield:
+                out.shield = raw[i].data.shield.value;
+                break;
+            case bc::buff_types::stun:
+                out.stunned = true;
+                out.stun_time = raw[i].data.stun.duration;
+                break;
+            case bc::buff_types::enhanced_attack:
+                break;
+            default:
+                throw std::runtime_error("unknown engine buff kind");
+        }
 }
+
+void camp_buffs(ObservedUnit &out) {
+    std::array<bc::detail::camp_buff_data, static_cast<std::size_t>(bc::buff_types::count)> raw;
+    std::uint32_t count = 0;
+    bc::detail::check(bc::detail::sdk_camp_buffs(static_cast<std::uint32_t>(static_cast<bc::handle_camp_t>(out.camp())),
+                                                 raw.data(), raw.size(), &count));
+    if (count > raw.size())
+        throw std::runtime_error("invalid engine buff count");
+    for (std::uint32_t i = 0; i < count; ++i)
+        switch (static_cast<bc::buff_types>(raw[i].type)) {
+            case bc::buff_types::shield:
+                out.shield = raw[i].magnitude;
+                break;
+            case bc::buff_types::stun:
+                out.stunned = true;
+                out.stun_time = raw[i].timer;
+                break;
+            case bc::buff_types::enhanced_attack:
+                break;
+            default:
+                throw std::runtime_error("unknown engine buff kind");
+        }
+}
+} // namespace
 
 float live_shield(const ObservedUnit &u) {
     const auto state = read_buff_state(u.ref);
@@ -210,22 +256,32 @@ float self_shield() {
     return state.shielded ? state.shield : 0;
 }
 
+float self_shield(bool &enhanced) {
+    const auto state = read_buff_state(&bc::self());
+    enhanced = state.enhanced;
+    return state.shielded ? state.shield : 0;
+}
+
 bc::detail::champion_info read_champion(const bc::champion &c) {
-    bc::detail::champion_info info{};
-    bc::detail::check(
-        bc::detail::sdk_champion(static_cast<std::uint32_t>(static_cast<bc::handle_champion_t>(c)), &info));
+    // The engine writes every field or fails: not zero-filled first.
+    bc::detail::champion_info info;
+    bc::detail::check(bc::detail::sdk_champion(handle_of(c), &info));
     return info;
 }
 
-std::optional<bc::detail::champion_info> sighting(const bc::champion &c) {
-    // champion::is_visible(), keeping the fields that query returns.
-    bc::detail::champion_info info{};
-    const auto code =
-        bc::detail::sdk_champion(static_cast<std::uint32_t>(static_cast<bc::handle_champion_t>(c)), &info);
+bool sighted(const bc::champion &c, bc::detail::champion_info &info) {
+    // champion::is_visible(), keeping the fields that query returns (the
+    // engine writes every field or fails: not zero-filled first).
+    const auto code = bc::detail::sdk_champion(handle_of(c), &info);
     if (code == static_cast<std::int32_t>(bc::error_code::api_not_in_vision))
-        return std::nullopt;
+        return false;
     bc::detail::check(code);
-    if (info.x < 0 || info.y < 0)
+    return info.x >= 0 && info.y >= 0;
+}
+
+std::optional<bc::detail::champion_info> sighting(const bc::champion &c) {
+    bc::detail::champion_info info;
+    if (!sighted(c, info))
         return std::nullopt;
     return info;
 }
@@ -302,7 +358,7 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
         } else
             channel = left > 0;
     }
-    read_buffs(*this);
+    champion_buffs(*this, handle);
     damage_rate = strength;
     for (unsigned ability_slot = 0; ability_slot < kit.spells.size(); ++ability_slot) {
         const auto &s = kit.spells[ability_slot];
@@ -406,7 +462,7 @@ void ObservedUnit::reread_camp(const bc::detail::camp_state &info, bool asleep) 
     stunned = false;
     stun_time = -1;
     if (!asleep)
-        read_buffs(*this);
+        camp_buffs(*this);
 }
 
 void Bot::initialise() {
@@ -419,8 +475,6 @@ void Bot::initialise() {
     for (const auto &s : spells)
         if (siege_spell(s))
             siege_reach = std::max(siege_reach, s.range);
-    if (bc::draft_memory.size() >= sizeof opening)
-        std::memcpy(&opening, bc::draft_memory.data(), sizeof opening);
     roster = bc::champions(bc::team::ally);
     std::sort(roster.begin(), roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
     roster_power.reserve(roster.size());
@@ -428,13 +482,9 @@ void Bot::initialise() {
     // A type's power from its design: its health with its shield, against
     // its damage. The SDK already holds every design; building another
     // reloads it.
-    const auto design_power = [&](bc::champion_type type) {
-        const auto index = static_cast<std::size_t>(type);
-        std::optional<bc::champion> loaded;
-        const auto &immutable =
-            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
-        const auto design = immutable.base_stats();
-        const auto &described = kit_of(immutable, type).spells;
+    // From the design's stats and spells, which the roster below reads too
+    // (each base_stats() is an engine call).
+    const auto power_of = [&](const bc::champion_stats &design, const std::array<Spell, 2> &described) {
         float hp = design.base_health, heal = 0;
         for (const auto &spell : described) {
             if (spell.kind == bc::ability_kind::shield)
@@ -443,6 +493,13 @@ void Bot::initialise() {
                 heal += design.base_focus * spell.modifier / float(spell.cooldown);
         }
         return unit_power(hp, spell_dps(described, design.base_strength, design.base_focus), 0, heal, 1);
+    };
+    const auto design_power = [&](bc::champion_type type) {
+        const auto index = static_cast<std::size_t>(type);
+        std::optional<bc::champion> loaded;
+        const auto &immutable =
+            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
+        return power_of(immutable.base_stats(), kit_of(immutable, type).spells);
     };
     for (std::size_t s = 0; s < roster.size(); ++s) {
         // Draft order is public and persistent. A faster ally may already have
@@ -462,7 +519,7 @@ void Bot::initialise() {
         // The type's kit now, from its design, rather than on first sight:
         // its spells, described once.
         const auto &described = kit_of(immutable, drafted).spells;
-        roster_power.push_back(design_power(drafted));
+        roster_power.push_back(power_of(design, described));
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
                                    design.camp_damage_multiplier,
@@ -487,6 +544,9 @@ void Bot::initialise() {
     const auto tiles = std::size_t(map_width) * std::size_t(map_height);
     begin_regions();
     altars = bc::map::altars().positions();
+    altar_tile.resize(altars.size());
+    for (std::size_t i = 0; i < altars.size(); ++i)
+        altar_tile[i] = tile_index(altars[i]);
     altar_goals = altar_goals_of(altars, static_blocked);
     const auto search_start = turn_work();
     home_field.compute(static_blocked, bc::map::spawn_region(bc::team::ally), search_visited);
@@ -526,9 +586,8 @@ void Bot::initialise() {
         std::size_t group_count = 0, camp_total = 0;
         for (std::size_t i = 0; i + 5 <= count; ++group_count) {
             const auto size = words[i + 4];
-            i += 5;
-            for (std::uint32_t m = 0; m < size && i + 4 <= count; ++m, ++camp_total)
-                i += 4;
+            camp_total += size;
+            i += 5 + std::size_t(size) * 4;
         }
         groups.reserve(group_count);
         camp_pool.reserve(camp_total);
@@ -549,7 +608,13 @@ void Bot::initialise() {
         }
     }
     camps.reset(groups);
-    group_due.assign(groups.size(), std::numeric_limits<std::int32_t>::max()); // All alive, none held.
+    group_lanes = (groups.size() + 15) & ~std::size_t{15};
+    group_due.assign(group_lanes, std::numeric_limits<std::int32_t>::max()); // All alive, none held.
+    group_changed.assign(group_lanes, 0);
+    std::fill_n(group_changed.begin(), groups.size(), std::uint8_t(255));
+    group_in_view.assign(group_lanes, 0);
+    group_held.assign(group_lanes, 0);
+    sighted_camps.resize(camp_pool.size());
     group_cx.resize(groups.size());
     group_cy.resize(groups.size());
     for (std::size_t i = 0; i < groups.size(); ++i) {
@@ -658,18 +723,27 @@ void Bot::initialise() {
         std::size_t lane = 0;
         const std::size_t bytes = bc::bitboard::linear_buffer_size();
         std::vector<std::uint8_t> camp_bits(bytes, 0), unwalked_bits(bytes, 0);
-        for (std::size_t i = 0; i < groups.size(); ++i)
-            for (auto &c : groups[i].camps) {
-                camp_x[lane] = c.position.x;
-                camp_y[lane] = c.position.y;
-                camp_group[lane++] = static_cast<std::uint16_t>(i);
-                c.tile = tile_index(c.position);
-                const auto bit = std::uint8_t(1u << (c.tile & 7));
-                camp_bits[std::size_t(c.tile) >> 3] |= bit;
-                tile_group[c.tile] = static_cast<std::uint16_t>(i);
-                if (groups[i].home_distance != bc::distance_field::unreachable)
-                    unwalked_bits[std::size_t(c.tile) >> 3] |= bit;
+        {
+            std::int32_t *const xs = camp_x.get(), *const ys = camp_y.get();
+            std::uint16_t *const lane_group = camp_group.get(), *const groups_of = tile_group.get();
+            std::uint8_t *const camp_mask = camp_bits.data(), *const unwalked_mask = unwalked_bits.data();
+            const int width = map_width;
+            for (std::size_t i = 0; i < groups.size(); ++i) {
+                const bool walked = groups[i].home_distance != bc::distance_field::unreachable;
+                for (auto &c : groups[i].camps) {
+                    xs[lane] = c.position.x;
+                    ys[lane] = c.position.y;
+                    lane_group[lane++] = static_cast<std::uint16_t>(i);
+                    const int tile = c.position.y * width + c.position.x;
+                    c.tile = tile;
+                    const auto bit = std::uint8_t(1u << (tile & 7));
+                    camp_mask[std::size_t(tile) >> 3] |= bit;
+                    groups_of[tile] = static_cast<std::uint16_t>(i);
+                    if (walked)
+                        unwalked_mask[std::size_t(tile) >> 3] |= bit;
+                }
             }
+        }
         for (; lane < camp_lanes; ++lane) {
             camp_x[lane] = camp_y[lane] = far_tile;
             camp_group[lane] = 0;
@@ -722,6 +796,7 @@ void Bot::initialise() {
     {
         // Every group with strikers can be a party plan's (worker_choose_group()).
         std::vector<int> striking;
+        striking.reserve(groups.size());
         for (std::size_t i = 0; i < groups.size(); ++i)
             if (groups[i].whole_work > 0)
                 striking.push_back(int(i));
@@ -864,9 +939,9 @@ void Bot::occupied_into(bc::bitboard &out, const bc::bitboard &terrain) {
     bc::vision::champion_tiles_into(bc::team::ally, out);
     bc::vision::champion_tiles_into(bc::team::enemy, occupancy);
     out |= occupancy;
-    bc::vision::camp_tiles_into(occupancy);
-    out |= occupancy;
     bc::vision::teleport_tiles_into(occupancy);
+    out |= occupancy;
+    bc::vision::camp_tiles_into(occupancy);
     out |= occupancy;
     out |= terrain;
     out.set(position, false);
@@ -887,8 +962,8 @@ void Bot::subtract(bc::bitboard &a, const bc::bitboard &b) {
 float live_health(const ObservedUnit &u) {
     // is_visible() then health(), from one engine read.
     if (u.enemy()) {
-        const auto info = sighting(u.champion());
-        return info ? info->health : 0;
+        bc::detail::champion_info info;
+        return sighted(u.champion(), info) ? info.health : 0;
     }
     bc::detail::camp_state info{};
     return read_camp(u.camp(), info) ? info.health : 0;
@@ -900,9 +975,7 @@ const bc::bitboard &Bot::origin_at(vec2 p) {
     return search_origin;
 }
 
-void Bot::refresh_self() {
-    const auto &me = bc::self();
-    const auto info = read_champion(me);
+void Bot::take_self(const bc::detail::champion_info &info) {
     if (info.x < 0 || info.y < 0)
         throw ChampionGone{};
     position = {info.x, info.y};
@@ -911,7 +984,15 @@ void Bot::refresh_self() {
     strength = info.strength;
     focus = info.focus;
     range = info.attack_range;
-    gems = me.gem_count();
+    self_state = info.state;
+}
+
+void Bot::refresh_self() {
+    const auto &me = bc::self();
+    take_self(read_champion(me));
+    std::uint32_t carried = 0;
+    bc::detail::check(bc::detail::sdk_champion_gems(handle_of(me), &carried));
+    gems = carried;
 }
 
 const bc::distance_field &Bot::altar_walk() {
@@ -928,19 +1009,24 @@ void Bot::measure_farthest(const bc::distance_field &field, int CampGroup::*fart
     // Many camps from one export (one costs about a read per 150 tiles); a
     // few with one read each.
     const auto tiles = std::size_t(map_width) * std::size_t(map_height);
-    std::size_t camps_on_map = 0;
-    for (const auto &g : groups)
-        camps_on_map += g.camps.size();
-    const bool exported = camps_on_map * 150 > tiles;
-    if (exported) {
+    if (camp_pool.size() * 150 > tiles) {
         if (!path_buffer)
             path_buffer.reset(new std::uint16_t[tiles]);
         field.export_linear_buffer(std::span(path_buffer.get(), tiles));
+        const std::uint16_t *const walks = path_buffer.get();
+        const int width = map_width;
+        for (auto &g : groups) {
+            int walk = 0;
+            for (const auto &c : g.camps)
+                walk = std::max(walk, int(walks[c.position.y * width + c.position.x]));
+            g.*farthest = walk;
+        }
+        return;
     }
     for (auto &g : groups) {
         int walk = 0;
         for (const auto &c : g.camps)
-            walk = std::max(walk, int(exported ? path_buffer[tile_index(c.position)] : field.get(c.position)));
+            walk = std::max(walk, int(field.get(c.position)));
         g.*farthest = walk;
     }
 }
@@ -970,6 +1056,21 @@ int Bot::landmark_bound(int group, vec2 from, int home_here, int altar_here) con
 void Bot::measure_paths(int level) {
     // Walking distance from here to each group. Terrain never changes, so
     // this is reused until we move; dynamic occupancy is routed locally.
+    // With every group's own field built: one read each, nothing to search for.
+    if (origin_position != position && walk_cursor == walk_order.size()) {
+        origin_position = position;
+        path_search = 3;
+        group_path.resize(groups.size());
+        group_bounded.assign(groups.size(), 0);
+        const int here = tile_index(position);
+        const std::uint16_t *const *walks = walk_of.data();
+        int *const path = group_path.data();
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            path[i] = walks[i][here];
+        return;
+    }
+    if (origin_position == position && path_search >= level)
+        return;
     const int home_here = home_field.get(position);
     const bool connected = home_here != bc::distance_field::unreachable;
     if (origin_position != position) {
@@ -1098,30 +1199,48 @@ void Bot::prepare_routes() {
 
 void Bot::observe() {
     profiling::Scope scope(profiling::Stage::observe);
-    refresh_self();
+    // Our own fields are as buy_equipment() just read them.
     bc::vision::visible_tiles_into(visible);
-    refresh_blocked();
+    // refresh_blocked() (with occupancy left as occupied_into() leaves it),
+    // counting the champions in view on the way: no enemy (most turns) needs
+    // no union and no read of the roster.
+    bc::vision::champion_tiles_into(bc::team::ally, blocked);
+    std::uint32_t allies_left = blocked.count() - 1; // All but us.
+    bc::vision::champion_tiles_into(bc::team::enemy, occupancy);
+    std::uint32_t enemies_left = occupancy.count();
+    if (enemies_left)
+        blocked |= occupancy;
+    bc::vision::teleport_tiles_into(occupancy);
+    blocked |= occupancy;
+    bc::vision::camp_tiles_into(occupancy);
+    blocked |= occupancy;
+    blocked |= static_blocked;
+    blocked.set(position, false);
+    if (camp_zone_round == int(round))
+        blocked |= camp_zone;
     enemies.clear();
     allies.clear();
     camps.clear();
     // The rosters hold every champion; checking them is far cheaper than the
-    // engine's per-team vision list (about 3,700 fuel each).
+    // engine's per-team vision list (about 3,700 fuel each), until all those
+    // in view are found.
     // A champion in view is alive: the dead leave the map.
-    for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i)
-        if (const auto info = sighting(enemy_roster[i])) {
+    bc::detail::champion_info info;
+    for (std::size_t i = 0; enemies_left && i < enemy_roster.size() && i < enemy_slot.size(); ++i)
+        if (sighted(enemy_roster[i], info)) {
+            --enemies_left;
             enemy_slot[enemies.size()] = std::uint8_t(i);
-            judge_recall(enemies.emplace_back(enemy_roster[i], *info), i);
+            judge_recall(enemies.emplace_back(enemy_roster[i], info), i);
         }
     seen_slots = 0;
     slot_ally.fill(-1);
-    for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (s == slot)
-            continue;
-        else if (const auto info = sighting(roster[s])) {
+    for (unsigned s = 0; allies_left && s < roster.size() && s < TeamMemory::slots; ++s)
+        if (s != slot && sighted(roster[s], info)) {
+            --allies_left;
             ally_slot[allies.size()] = std::uint8_t(s);
             slot_ally[s] = int(allies.size());
             seen_slots |= 1u << s;
-            allies.emplace_back(roster[s], *info);
+            allies.emplace_back(roster[s], info);
             ally_max_seen[s] = std::max(ally_max_seen[s], allies.back().max_health);
         }
     ++threat_revision; // New units: what incoming() listed from them is stale.
@@ -1134,12 +1253,11 @@ void Bot::observe() {
     // from per-group arrays (a group's tests one by one cost a 3k scan a
     // turn); observing a group changes only its own entries.
     {
-        const std::size_t count = groups.size(), whole = count & ~std::size_t{15};
         const std::uint8_t *in_view = group_in_view.data(), *held = group_held.data();
         const std::uint16_t *listed = camps.counts();
         const std::int32_t *due = group_due.data();
         const v128_t now = wasm_i32x4_splat(std::int32_t(round)), zero = wasm_i32x4_splat(0);
-        for (std::size_t i = 0; i < whole; i += 16) {
+        for (std::size_t i = 0; i < group_lanes; i += 16) {
             const v128_t records = wasm_i8x16_narrow_i16x8(
                 wasm_i16x8_ne(wasm_v128_load(listed + i), zero), wasm_i16x8_ne(wasm_v128_load(listed + i + 8), zero));
             const v128_t timed = wasm_i8x16_narrow_i16x8(
@@ -1152,9 +1270,6 @@ void Bot::observe() {
             for (unsigned lanes = unsigned(wasm_i8x16_bitmask(wasm_i8x16_ne(any, zero))); lanes; lanes &= lanes - 1)
                 observe_group(i + unsigned(__builtin_ctz(lanes)));
         }
-        for (std::size_t i = whole; i < count; ++i)
-            if (in_view[i] || held[i] || listed[i] || int(round) >= due[i])
-                observe_group(i);
     }
     close_threats();
     mark_camp_zones();
@@ -1359,23 +1474,26 @@ void Bot::judge_recall(ObservedUnit &enemy, std::size_t entry) {
 }
 
 void Bot::mark_camps_in_view(int group) {
-    // Camp tiles in view, packed from one engine export, and their groups,
-    // from one listing of those tiles: a group out of view costs no tests.
-    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(visible.ptr(), camp_tiles.ptr(), occupancy.ptr()));
-    camp_in_view.load(occupancy);
-    if (group_in_view.size() != groups.size())
-        group_in_view.assign(groups.size(), 0);
+    // Tiles in view, packed from one engine export, and the groups of the
+    // camp tiles among them, from one listing of those: a group out of view
+    // costs no tests. Called with occupancy as occupied_into() left it.
+    tile_in_view.load(visible);
+    bc::detail::check(bc::detail::sdk_Bitboard_Intersect(visible.ptr(), camp_tiles.ptr(), camps_seen.ptr()));
     std::uint32_t count = 0;
+    bool damaged = false;
     if (group >= 0) {
-        count = occupancy.count();
+        count = camps_seen.count();
         bool seen = false;
         for (const auto &c : groups[group].camps)
-            seen = seen || camp_in_view[c.tile];
+            seen = seen || tile_in_view[c.tile];
         group_in_view[group] = seen;
+        if (count < 6)
+            for (std::size_t i = 0; i < groups.size() && !damaged; ++i)
+                damaged = group_in_view[i] && groups[i].status == CampGroup::alive &&
+                          groups[i].health < groups[i].max_health;
     } else {
-        std::fill(group_in_view.begin(), group_in_view.end(), 0);
-        sighted_camps.resize(camp_count);
-        count = occupancy.positions_into(sighted_camps);
+        clear_lanes(group_in_view.data(), group_lanes);
+        count = camps_seen.positions_into(sighted_camps);
         // Four tiles' indices per step, then each one's group.
         const std::uint16_t *group_of = tile_group.get();
         std::uint8_t *seen = group_in_view.data();
@@ -1392,41 +1510,39 @@ void Bot::mark_camps_in_view(int group) {
         }
         for (; k < count; ++k)
             seen[group_of[tile_index(sighted_camps[k])]] = 1;
+        if (count < 6)
+            for (k = 0; k < count && !damaged; ++k) {
+                const auto &g = groups[group_of[tile_index(sighted_camps[k])]];
+                damaged = g.status == CampGroup::alive && g.health < g.max_health;
+            }
     }
     // Sleeping camps carry no buffs: with enough camps in view, one mask of
     // them is cheaper than a buff read each. A group below its health is
     // told asleep only by the mask (camps never heal): without it a golem or
     // monolith cleared in part read as awake, its reach shut to walks and
     // recalls.
-    bool damaged = false;
-    if (count < 6)
-        for (std::size_t i = 0; i < groups.size() && !damaged; ++i)
-            damaged = group_in_view[i] && groups[i].status == CampGroup::alive &&
-                      groups[i].health < groups[i].max_health;
     asleep_known = count >= 6 || damaged;
     if (asleep_known) {
-        bc::vision::asleep_camp_tiles_into(occupancy);
-        camp_asleep.load(occupancy);
+        bc::vision::asleep_camp_tiles_into(camps_seen);
+        camp_asleep.load(camps_seen);
     }
     // The living camps in view: a camp tile in view without one holds a dead
     // camp, whose read fails, so it is not read. Read only for camps in view
     // (observe_group()), so with none in view the old marks are never read.
-    if (count) {
-        bc::vision::camp_tiles_into(occupancy);
+    if (count)
         camp_living.load(occupancy);
-    }
 }
 
 void Bot::mark_group_holders(int group) {
     // The camp groups we and our visible allies stand on.
-    if (group >= 0 && group_held.size() == groups.size()) {
+    if (group >= 0) {
         bool held = group_at(position) == group;
         for (const auto &ally : allies)
             held = held || group_at(ally.position) == group;
         group_held[group] = held;
         return;
     }
-    group_held.assign(groups.size(), 0);
+    clear_lanes(group_held.data(), group_lanes);
     if (const int g = group_at(position); g >= 0)
         group_held[g] = 1;
     for (const auto &ally : allies)
@@ -1436,6 +1552,7 @@ void Bot::mark_group_holders(int group) {
 
 void Bot::note_group_due(std::size_t i) {
     const auto &g = groups[i];
+    group_changed[i] = 255;
     group_due[i] = g.holding_since != -1             ? std::numeric_limits<std::int32_t>::min()
                    : g.status == CampGroup::cooling ? g.respawn
                    : g.status == CampGroup::capture ? g.seen + rules::settings().capture_time + 2
@@ -1443,16 +1560,13 @@ void Bot::note_group_due(std::size_t i) {
 }
 
 void Bot::observe_group(std::size_t i) {
-    // Its observe() timers follow whatever this changes.
-    struct Due {
-        Bot &bot;
-        std::size_t group;
-        ~Due() { bot.note_group_due(group); }
-    } due{*this, i};
+    // Its observe() timer follows each change of what it is made from.
     auto &g = groups[i];
     const bool friendly_holder = group_held[i];
-    if (!friendly_holder)
+    if (!friendly_holder && g.holding_since != -1) {
         g.holding_since = -1;
+        note_group_due(i);
+    }
     if (!group_in_view[i]) {
         camps.restart(int(i));
         if (g.status == CampGroup::capture && int(round) > g.seen + rules::settings().capture_time + 1) {
@@ -1462,6 +1576,7 @@ void Bot::observe_group(std::size_t i) {
             g.respawn = g.seen + rules::settings().capture_time + g.unit.max_respawn_timer();
             g.pressure = g.max_pressure; // It respawns whole, as the seen path sets.
             g.splash = g.full_splash;
+            note_group_due(i);
         }
         if (g.status == CampGroup::cooling && int(round) >= g.respawn) {
             g.status = CampGroup::alive;
@@ -1471,6 +1586,7 @@ void Bot::observe_group(std::size_t i) {
             for (auto &c : g.camps)
                 c.health = c.stats.base_health;
             g.refresh_live();
+            note_group_due(i);
         }
         return;
     }
@@ -1479,6 +1595,28 @@ void Bot::observe_group(std::size_t i) {
     const std::span<ObservedUnit> last = camps.group(int(i));
     camps.restart(int(i));
     g.seen = round;
+    const bool readings_stand = rules::settings().camp_sleep_time >= 2;
+    // Quiet since last round's observation, which found every camp in view
+    // asleep and living: the same camps in view now, still asleep (so living,
+    // and the group alive), their records untouched (a hit wakes a camp for
+    // rounds). Each reading stands and each record would be made again as it
+    // is, so the records are listed as they stand, and the totals, from the
+    // same healths, stay as they are.
+    if (g.status == CampGroup::alive && readings_stand && asleep_known && g.quiet == int(round) - 1 &&
+        last.size() == g.quiet_records) {
+        bool quiet = true;
+        for (const auto &c : g.camps)
+            if (c.quiet_view ? !camp_asleep[c.tile] : tile_in_view[c.tile]) {
+                quiet = false;
+                break;
+            }
+        if (quiet) {
+            camps.keep(int(i), g.quiet_records);
+            list_threats(camps.first_slot(int(i)), g.quiet_records);
+            g.kept = g.quiet = int(round);
+            return;
+        }
+    }
     int timer = 0;
     const int state = group_state(g, timer);
     if (state != 1)
@@ -1489,6 +1627,7 @@ void Bot::observe_group(std::size_t i) {
         g.health = 0;
         g.pressure = g.max_pressure;
         g.splash = g.full_splash;
+        note_group_due(i);
         return;
     }
     if (state == 2) {
@@ -1517,41 +1656,15 @@ void Bot::observe_group(std::size_t i) {
             g.holding_since = round;
         for (auto &c : g.camps)
             c.health = 0;
+        note_group_due(i);
         return;
     }
     const bool was_alive = g.status == CampGroup::alive;
-    if (!was_alive)
+    if (!was_alive) {
         for (auto &c : g.camps)
             c.health = c.stats.base_health;
-    g.status = CampGroup::alive;
-    const bool readings_stand = rules::settings().camp_sleep_time >= 2;
-    // Quiet since last round's observation, which found every camp in view
-    // asleep and living: the same camps in view now, still asleep and living,
-    // their records untouched. Each reading stands and each record would be
-    // made again as it is, so the records are listed as they stand, and the
-    // totals, from the same healths, stay as they are.
-    if (was_alive && readings_stand && asleep_known && g.quiet == int(round) - 1 &&
-        last.size() == g.quiet_records) {
-        bool quiet = true;
-        std::size_t k = 0;
-        for (const auto &c : g.camps) {
-            const bool in_view = camp_in_view[c.tile];
-            if (in_view != c.quiet_view || (in_view && (!camp_asleep[c.tile] || !camp_living[c.tile] ||
-                                                        last[k++].health != c.read_health))) {
-                quiet = false;
-                break;
-            }
-        }
-        if (quiet) {
-            camps.keep(int(i), g.quiet_records);
-            for (std::uint32_t slot = camps.first_slot(int(i)); slot < camps.next_slot(int(i)); ++slot)
-                list_threat(slot);
-            for (auto &c : g.camps)
-                if (c.quiet_view)
-                    c.read_round = int(round);
-            g.quiet = int(round);
-            return;
-        }
+        g.status = CampGroup::alive;
+        note_group_due(i);
     }
     // Totals in locals (nothing below reads the group's own).
     float health = 0, pressure = 0, toughest = 1;
@@ -1565,7 +1678,8 @@ void Bot::observe_group(std::size_t i) {
     const std::uint32_t first_here = camps.first_slot(int(i));
     std::size_t listed_here = 0;
     for (auto &c : g.camps) {
-        c.quiet_view = camp_in_view[c.tile];
+        const bool kept_view = c.quiet_view;
+        c.quiet_view = tile_in_view[c.tile];
         if (const int index = c.tile; c.quiet_view) {
             const bool asleep = asleep_known && camp_asleep[index];
             // Only the reading's health, maximum and strength are used, each
@@ -1575,7 +1689,8 @@ void Bot::observe_group(std::size_t i) {
             // Read the round before (camps fall asleep only rounds after the
             // last hit), and not earlier this turn, when we may have hit it:
             // the reading stands as kept.
-            if (asleep && c.read_asleep && int(round) - c.read_round == 1 && readings_stand) {
+            if (asleep && c.read_asleep && readings_stand &&
+                int(round) - (kept_view && g.kept >= c.read_round ? g.kept : c.read_round) == 1) {
                 info.health = c.read_health;
                 info.max_health = c.read_max_health;
                 info.strength = c.read_strength;
@@ -1607,6 +1722,7 @@ void Bot::observe_group(std::size_t i) {
                 list_threat(listed);
             } else {
                 c.read_round = -10;
+                c.quiet_view = false; // Not kept as read.
                 changed = changed || c.health != 0;
                 c.health = 0;
             }
@@ -1619,8 +1735,10 @@ void Bot::observe_group(std::size_t i) {
     }
     g.health = health;
     g.pressure = pressure;
-    if (changed)
+    if (changed) {
         g.refresh_live();
+        group_changed[i] = 255;
+    }
     g.quiet = quiet ? int(round) : -10;
     g.quiet_records = camps.count(int(i));
     // Splash accelerates only the health shared by surviving targets.
@@ -1657,6 +1775,21 @@ void Bot::list_threat(std::uint32_t slot) {
     }
 }
 
+void Bot::list_threats(std::uint32_t slot, std::uint32_t records) {
+    std::size_t n = threat_count;
+    int *listed = camp_threats.get();
+    std::int16_t *x = threat_x.get(), *y = threat_y.get(), *reach = threat_reach.get();
+    const ObservedUnit *record = &camps.slot(slot);
+    for (const std::uint32_t end = slot + records; slot < end; ++slot, ++record)
+        if (damage::camp_strikes(*record)) {
+            listed[n] = int(slot);
+            x[n] = std::int16_t(record->position.x);
+            y[n] = std::int16_t(record->position.y);
+            reach[n++] = std::int16_t(record->range);
+        }
+    threat_count = n;
+}
+
 void Bot::drop_threats(int group) {
     // The group's records were listed together, so are its threats.
     const int low = int(camps.first_slot(group)), high = int(camps.next_slot(group));
@@ -1677,11 +1810,10 @@ void Bot::drop_threats(int group) {
 void Bot::close_threats() {
     // Lanes of eight; padding reaches no tile.
     threat_lanes = (threat_count + 7) & ~std::size_t{7};
-    for (std::size_t k = threat_count; k < threat_lanes; ++k) {
-        threat_x[k] = 0;
-        threat_y[k] = 0;
-        threat_reach[k] = no_reach;
-    }
+    const v128_t zero = wasm_i16x8_splat(0);
+    wasm_v128_store(&threat_x[threat_count], zero);
+    wasm_v128_store(&threat_y[threat_count], zero);
+    wasm_v128_store(&threat_reach[threat_count], wasm_i16x8_splat(no_reach));
     ++threat_revision;
 }
 
@@ -1783,12 +1915,24 @@ bool Bot::visit_clears(const CampGroup &g) const {
     return damage + visit_cost(g) < health;
 }
 
+bool Bot::mate_alive(unsigned s) const {
+    // Nobody dies or respawns during our turn.
+    if (alive_round != int(round)) {
+        alive_round = int(round);
+        alive_slots = 0;
+        for (std::size_t k = 0; k < roster.size() && k < 64; ++k)
+            if (roster[k].is_alive())
+                alive_slots |= std::uint64_t{1} << k;
+    }
+    return s < 64 && (alive_slots >> s & 1);
+}
+
 int Bot::mate_claim(unsigned s) const {
     // A fight a teammate reports near a group, or the claim a dead one left,
     // is no claim: cluster runs, capture holders and hard groups' partners
     // read them as one where camp choice did not.
     const unsigned code = shared.get(s);
-    if (s == slot || s >= roster.size() || !roster[s].is_alive())
+    if (s == slot || s >= roster.size() || !mate_alive(s))
         return -1;
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
@@ -1899,52 +2043,47 @@ float Bot::incoming(vec2 tile, bool include_camps) const {
 }
 
 void Bot::begin_scan() {
-    if (scan_stamp.size() < threat_lanes) {
-        scan_stamp.resize(threat_lanes, 0);
-        scan_near.resize(threat_lanes);
-        scan_hit.resize(threat_lanes);
-    }
-    if (++scan_serial == 0) {
-        std::fill(scan_stamp.begin(), scan_stamp.end(), 0);
-        scan_serial = 1;
-    }
-}
-
-float Bot::incoming_scan(vec2 tile) const {
-    // incoming(tile) while nothing changes between calls (one serial): each
-    // camp's tests that do not depend on the tile (alive, awake, its hit,
-    // the nearest unit) made on its first hit and kept for the serial. The
-    // camps' hits are added as incoming() adds them, in threat order.
-    float damage = incoming_enemies(tile);
-    const v128_t x = wasm_i16x8_splat(std::int16_t(tile.x)), y = wasm_i16x8_splat(std::int16_t(tile.y));
+    if (scan_camps.size() < threat_lanes)
+        scan_camps.resize(threat_lanes);
+    scan_count = 0;
+    // The camps within their reach of a tile a step from here, eight a step,
+    // in threat order: alive, awake, their hit and nearest unit read once.
+    const v128_t x = wasm_i16x8_splat(std::int16_t(position.x)), y = wasm_i16x8_splat(std::int16_t(position.y));
+    // A dash's landing is scanned too (cast_mobility()).
+    int farthest = int(stats.base_move_speed);
+    for (const auto &s : spells)
+        if (s.kind == bc::ability_kind::dash)
+            farthest = std::max(farthest, int(s.range));
+    const v128_t step = wasm_i16x8_splat(std::int16_t(farthest));
     for (std::size_t k = 0; k < threat_lanes; k += 8) {
         const v128_t dx = wasm_i16x8_abs(wasm_i16x8_sub(x, wasm_v128_load(&threat_x[k])));
         const v128_t dy = wasm_i16x8_abs(wasm_i16x8_sub(y, wasm_v128_load(&threat_y[k])));
-        const v128_t hit = wasm_i16x8_le(wasm_i16x8_max(dx, dy), wasm_v128_load(&threat_reach[k]));
+        const v128_t hit = wasm_i16x8_le(wasm_i16x8_sub(wasm_i16x8_max(dx, dy), step), wasm_v128_load(&threat_reach[k]));
         if (!wasm_v128_any_true(hit))
             continue;
         for (unsigned lanes = wasm_i16x8_bitmask(hit); lanes; lanes &= lanes - 1) {
             const std::size_t t = k + unsigned(__builtin_ctz(lanes));
-            if (scan_stamp[t] != scan_serial) {
-                scan_stamp[t] = scan_serial;
-                scan_near[t] = std::numeric_limits<int>::min(); // Strikes nobody.
-                const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
-                if (c.health <= 0 || camp_dormant(c))
-                    continue;
-                scan_near[t] = threat_target(t);
-                scan_hit[t] = c.strength * camp_mitigation;
-            }
-            const int nearest = scan_near[t];
-            if (nearest == std::numeric_limits<int>::min())
+            const auto &c = camps.slot(std::uint32_t(camp_threats[t]));
+            if (c.health <= 0 || camp_dormant(c))
                 continue;
-            const int d = std::max(std::abs(tile.x - int(threat_x[t])), std::abs(tile.y - int(threat_y[t])));
-            if (nearest < d)
-                continue;
-            if (nearest == d)
-                damage += damage::shared_hit(scan_hit[t], threat_ties[t]);
-            else
-                damage += scan_hit[t];
+            scan_camps[scan_count++] = {int(t), threat_target(t), c.strength * camp_mitigation};
         }
+    }
+}
+
+float Bot::incoming_scan(vec2 tile) const {
+    // incoming(tile) while nothing changes between calls: the camps listed by
+    // begin_scan(), their hits added as incoming() adds them, in threat order.
+    float damage = incoming_enemies(tile);
+    for (std::size_t j = 0; j < scan_count; ++j) {
+        const auto &c = scan_camps[j];
+        const int d = std::max(std::abs(tile.x - int(threat_x[c.threat])), std::abs(tile.y - int(threat_y[c.threat])));
+        if (d > threat_reach[c.threat] || c.nearest < d)
+            continue;
+        if (c.nearest == d)
+            damage += damage::shared_hit(c.hit, threat_ties[c.threat]);
+        else
+            damage += c.hit;
     }
     return damage * mitigation;
 }
@@ -2164,7 +2303,7 @@ float Bot::exit_pool() const {
     std::array<bool, 2> is_ready{};
     for (unsigned i = 0; i < spells.size(); ++i)
         if (spells[i].kind == bc::ability_kind::shield)
-            is_ready[i] = ready(bc::self().abilities()[i], bc::self().can_cast());
+            is_ready[i] = ready(own_kit()[i], bc::self().can_cast());
     return exit_pool(self_shield(), is_ready);
 }
 
@@ -2186,12 +2325,18 @@ bool Bot::ExitCheck::lethal(vec2 tile) {
 }
 
 float Bot::own_power() const {
-    float ready_shield = 0, burst = 0;
-    const auto kit = bc::self().abilities();
+    std::array<bool, 2> is_ready{};
     const bool can_cast = bc::self().can_cast();
+    for (unsigned i = 0; i < is_ready.size(); ++i)
+        is_ready[i] = ready(own_kit()[i], can_cast);
+    return own_power(self_shield(), is_ready);
+}
+
+float Bot::own_power(float shield, const std::array<bool, 2> &is_ready) const {
+    float ready_shield = 0, burst = 0;
     for (unsigned i = 0; i < spells.size(); ++i) {
         const auto &s = spells[i];
-        if (ready(kit[i], can_cast)) {
+        if (is_ready[i]) {
             if (s.kind == bc::ability_kind::shield)
                 ready_shield = focus * s.modifier;
             else if (s.kind == bc::ability_kind::attack_reset)
@@ -2204,7 +2349,7 @@ float Bot::own_power() const {
     // teammate's (ObservedUnit). None of our champions heals (our drafts
     // have no healer).
     const float bonus = damage_bonus();
-    return unit_power(health + self_shield() + ready_shield, spell_dps(spells, strength, focus) * bonus,
+    return unit_power(health + shield + ready_shield, spell_dps(spells, strength, focus) * bonus,
                       burst * bonus, 0, mitigation);
 }
 
@@ -2212,12 +2357,9 @@ void Bot::track_enemy_respawns() {
     // Enemy death timers across turns, so an engagement beside their spawn can
     // price in a fresh body arriving at full strength. Needs no vision.
     for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_respawn.size(); ++i) {
-        bool alive = false;
-        try {
-            alive = enemy_roster[i].is_alive();
-        } catch (...) {
+        std::int32_t alive = 0;
+        if (bc::detail::sdk_champion_is_alive(handle_of(enemy_roster[i]), &alive) != 0)
             continue;
-        }
         if (alive)
             enemy_respawn[i] = -1;
         else if (enemy_respawn[i] < 0) {
@@ -2265,6 +2407,15 @@ bool Bot::acts_on(const ObservedUnit &u, vec2 tile) const {
 
 float Bot::unit_power_of(const ObservedUnit &u, bool full) const {
     return damage::power(u, full ? u.max_health : u.health, true);
+}
+
+float Bot::their_side_at(vec2 tile) const {
+    float theirs = 0;
+    for (const auto *list : {&enemies, &ghosts})
+        for (const auto &e : *list)
+            if (e.health > 0 && !e.channel && acts_on(e, tile))
+                theirs += unit_power_of(e, enemy_spawn_tile[tile_index(e.position)]);
+    return theirs;
 }
 
 std::pair<float, float> Bot::sides_at(vec2 tile) const {
@@ -2533,6 +2684,25 @@ void Bot::pocket_patch(std::size_t group, int only) {
 }
 
 void Bot::measure_reach(std::size_t group) {
+    group_changed[group] = 255;
+    auto &g = groups[group];
+    const int ours = int(stats.base_attack_range);
+    // The draft measured it, as below (strategy.h DraftPlan).
+    if (draft_measured() && opening.read_reach(group, ours, g.reach_share, g.spawn_strike))
+        return;
+    static std::vector<ReachStriker> strikers;
+    strikers.clear();
+    for (const auto &c : g.camps)
+        if (c.stats.base_strength > 0)
+            strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
+                                int(c.stats.base_attack_range)});
+    const auto measure = reach_measure(strikers, ours, map_width, map_height, open_tile, camp_tile, own_spawn_tile);
+    g.reach_share = measure.share;
+    g.spawn_strike = measure.spawn_strike;
+}
+
+ReachMeasure reach_measure(std::vector<ReachStriker> &strikers, int ours, int map_width, int map_height,
+                           const TileBits &open, const TileBits &camp_tile, const TileBits &own_spawn_tile) {
     // The group's reach_share for our attack range: its strikers fall in
     // striker_work()'s order, and while one is the target we strike it
     // from the open tile in our range of it that the least strength
@@ -2541,23 +2711,9 @@ void Bot::measure_reach(std::size_t group) {
     // the elk groups beside spawn cost 55-86% of that from their best
     // tiles (boss-battle), a melee one all of it. And spawn_strike: every
     // striker in our range of one of our spawn tiles.
-    auto &g = groups[group];
-    const TileBits &open = open_tile;
-    const int ours = int(stats.base_attack_range);
-    struct Striker {
-        float strength, health;
-        vec2 position;
-        int reach;
-    };
-    static std::vector<Striker> strikers;
-    strikers.clear();
+    ReachMeasure measure;
     {
-
-            for (const auto &c : g.camps)
-                if (c.stats.base_strength > 0)
-                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
-                                        int(c.stats.base_attack_range)});
-            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
+            std::stable_sort(strikers.begin(), strikers.end(), [](const ReachStriker &a, const ReachStriker &b) {
                 return a.strength * b.health > b.strength * a.health;
             });
             // The strength reaching each tile from striker t on, built by adding
@@ -2566,10 +2722,8 @@ void Bot::measure_reach(std::size_t group) {
             // on the-pack's 48-wolf groups. Camp strengths are whole numbers,
             // so the sums are exact in any order.
             const std::size_t n = strikers.size();
-            if (!n) {
-                g.reach_share = 1.0f;
-                return;
-            }
+            if (!n)
+                return measure;
             int x0 = map_width, y0 = map_height, x1 = 0, y1 = 0;
             for (const auto &s : strikers) {
                 x0 = std::min(x0, s.position.x);
@@ -2590,14 +2744,14 @@ void Bot::measure_reach(std::size_t group) {
             reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1));
             for (int y = y0; y <= y1; ++y)
                 for (int x = x0; x <= x1; ++x) {
-                    const int index = tile_index({x, y});
+                    const int index = y * map_width + x;
                     reaching[std::size_t(y - y0) * std::size_t(box) + std::size_t(x - x0)] =
                         !open[index] || camp_tile[index] ? std::numeric_limits<float>::infinity() : 0.0f;
                 }
             least_of.resize(n);
             float later = 0; // Strength from striker t on.
             for (std::size_t t = n; t-- > 0;) {
-                const Striker &s = strikers[t];
+                const ReachStriker &s = strikers[t];
                 later += s.strength;
                 const int ax = std::max(x0, s.position.x - s.reach), bx = std::min(x1, s.position.x + s.reach);
                 const int along = bx - ax + 1;
@@ -2630,7 +2784,7 @@ void Bot::measure_reach(std::size_t group) {
                                 break;
                             }
             }
-            g.spawn_strike = spawn_struck == n;
+            measure.spawn_strike = spawn_struck == n;
             float living = 0, whole = 0, reached = 0;
             for (const auto &s : strikers)
                 living += s.strength;
@@ -2639,8 +2793,9 @@ void Bot::measure_reach(std::size_t group) {
                 reached += least_of[t] * strikers[t].health;
                 living -= strikers[t].strength;
             }
-            g.reach_share = whole > 0 ? reached / whole : 1.0f;
+            measure.share = whole > 0 ? reached / whole : 1.0f;
     }
+    return measure;
 }
 
 void Bot::measure_reach_step() {

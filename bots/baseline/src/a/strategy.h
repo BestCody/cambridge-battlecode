@@ -25,6 +25,9 @@ namespace eng_a {
 #include <limits>
 namespace eng_a {
 }  // namespace eng_a
+#include <memory>
+namespace eng_a {
+}  // namespace eng_a
 #include <optional>
 namespace eng_a {
 }  // namespace eng_a
@@ -473,6 +476,12 @@ inline int distance(vec2 a, vec2 b) { return std::max(std::abs(a.x - b.x), std::
 // cast. The SDK's version rebuilds the owner's whole champion view on every
 // call (about 580 fuel); this reads the cooldown alone (about 140).
 inline bool ready(const bc::ability &a, bool can_cast) { return can_cast && a.info() && a.cooldown() <= 0; }
+// Our champion's ability views, one copy for the game: their designs never
+// change and each query reads the engine (a copy costs about 100 fuel).
+inline const std::array<bc::ability, 2> &own_kit() {
+    static const auto kit = bc::self().abilities();
+    return kit;
+}
 inline bc::bitboard around(vec2 p, float radius) {
     bc::bitboard b;
     b.draw_chebyshev(p, radius);
@@ -582,6 +591,7 @@ struct TeamMemory {
     void set_camps(const std::vector<int> &hard, unsigned groups) {
         camp_base = formations(groups) ? groups * (slots + 2) + 1 : groups + 1;
         camp_list.clear();
+        camp_list.reserve(hard.size());
         camp_of.assign(groups, -1);
         for (const int g : hard)
             if (camp_base + 2 * unsigned(camp_list.size()) + 1 < unavailable) {
@@ -612,7 +622,7 @@ struct TeamMemory {
         request_high = formations(groups) ? groups * (slots + 1) : 0;
     }
     bool is_request(unsigned code) const { return code >= request_low && code <= request_high; }
-    void read() { bc::shared_memory.read(0, std::span{&raw, 1}); }
+    void read() { bc::detail::check(bc::detail::sdk_read_shared_memory(0, &raw, sizeof raw)); }
     unsigned get(unsigned slot) const { return slot < slots ? (raw >> (slot * field)) & mask : 0; }
     // Our own claim (each owner is the only writer of its own field).
     void set(unsigned slot, unsigned value) { write(slot, value & mask); }
@@ -689,8 +699,70 @@ struct DraftPlan {
     // walk to sooner than the enemy, both walks over the same terrain. Last, so
     // the other fields stay where the other engine reads them.
     bool centre_altars = false;
+    // The roster's attack ranges, and each group's reach share for each
+    // (reach_measure(): a pass over the group's tiles that took a champion's
+    // first turn past its fuel, 315k for Vesper on boss-battle). They sit in
+    // the end of group_distance the groups leave free, a float per range a
+    // group, whose sign holds the group's spawn_strike. A group past that
+    // room, or a range not here, is measured by the champion.
+    static constexpr std::size_t reach_kinds = 2;
+    std::array<std::int8_t, reach_kinds> reach_ranges{};
+    using packed_float = float __attribute__((aligned(1), may_alias));
+    std::size_t reach_room() const { return max_groups - group_count; }
+    void set_reach(std::size_t group, std::size_t kind, float share, bool spawn_strike) {
+        reinterpret_cast<packed_float *>(group_distance.data() + group_count)[group * reach_kinds + kind] =
+            spawn_strike ? -share : share;
+    }
+    bool read_reach(std::size_t group, int range, float &share, bool &spawn_strike) const {
+        if (group >= reach_room())
+            return false;
+        for (std::size_t kind = 0; kind < reach_kinds; ++kind)
+            if (reach_ranges[kind] == range) {
+                const float held =
+                    reinterpret_cast<const packed_float *>(group_distance.data() + group_count)[group * reach_kinds + kind];
+                share = std::abs(held);
+                spawn_strike = std::signbit(held);
+                return true;
+            }
+        return false;
+    }
 };
 static_assert(sizeof(DraftPlan) <= 1024);
+inline constexpr DraftPlan no_plan{};
+
+// One bit per tile, row-major, from the engine's packed export of a mask: one
+// call of about 200 fuel, where testing tiles one by one costs a call each.
+class TileBits {
+    // The export writes every byte, so the buffer is never zero-filled (memory
+    // fills cost about a fuel per byte).
+    std::unique_ptr<std::uint8_t[]> bits;
+
+  public:
+    void load(const bc::bitboard &mask) {
+        const auto size = bc::bitboard::linear_buffer_size();
+        if (!bits)
+            bits.reset(new std::uint8_t[size]);
+        mask.export_linear_buffer(std::span(bits.get(), size));
+    }
+    bool operator[](int index) const { return bits[index >> 3] >> (index & 7) & 1; }
+};
+
+// One striker of a group's reach measure, and what the measure finds: the
+// share of the strikers' work that reaches us when we clear the group alone
+// from our attack range, and whether every striker is in that range of one
+// of our spawn tiles (world.cpp; `strikers` come in the camps' order and
+// leave sorted).
+struct ReachStriker {
+    float strength, health;
+    vec2 position;
+    int reach;
+};
+struct ReachMeasure {
+    float share = 1;
+    bool spawn_strike = false;
+};
+ReachMeasure reach_measure(std::vector<ReachStriker> &strikers, int ours, int width, int height, const TileBits &open,
+                           const TileBits &camp_tile, const TileBits &own_spawn_tile);
 
 // The walk from our spawn with one teleport-crystal hop to every tile
 // (navigation.cpp), from the walk without (`walk`, row-major) and the open

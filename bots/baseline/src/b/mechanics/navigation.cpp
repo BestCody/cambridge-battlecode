@@ -15,7 +15,7 @@ namespace eng_b {
 
 bool Bot::move_step(vec2 tile) {
     auto &me = bc::self();
-    if (!me.can_move() || tile == me.position())
+    if (tile == position || !me.can_move())
         return false;
     bool moved = false;
     try {
@@ -28,7 +28,7 @@ bool Bot::move_step(vec2 tile) {
     }
     if (moved) {
         walked = true;
-        position = me.position();
+        position = tile;
         refresh_blocked();
         return true;
     }
@@ -46,19 +46,33 @@ bool Bot::move_step(vec2 tile) {
 }
 
 bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engaged_group) {
+    // No dash in the kit: no engine read. With one, the ability views are
+    // kept (their design never changes): a copy per call costs about 100
+    // fuel, and each one out of it 100 more.
+    if (spells[0].kind != bc::ability_kind::dash && spells[1].kind != bc::ability_kind::dash)
+        return false;
     auto &me = bc::self();
-    const bool can_cast = me.can_cast();
-    for (auto a : me.abilities()) {
-        if (!a.is_dash() || !ready(a, can_cast))
+    if (!me.can_cast())
+        return false;
+    static const auto abilities = me.abilities();
+    for (unsigned i = 0; i < spells.size(); ++i) {
+        const auto &design = spells[i];
+        const auto &a = abilities[i];
+        if (design.kind != bc::ability_kind::dash || (walked && design.exclusive) || !ready(a, true))
             continue;
-        const auto design = describe(a);
-        if (walked && design.exclusive)
-            continue;
+        // Unless urgent, a dash must save two steps of the walk: a landing
+        // walks at least nothing.
+        const int here = field.get(position);
+        const int limit = urgent ? here : here - 2;
+        if (limit < 0)
+            return false;
         occupied_into(dash_blocked, dash_terrain);
         dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(design.range), step_tiles);
         subtract_into(search_goals, step_tiles, blocked);
         if (design.modifier > 0 && design.radius > 0)
             drop_waking_landings(search_goals, int(design.range + design.radius), design.radius, engaged_group);
+        // A landing the search did not reach is farther than here.
+        search_goals &= search_visited;
         // The landings in reading order, and their walks: from one export of
         // the field when there are many (an export costs about one read per
         // 150 tiles), else read one by one.
@@ -76,7 +90,6 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
         }
         const auto walk_at = [&](vec2 p) { return int(exported ? dash_walks[tile_index(p)] : field.get(p)); };
         const vec2 *choices = dash_landings.data();
-        const int here = walk_at(position);
         const float original = float(here);
         // A landing scores its walk plus the incoming estimate, which only
         // adds: one walking further than the best score so far cannot win, and
@@ -84,30 +97,37 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
         // less than the 1.75 asked even before its estimate). The rest, by
         // walk then reading order, as a sorted scan visits them; a tie goes
         // to the landing first in reading order.
-        const int limit = urgent ? here : here - 2;
         static std::vector<std::int32_t> landing, walk;
-        landing.clear();
-        walk.clear();
+        if (landing.size() < count) {
+            landing.resize(count);
+            walk.resize(count);
+        }
+        std::size_t kept = 0;
         for (std::uint32_t k = 0; k < count; ++k)
             if (const int w = walk_at(choices[k]); w <= limit && choices[k] != position) {
-                landing.push_back(std::int32_t(k));
-                walk.push_back(w);
+                landing[kept] = std::int32_t(k);
+                walk[kept++] = w;
             }
+        begin_scan();
         for (int attempt = 0; attempt < 3; ++attempt) {
             int best = -1;
             float score = original;
             for (int level = -1;;) {
                 int next = std::numeric_limits<int>::max();
-                for (const int w : walk)
-                    if (w > level && w < next)
-                        next = w;
+                for (std::size_t j = 0; j < kept; ++j)
+                    if (walk[j] > level && walk[j] < next)
+                        next = walk[j];
                 if (next == std::numeric_limits<int>::max() || float(next) > score)
                     break;
-                for (std::size_t j = 0; j < landing.size() && float(next) <= score; ++j)
+                for (std::size_t j = 0; j < kept && float(next) <= score; ++j)
                     if (walk[j] == next) {
                         const int k = landing[j];
+                        // At the score already, the estimate can only tie
+                        // it: for a landing earlier in reading order.
+                        if (float(next) == score && (best < 0 || k > best))
+                            continue;
                         const float value =
-                            float(next) + incoming(choices[k]) * (urgent ? 0.06f : 0.012f);
+                            float(next) + incoming_scan(choices[k]) * (urgent ? 0.06f : 0.012f);
                         if (value < score || (value == score && best >= 0 && k < best)) {
                             score = value;
                             best = k;
@@ -127,14 +147,13 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
             blocked.set(choices[best]);
             blocked.set(position, false);
             // A refused landing reveals occupants: drop them from the choices.
-            std::size_t kept = 0;
-            for (std::size_t j = 0; j < landing.size(); ++j)
+            std::size_t left = 0;
+            for (std::size_t j = 0; j < kept; ++j)
                 if (!blocked.is_set(choices[landing[j]])) {
-                    landing[kept] = landing[j];
-                    walk[kept++] = walk[j];
+                    landing[left] = landing[j];
+                    walk[left++] = walk[j];
                 }
-            landing.resize(kept);
-            walk.resize(kept);
+            kept = left;
         }
     }
     return false;
@@ -164,10 +183,10 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
     auto &visited = search_visited;
     subtract_into(search_goals, goals, blocked);
     field.compute_to(blocked, search_goals, origin_at(position), visited);
+    int walk = field.get(position);
     // No walk: into a pocket the goals are in, or out of the one we stand
     // in, by a dash over its holes (prepare_pockets()).
-    if (pockets_ready && !pocket_groups.empty() && !walking_in_pocket &&
-        field.get(position) == bc::distance_field::unreachable) {
+    if (pockets_ready && !pocket_groups.empty() && !walking_in_pocket && walk == bc::distance_field::unreachable) {
         walking_in_pocket = true;
         const int acted = pocket_move(goals, urgent, engaged_group);
         walking_in_pocket = false;
@@ -177,20 +196,29 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
     // With a crystal, the way there may be a hop (not when urgent: its
     // channel holds us still for three turns).
     if (!urgent && !walking_to_hop && carrying_crystal()) {
-        const int hopped = follow_hop(goals, toward, field.get(position), use_dash, engaged_group);
+        const int hopped = follow_hop(goals, toward, walk, use_dash, engaged_group);
         if (hopped >= 0)
             return hopped;
     }
     bool breaking_through = false;
-    if (field.get(position) == bc::distance_field::unreachable) {
+    if (walk == bc::distance_field::unreachable) {
         // Camp bodies can seal an entire corridor. Route through destructible
         // obstacles, then clear the next blocking group instead of idling.
-        auto temporary = static_blocked | bc::vision::champion_tiles() | bc::vision::teleport_tiles();
+        // In place: new masks here cost about 2k fuel a turn.
+        static bc::bitboard temporary{bc::uninitialized};
+        bc::vision::champion_tiles_into(bc::team::ally, temporary);
+        bc::vision::champion_tiles_into(bc::team::enemy, occupancy);
+        temporary |= occupancy;
+        bc::vision::teleport_tiles_into(occupancy);
+        temporary |= occupancy;
+        temporary |= static_blocked;
         temporary.set(position, false);
-        field.compute_to(temporary, goals & ~temporary, around(position, 0), visited);
-        breaking_through = field.get(position) != bc::distance_field::unreachable;
+        subtract_into(search_goals, goals, temporary);
+        field.compute_to(temporary, search_goals, origin_at(position), visited);
+        walk = field.get(position);
+        breaking_through = walk != bc::distance_field::unreachable;
     }
-    if (field.get(position) == bc::distance_field::unreachable)
+    if (walk == bc::distance_field::unreachable)
         return false;
     if (breaking_through && !urgent) {
         // Only through a group we clear alone on this visit (visit_clears()).
@@ -198,7 +226,7 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         // champions hit the monolith pair walling in guardians' altar, left
         // at the walk-out line and came back: 10,030 health lost to it and
         // 177 gems dropped at death in one game, print dont int's 131.
-        int next_group = -1, best_distance = field.get(position);
+        int next_group = -1, best_distance = walk;
         for (const auto &c : camps)
             if (distance(position, c.position) <= range && c.group >= 0 && visit_clears(groups[c.group])) {
                 int d = field.get(c.position);
@@ -220,6 +248,9 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
     }
     if (!me.can_move())
         return moved;
+    if (moved)
+        walk = field.get(position);
+    begin_scan();
     for (int attempt = 0; attempt < 3; ++attempt) {
         // Reachable tiles exclude everything in blocked already.
         blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(stats.base_move_speed), step_tiles);
@@ -231,7 +262,7 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
         // from spawn on an edge, willow best girl's 1-2% on any edge, and
         // flights there 12-16% against 1-5%, cornered.
         int best_line = std::numeric_limits<int>::max();
-        const int remaining = field.get(position);
+        const int remaining = walk;
         for (const vec2 p : step_positions()) {
             if (p == position)
                 continue;
@@ -248,7 +279,7 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
             if (least > best_score || (least == best_score && line >= best_line))
                 continue; // The incoming estimate only adds: this tile cannot win.
             float score = float(d) * 10;
-            score += incoming(p) * (urgent ? 0.8f : 0.14f);
+            score += incoming_scan(p) * (urgent ? 0.8f : 0.14f);
             // Respect bush cover when taking an aggressive approach.
             if (bush)
                 score -= 0.4f;
@@ -264,6 +295,7 @@ bool Bot::move_to(const bc::bitboard &wanted, vec2 toward, bool urgent, bool use
             return true;
         subtract_into(search_goals, goals, blocked);
         field.compute_to(blocked, search_goals, origin_at(position), visited);
+        walk = field.get(position);
     }
     return moved;
 }
@@ -331,14 +363,13 @@ bool Bot::health_recovery_needed() const {
             reaching += c.strength;
         }
     const bool at_camp = reached && ours;
-    float per_round = incoming(position);
     if (at_camp && enemies.empty()) {
         // Every awake camp reaching us, at its full strength, hitting us or
         // not: behind the front we take nothing until the front leaves, then
         // all of it. On boss-battle our Vesper stood in a monolith pair's
         // reach behind Marcella; Marcella left, the pair turned on her (~360
         // a round) with steps still to walk, and she died.
-        per_round = reaching * camp_mitigation * mitigation;
+        const float per_round = reaching * camp_mitigation * mitigation;
         // The walk out, counted: the fewest steps to a tile no awake camp
         // reaches (around walls and other camps' reach). Counted from each
         // camp alone, it came short: champions left on the line and died
@@ -380,13 +411,13 @@ bool Bot::health_recovery_needed() const {
     // champions hurt beside two or three enemies: latched home, counting
     // themselves as nothing, they were chased down (with dashes counted, 3
     // times our deaths and a sixth of our kills in six games).
-    const float from_camps = per_round - incoming(position, false);
+    // (Out of every awake camp's reach that part is nothing.)
     // At camps that reach us, the walk out of their reach goes under the
     // enemies' damage too, round by round: counted for the camps alone,
     // all five of ours stayed at a contested centre elk while enemies
     // poked, dropped under the low line one by one and were caught walking
     // home alone (01elk-arena: 3 deaths to 37).
-    const float walking_out = reached ? per_round : from_camps;
+    const float walking_out = reached ? incoming(position) : 0.0f;
     return health < max_health * share || health <= walking_out * float(out);
 }
 
@@ -401,7 +432,8 @@ void Bot::retreat_to_spawn() {
     track_ghosts();
     // One hit cancels recall. Include reach over the channel, including enemies
     // whose current stun can expire, rather than just their current attack tile.
-    bc::bitboard threatened;
+    static bc::bitboard threatened{bc::uninitialized};
+    threatened.clear();
     for (const auto &camp : camps)
         // A camp whose reach we stand in after a hit is awake whatever our
         // record says: recalling there was cancelled by its next strike.
@@ -412,14 +444,13 @@ void Bot::retreat_to_spawn() {
     // that just stepped into a bush is still there.
     for (const auto *list : {&enemies, &ghosts})
         for (const auto &enemy : *list) {
-            const auto design = enemy.champion().base_stats();
             // A dash ready within the recall closes its tiles too (a damaging
             // dash's spell reach already counts them).
             const int dash = enemy.dash_range > 0 && enemy.dash_wait >= 0 && enemy.dash_wait <= recall_turns
                                  ? int(enemy.dash_range)
                                  : 0;
             const int reach = std::max(enemy.range + dash, enemy.spell_reach) +
-                              std::min(recall_turns, policy::recall_chase_turns) * design.base_move_speed;
+                              std::min(recall_turns, policy::recall_chase_turns) * enemy.move_speed;
             if (distance(position, enemy.position) <= stats.vision_radius + reach)
                 threatened.draw_chebyshev(enemy.position, reach);
         }
@@ -446,7 +477,9 @@ void Bot::retreat_to_spawn() {
     if (!safe && chase_mode() == Chase::fight && combat(true, -1, range <= 1))
         return;
     // around(...) & ~blocked & ~threatened, in place (no complement masks).
-    auto safe_tiles = around(position, stats.vision_radius);
+    static bc::bitboard safe_tiles{bc::uninitialized};
+    safe_tiles.clear();
+    safe_tiles.draw_chebyshev(position, stats.vision_radius);
     subtract(safe_tiles, blocked);
     subtract(safe_tiles, threatened);
     const auto &goals = walk <= recall_turns * stats.base_move_speed || safe_tiles.is_empty() ||
@@ -871,6 +904,7 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     constexpr std::uint16_t far = bc::distance_field::unreachable;
     const int wide = (w + 7) & ~7;
     hop_buffers();
+    static bc::bitboard hop_visited;
     // The landing regions: only tiles in the region of what we head for or one
     // beside it (hop_lands_in_reach()): a goal tile no walk joins to it (a
     // walled pocket in attack range by distance) is no landing.
@@ -918,7 +952,7 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
         entry->kinds = kinds;
         entry->near_ready = false;
         std::copy(allowed, allowed + kinds, entry->allowed);
-        hop_goal_field.compute(static_blocked, goals, search_visited);
+        hop_goal_field.compute(static_blocked, goals, hop_visited);
         hop_goal_field.export_linear_buffer(std::span(entry->walk.get(), tiles));
     } else if (!entry->near_ready) {
         // The same goals again: M over the whole map, kept for later plans.
@@ -955,7 +989,7 @@ void Bot::plan_hop(const bc::bitboard &goals, float threshold) {
     if (float(walk - channel) <= threshold)
         return;
     const int span = int(std::min(std::floor(float(walk - channel) - threshold) + 1.0f, float(far - 1)));
-    hop_from_field.compute(static_blocked, around(position, 0), search_visited, std::uint16_t(span));
+    hop_from_field.compute(static_blocked, around(position, 0), hop_visited, std::uint16_t(span));
     hop_from_field.export_linear_buffer(std::span(hop_from.get(), tiles));
     const int first_row = std::max(0, position.y - span), last_row = std::min(h - 1, position.y + span);
     const int first_column = std::max(0, position.x - span) & ~7,
@@ -1080,8 +1114,12 @@ int Bot::follow_hop(const bc::bitboard &goals, vec2 toward, int walk, bool use_d
         hop_plan.toward = toward;
         hop_plan.round = int(round);
         int straight = std::numeric_limits<int>::max();
-        for (const vec2 p : goals.positions())
-            straight = std::min(straight, distance(position, p));
+        static std::vector<vec2> goal_tiles;
+        if (goal_tiles.empty())
+            goal_tiles.resize(std::size_t(map_width) * map_height);
+        const std::uint32_t goal_count = goals.positions_into(goal_tiles);
+        for (std::uint32_t k = 0; k < goal_count; ++k)
+            straight = std::min(straight, distance(position, goal_tiles[k]));
         const float threshold = hop_threshold();
         if (float(walk - straight + reach - channel) > threshold)
             plan_hop(goals, threshold);

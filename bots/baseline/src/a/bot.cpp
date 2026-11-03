@@ -25,7 +25,7 @@ void Bot::take_turn() {
         // the walk to the nearby camps for their first choice, and move from
         // the next turn.
         initialise();
-        buy_equipment();
+        buy_equipment(bc::self().is_alive());
         worker_priority();
         // The first camp choice searches its own walks on the next turn
         // (strategy.h reach_at_start: a second-bound search here took the

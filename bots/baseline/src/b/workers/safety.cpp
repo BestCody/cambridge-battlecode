@@ -20,8 +20,8 @@ bool Bot::enemy_threatens(const ObservedUnit &enemy, vec2 at, vec2 tile) const {
 }
 
 void Bot::worker_track_sightings() {
-    if (enemy_seen_near.size() != groups.size())
-        enemy_seen_near.assign(groups.size(), -policy::worker_sighting_memory - 1);
+    if (enemy_seen_near.empty()) // Padded: camp choice reads four a step.
+        enemy_seen_near.assign((groups.size() + 3) & ~std::size_t{3}, -policy::worker_sighting_memory - 1);
     // A group is seen near when enemy_threatens() holds for one of its camps:
     // the enemy's test and reach do not depend on the camp, so each camp's
     // test is its distance, four camps a step (padding is never in reach).
@@ -189,7 +189,7 @@ struct OwnDash {
 OwnDash own_dash(const std::array<Spell, 2> &spells) {
     OwnDash d;
     auto &me = bc::self();
-    const auto abilities = me.abilities();
+    const auto &abilities = own_kit();
     for (unsigned i = 0; i < spells.size(); ++i)
         if (spells[i].kind == bc::ability_kind::dash) {
             d.range = int(spells[i].range);
@@ -241,7 +241,7 @@ bool Bot::duel_won(std::uint32_t threats, float pool) {
         std::array<bool, 2> is_ready{};
         for (unsigned i = 0; i < spells.size(); ++i)
             if (spells[i].kind == bc::ability_kind::shield)
-                is_ready[i] = ready(bc::self().abilities()[i], bc::self().can_cast());
+                is_ready[i] = ready(own_kit()[i], bc::self().can_cast());
         if (exit_pool(pool - health, is_ready) <= risk.damage + risk.margin)
             return false;
     }

@@ -80,6 +80,9 @@ struct CampGroup {
     // asleep); -10 when the last one did not.
     int quiet = -10;
     std::uint16_t quiet_records = 0;
+    // The last round its records were listed as they stood: a camp in view in
+    // that observation (quiet_view) was as good as read then.
+    int kept = -10;
     int home_distance = 0, enemy_distance = 0, altar_distance = 0;
     // The walks from spawn and from the altars to the group's farthest camp
     // (measure_farthest()), for lower bounds on walks to it from anywhere.
@@ -234,7 +237,8 @@ class CampList {
     std::vector<std::uint32_t> first; // Each group's first slot.
     std::vector<std::uint16_t> held;  // Each group's records, from its first slot.
     std::vector<std::uint16_t> made;  // Each group's slots that have held a record, from its first.
-    std::vector<std::uint16_t> order;
+    std::unique_ptr<std::uint16_t[]> order; // listed of them; room for every camp.
+    std::size_t listed = 0;
     std::uint32_t slot_count = 0;
     ObservedUnit *slots() const { return std::launder(reinterpret_cast<ObservedUnit *>(storage.get())); }
 
@@ -265,12 +269,12 @@ class CampList {
         bool operator==(const Iterator &other) const { return at == other.at; }
         bool operator!=(const Iterator &other) const { return at != other.at; }
     };
-    Iterator<ObservedUnit> begin() { return {slots(), order.data()}; }
-    Iterator<ObservedUnit> end() { return {slots(), order.data() + order.size()}; }
-    Iterator<const ObservedUnit> begin() const { return {slots(), order.data()}; }
-    Iterator<const ObservedUnit> end() const { return {slots(), order.data() + order.size()}; }
-    std::size_t size() const { return order.size(); }
-    bool empty() const { return order.empty(); }
+    Iterator<ObservedUnit> begin() { return {slots(), order.get()}; }
+    Iterator<ObservedUnit> end() { return {slots(), order.get() + listed}; }
+    Iterator<const ObservedUnit> begin() const { return {slots(), order.get()}; }
+    Iterator<const ObservedUnit> end() const { return {slots(), order.get() + listed}; }
+    std::size_t size() const { return listed; }
+    bool empty() const { return listed == 0; }
     ObservedUnit &operator[](std::size_t i) { return slots()[order[i]]; }
     const ObservedUnit &operator[](std::size_t i) const { return slots()[order[i]]; }
     // A group's records, in camp order (none for no group).
@@ -294,7 +298,7 @@ class CampList {
     // Slots for every camp of these groups; none listed.
     void reset(const std::vector<CampGroup> &groups) {
         first.resize(groups.size());
-        held.assign(groups.size(), 0);
+        held.assign((groups.size() + 15) & ~std::size_t{15}, 0);
         made.assign(groups.size(), 0);
         std::uint32_t total = 0;
         for (std::size_t g = 0; g < groups.size(); ++g) {
@@ -303,11 +307,11 @@ class CampList {
         }
         storage.reset(new Slot[total]);
         slot_count = total;
-        order.clear();
-        order.reserve(total);
+        listed = 0;
+        order.reset(new std::uint16_t[total]);
     }
     // A new observation lists nothing yet; records stay until rewritten.
-    void clear() { order.clear(); }
+    void clear() { listed = 0; }
     // The group's records are rewritten from its first slot (call when they
     // are not listed: after clear() or drop()).
     void restart(int g) { held[g] = 0; }
@@ -315,7 +319,7 @@ class CampList {
     // (over the camp record the slot holds, if any, writing only its own fields).
     ObservedUnit &emplace(int g, const CampMemory &c, const bc::detail::camp_state &info, bool asleep) {
         const std::uint32_t slot = first[g] + held[g]++;
-        order.push_back(std::uint16_t(slot));
+        order[listed++] = std::uint16_t(slot);
         if (held[g] > made[g]) {
             made[g] = held[g];
             return *new (&storage[slot]) ObservedUnit(c, g, info, asleep);
@@ -325,22 +329,27 @@ class CampList {
         return record;
     }
     // List the group's next record as it stands in its slot.
-    void keep_next(int g) { order.push_back(std::uint16_t(first[g] + held[g]++)); }
+    void keep_next(int g) { order[listed++] = std::uint16_t(first[g] + held[g]++); }
     // List the group's first records again as they stand.
     void keep(int g, std::uint16_t records) {
         held[g] = records;
-        for (std::uint32_t slot = first[g]; slot < first[g] + records; ++slot)
-            order.push_back(std::uint16_t(slot));
+        std::uint16_t *at = order.get() + listed;
+        listed += records;
+        for (std::uint32_t slot = first[g], end = slot + records; slot < end; ++slot)
+            *at++ = std::uint16_t(slot);
     }
     // Take the group's records out of the order, where they are listed together.
     void drop(int g) {
         if (!held[g])
             return;
         const std::uint32_t low = first[g], high = low + held[g];
-        const auto at = std::find_if(order.begin(), order.end(),
-                                     [&](std::uint16_t slot) { return slot >= low && slot < high; });
-        if (at != order.end())
-            order.erase(at, at + held[g]);
+        std::uint16_t *const last = order.get() + listed;
+        std::uint16_t *const at =
+            std::find_if(order.get(), last, [&](std::uint16_t slot) { return slot >= low && slot < high; });
+        if (at != last) {
+            std::copy(at + held[g], last, at);
+            listed -= held[g];
+        }
     }
 };
 
@@ -349,19 +358,32 @@ class CampList {
 bc::detail::champion_info read_champion(const bc::champion &c);
 // The live fields of a champion in view; nothing when it is not visible.
 std::optional<bc::detail::champion_info> sighting(const bc::champion &c);
+// The same into the caller's record: false when it is not visible.
+bool sighted(const bc::champion &c, bc::detail::champion_info &info);
 // False when the camp is not visible.
 bool read_camp(const bc::camp &c, bc::detail::camp_state &info);
 // 1 alive, 2 reward available, 3 respawning (timer set), for a group in view.
 int group_state(const CampGroup &g, int &timer);
 // The unit's health now, or 0 when it is out of sight.
 float live_health(const ObservedUnit &u);
-// The unit's stun and shield now (the shield kept when it has none).
-void read_buffs(ObservedUnit &out);
 // The unit's shield now, 0 when it has none.
 float live_shield(const ObservedUnit &u);
 // Our own shield now, 0 when we have none (one engine read; the SDK's
 // buffs() decodes every record).
 float self_shield();
+// Also whether we hold an enhanced attack, from the one read.
+float self_shield(bool &enhanced);
+// A champion's engine handle, for the raw reads.
+inline std::uint32_t handle_of(const bc::champion &c) {
+    return static_cast<std::uint32_t>(static_cast<bc::handle_champion_t>(c));
+}
+// champion::is_alive() of a roster champion in one engine call (the SDK's
+// wrapper costs about 40 fuel, the call 15).
+inline bool alive_now(const bc::champion &c) {
+    std::int32_t alive = 0;
+    bc::detail::check(bc::detail::sdk_champion_is_alive(handle_of(c), &alive));
+    return alive != 0;
+}
 
 // What a worker spent each turn on, for the time-use diagnostic.
 enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce, farm, travel, count };
@@ -370,23 +392,6 @@ enum class Activity { idle, dead, recall, heal, retreat, bank, fight, reinforce,
 }  // namespace eng_a
 #include "mechanics/damage.h"
 namespace eng_a {
-
-// One bit per tile, row-major, from the engine's packed export of a mask: one
-// call of about 200 fuel, where testing tiles one by one costs a call each.
-class TileBits {
-    // The export writes every byte, so the buffer is never zero-filled (memory
-    // fills cost about a fuel per byte).
-    std::unique_ptr<std::uint8_t[]> bits;
-
-  public:
-    void load(const bc::bitboard &mask) {
-        const auto size = bc::bitboard::linear_buffer_size();
-        if (!bits)
-            bits.reset(new std::uint8_t[size]);
-        mask.export_linear_buffer(std::span(bits.get(), size));
-    }
-    bool operator[](int index) const { return bits[index >> 3] >> (index & 7) & 1; }
-};
 
 // Diagnostic snapshot of this champion's last chosen state, reported when it
 // is next seen dead. Explains what each death was exposed to.
@@ -607,6 +612,7 @@ class Bot {
     };
     mutable ExitLanes exit_lanes;
     std::vector<vec2> altars;
+    std::vector<int> altar_tile; // Their row-major indices.
     // Altar locks (tribute.cpp), per altar: the last round an enemy was seen
     // banking at it and the last round a lock was seen on it (-1000: never);
     // and whether we carry a lock.
@@ -642,7 +648,11 @@ class Bot {
     int watch_turns = 0; // Fight turns in a row with no enemy to strike from any tile in reach.
     std::vector<bc::distance_field> altar_routes;
     TeamMemory shared;
-    DraftPlan opening;
+    // The draft's plan where the SDK holds it (a copy cost a fill and a copy
+    // of a kilobyte), or an empty plan.
+    const DraftPlan &opening = bc::draft_memory.size() >= sizeof(DraftPlan)
+                                   ? *reinterpret_cast<const DraftPlan *>(bc::draft_memory.data())
+                                   : no_plan;
     // Whether the draft's plan holds this map's group and altar measures.
     // A centre map's opening (strategy.h): our own side first.
     bool centre_opening() const { return centre_map && int(round) < policy::opening_rounds; }
@@ -736,20 +746,28 @@ class Bot {
     // a turn, in fuel it would not use (unused fuel does not carry over).
     void spare_region_steps();
     bool hop_lands_in_reach(vec2 landing) const;
-    // Camps in view, refreshed by each observation (with the sleeping ones
-    // when asleep_known, and the living ones); unseen ward placements.
-    TileBits camp_in_view, camp_asleep, camp_living, unseen_tile;
+    // Tiles in view (of the last observation: camps' and altars' are read),
+    // refreshed by each observation, with the sleeping camps when
+    // asleep_known and the living ones; unseen ward placements.
+    TileBits tile_in_view, camp_asleep, camp_living, unseen_tile;
     TileBits path_reached; // measure_paths()'s search: the tiles it reached.
     bool asleep_known = false;
     // Per group, with each observation: a camp of it in view, and one of us
     // (or an ally in view) standing on it. The camp tiles in view, listed.
+    // (Padded to group_lanes, a multiple of sixteen, as are group_due and the
+    // record counts: observe()'s scan takes whole lanes.)
     std::vector<std::uint8_t> group_in_view, group_held;
+    std::size_t group_lanes = 0;
     // Per group, the round from which observe() looks at it out of view and
     // unheld with no records (held: always; cooling: its respawn; capture:
     // past its timer; else never), kept by note_group_due().
     std::vector<std::int32_t> group_due;
     void note_group_due(std::size_t group);
+    // Per group, 255 once what camp choice keeps of it (its lanes) may have
+    // changed, 0 once read again; sixteen a step, the tail padded.
+    std::vector<std::uint8_t> group_changed;
     std::vector<vec2> sighted_camps;
+    bc::bitboard camps_seen{bc::uninitialized}; // mark_camps_in_view()'s workspace
     // Walking distance from origin_position to each camp group. A group a
     // bounded search missed holds only a lower bound, flagged in
     // group_bounded; path_search is the furthest level searched from here.
@@ -781,7 +799,6 @@ class Bot {
     bc::bitboard move_goals{bc::uninitialized}; // move_to()'s goals on open terrain
     bc::bitboard farm_goals{bc::uninitialized}; // worker_farm()'s standing tiles
     bc::bitboard dash_blocked{bc::uninitialized};
-    bc::bitboard attack_area{bc::uninitialized};
     std::vector<bc::bitboard> sight_pool; // the fight search's vision per origin
     // move_to()'s field, and the field each group's walk is built in before
     // its export.
@@ -830,6 +847,10 @@ class Bot {
     void record_life();
     void report_death();
     void refresh_self();
+    // refresh_self()'s fields but the gems, from a read of ourselves.
+    void take_self(const bc::detail::champion_info &info);
+    // Our state at the last of them.
+    std::int32_t self_state = 0;
     const bc::distance_field &altar_walk();
     // Searches to path_bound (level 1), twice it (2) or completely (3).
     void measure_paths(int level);
@@ -852,6 +873,8 @@ class Bot {
     void mark_camps_in_view(int group = -1);
     void mark_group_holders(int group = -1);
     void list_threat(std::uint32_t slot);
+    // The threats of `records` records from a slot.
+    void list_threats(std::uint32_t slot, std::uint32_t records);
     void drop_threats(int group);
     void close_threats();
     int nearest_unit(vec2 tile) const;
@@ -864,15 +887,18 @@ class Bot {
     void publish(unsigned claim);
     float incoming(vec2 tile, bool include_camps = true) const;
     float incoming_enemies(vec2 tile) const;
-    // incoming() at many tiles with nothing changing between the calls:
-    // begin_scan() starts a scan, and incoming_scan(tile) gives incoming(tile)
-    // with each camp's tile-independent tests made once for the scan.
+    // incoming() at the tiles a step from us with nothing changing between the
+    // calls: begin_scan() lists the camps that can strike one of them, each
+    // one's tile-independent tests made, and incoming_scan(tile) gives
+    // incoming(tile) from that list.
     void begin_scan();
     float incoming_scan(vec2 tile) const;
-    mutable std::vector<std::uint32_t> scan_stamp;
-    mutable std::vector<int> scan_near;
-    mutable std::vector<float> scan_hit;
-    std::uint32_t scan_serial = 0;
+    struct ScanCamp {
+        int threat, nearest;
+        float hit;
+    };
+    std::vector<ScanCamp> scan_camps;
+    std::size_t scan_count = 0;
     // The damage enemy champions deal a champion on `tile` that leaves now,
     // a tile a round, until it is out of every one's reach, before its
     // mitigation (exit_lanes): each ready burst that reaches it next round
@@ -928,8 +954,12 @@ class Bot {
     bool acts_on(const ObservedUnit &u, vec2 tile) const;
     float unit_power_of(const ObservedUnit &u, bool full) const;
     std::pair<float, float> sides_at(vec2 tile) const;
+    // Their side alone.
+    float their_side_at(vec2 tile) const;
     // Our own power alone.
     float own_power() const;
+    // With our shield and each slot's readiness already read.
+    float own_power(float shield, const std::array<bool, 2> &is_ready) const;
     float respawn_threat(vec2 at) const;
     float dps(const CampGroup &g) const;
     // The walk out of the group's reach under its fire (camp choice's), and
@@ -1036,7 +1066,9 @@ class Bot {
     bool impact_dash(bool fighting_champions, int farm_group);
     bool advance_attack(vec2 victim, int stand = 0);
     // economy.cpp
-    void buy_equipment();
+    // `alive`: as just read (shopping neither kills nor revives). A living
+    // champion's own fields are fresh after it (take_self(), refresh_self()).
+    void buy_equipment(bool alive);
     void refresh_equipment();
     void ward_ahead(vec2 goal);
 
@@ -1098,6 +1130,11 @@ class Bot {
     // A teammate's camp claim: the group a living teammate's plain claim
     // names, else -1 (every reader of claims uses this one rule).
     int mate_claim(unsigned s) const;
+    // Whether roster slot s is alive: read from the engine once a turn (each
+    // read is an engine call, and claims are read many times a turn).
+    bool mate_alive(unsigned s) const;
+    mutable int alive_round = -1;
+    mutable std::uint64_t alive_slots = 0;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
     // Pocket groups (strategy.h pocket_entries): found once the walking

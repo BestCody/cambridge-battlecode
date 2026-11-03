@@ -323,6 +323,12 @@ inline int distance(vec2 a, vec2 b) { return std::max(std::abs(a.x - b.x), std::
 // cast. The SDK's version rebuilds the owner's whole champion view on every
 // call (about 580 fuel); this reads the cooldown alone (about 140).
 inline bool ready(const bc::ability &a, bool can_cast) { return can_cast && a.info() && a.cooldown() <= 0; }
+// Our champion's ability views, one copy for the game: their designs never
+// change and each query reads the engine (a copy costs about 100 fuel).
+inline const std::array<bc::ability, 2> &own_kit() {
+    static const auto kit = bc::self().abilities();
+    return kit;
+}
 inline bc::bitboard around(vec2 p, float radius) {
     bc::bitboard b;
     b.draw_chebyshev(p, radius);
@@ -430,6 +436,7 @@ struct TeamMemory {
     void set_camps(const std::vector<int> &hard, unsigned groups) {
         camp_base = formations(groups) ? groups * (slots + 2) + 1 : groups + 1;
         camp_list.clear();
+        camp_list.reserve(hard.size());
         camp_of.assign(groups, -1);
         for (const int g : hard)
             if (camp_base + 2 * unsigned(camp_list.size()) + 1 < unavailable) {
@@ -460,7 +467,7 @@ struct TeamMemory {
         request_high = formations(groups) ? groups * (slots + 1) : 0;
     }
     bool is_request(unsigned code) const { return code >= request_low && code <= request_high; }
-    void read() { bc::shared_memory.read(0, std::span{&raw, 1}); }
+    void read() { bc::detail::check(bc::detail::sdk_read_shared_memory(0, &raw, sizeof raw)); }
     unsigned get(unsigned slot) const { return slot < slots ? (raw >> (slot * field)) & mask : 0; }
     // Our own claim (each owner is the only writer of its own field).
     void set(unsigned slot, unsigned value) { write(slot, value & mask); }
@@ -530,6 +537,7 @@ struct DraftPlan {
     }
 };
 static_assert(sizeof(DraftPlan) <= 1024);
+inline constexpr DraftPlan no_plan{};
 
 // The walk from our spawn with one teleport-crystal hop to every tile
 // (navigation.cpp), from the walk without (`walk`, row-major) and the open

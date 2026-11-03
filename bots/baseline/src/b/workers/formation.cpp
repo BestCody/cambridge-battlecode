@@ -20,7 +20,7 @@ float Bot::team_average_power() const {
     float team_power = own_power();
     unsigned living = 1 + unsigned(allies.size());
     for (std::size_t s = 0; s < roster.size(); ++s)
-        if (s != slot && !(seen_slots >> s & 1) && roster[s].is_alive()) {
+        if (s != slot && !(seen_slots >> s & 1) && alive_now(roster[s])) {
             team_power += roster_power[s];
             ++living;
         }
@@ -126,7 +126,7 @@ bool Bot::worker_update_formation() {
             // The squad that matches what we see: its power reaches theirs
             // (their side on its tile, as the micro weighs one: sides_at()).
             const unsigned bodies = std::max(1u, unsigned(roster.size()));
-            const float squad = sides_at(at).first / std::max(1.0f, team_average_power());
+            const float squad = their_side_at(at) / std::max(1.0f, team_average_power());
             reported_force = std::clamp(unsigned(std::ceil(squad)), 1u, bodies);
         }
     }

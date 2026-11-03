@@ -42,7 +42,9 @@ int main() {
         }
         if (!drafting && cambc::round_number() != start_round)
             std::cout << "FUEL_OVERRUN started=" << start_round << " ended=" << cambc::round_number()
-                      << " type=" << int(cambc::self().champion_name()) << '\n';
-        cambc::end_turn();
+                      << " type=" << int(cambc::self().champion_name()) << std::endl;
+        // Debug builds' prints go out here, at no cost to the turn.
+        debug_block({ std::fflush(nullptr); });
+        cambc::detail::sdk_yield();
     }
 }

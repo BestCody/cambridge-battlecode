@@ -72,16 +72,16 @@ void Bot::play_worker_turn() {
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         hidden.reset();
-        buy_equipment();
+        buy_equipment(false);
         retreating = banking = false;
         target = -1;
         cluster_run.clear();
         return;
     }
-    buy_equipment();
+    buy_equipment(true);
     // Read once: nothing below acts before its last use (a turn that acts
     // returns), and only actions change it.
-    const auto state = me.state();
+    const auto state = bc::champion_state::from_bits_retain(self_state);
     if (state.contains(bc::champion_state::recalling) || state.contains(bc::champion_state::teleporting)) {
         note_activity(Activity::recall);
         // A capture's holder riding its recall home keeps its claim, so
@@ -97,7 +97,7 @@ void Bot::play_worker_turn() {
     // What camps in reach as our last turn left the records could have
     // struck (note_hidden_hit()): looked up before observe() rewrites them,
     // only when struck.
-    camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
+    camp_bound = health < before ? camp_reach_damage() : 0.0f;
     observe();
     hit = health < before;
     taken_last = std::max(0.0f, before - health);
@@ -230,11 +230,10 @@ void Bot::fake_recall() {
     // each of ours. Teammates tell a real recall by its report. A channel
     // blocks every later action, so it is the turn's last; one already
     // going needs none, and a stun refuses it.
-    const auto &spawn = own_spawn;
-    const auto state = bc::self().state();
+    const auto state = bc::champion_state::from_bits_retain(read_champion(bc::self()).state);
     if (!state.contains(bc::champion_state::alive) || state.contains(bc::champion_state::recalling) ||
         state.contains(bc::champion_state::submitting_gems) || state.contains(bc::champion_state::teleporting) ||
-        spawn.is_set(position))
+        own_spawn_tile[tile_index(position)])
         return;
     faking = bc::detail::sdk_recall() == 0;
     // A capture's holder riding this recall home says it is leaving at once:
@@ -320,7 +319,9 @@ void Bot::worker_priority() {
         if (best > 0)
             priority = best;
     }
-    if (me.priority() != priority)
+    std::int32_t set = 0;
+    bc::detail::check(bc::detail::sdk_bc_champion_priority(handle_of(me), 1, &set));
+    if (set != priority)
         me.set_priority(priority);
 }
 

@@ -62,16 +62,16 @@ void Bot::play_worker_turn() {
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         hidden.reset();
-        buy_equipment();
+        buy_equipment(false);
         retreating = banking = false;
         target = -1;
         cluster_run.clear();
         return;
     }
-    buy_equipment();
+    buy_equipment(true);
     // Read once: nothing below acts before its last use (a turn that acts
     // returns), and only actions change it.
-    const auto state = me.state();
+    const auto state = bc::champion_state::from_bits_retain(self_state);
     if (state.contains(bc::champion_state::recalling) || state.contains(bc::champion_state::teleporting)) {
         note_activity(Activity::recall);
         // A capture's holder riding its recall home keeps its claim, so
@@ -85,7 +85,7 @@ void Bot::play_worker_turn() {
     // What camps in reach as our last turn left the records could have
     // struck (note_hidden_hit()): looked up before observe() rewrites them,
     // only when struck.
-    camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
+    camp_bound = health < before ? camp_reach_damage() : 0.0f;
     observe();
     hit = health < before;
     taken_last = std::max(0.0f, before - health);
@@ -296,7 +296,9 @@ void Bot::worker_priority() {
         if (best > 0)
             priority = best;
     }
-    if (me.priority() != priority)
+    std::int32_t set = 0;
+    bc::detail::check(bc::detail::sdk_bc_champion_priority(handle_of(me), 1, &set));
+    if (set != priority)
         me.set_priority(priority);
 }
 
