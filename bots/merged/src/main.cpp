@@ -1,49 +1,40 @@
-// Two engines in one bot: v119 (eng_a) and v130 (eng_b), chosen per map by
-// its print (routes.h). Every body of the team computes the same print, so the
-// draft and all champions agree.
+// Two engines in one bot: v119 (eng_a) plays from the start; if the team is
+// behind in banked gems from mid-game on, main's baseline (eng_b) takes over.
 #include "a/bot.h"
 #include "a/draft/draft.h"
 #include "b/bot.h"
 #include "b/draft/draft.h"
-#include "routes.h"
 #include <cambc.h>
 #include <iostream>
-#include <vector>
 
 namespace {
-// Raw engine queries: cambc::map::camp_groups() also loads every camp of every
-// group, about 34k fuel of the first turn.
-char choose_engine() {
-    using namespace cambc::detail;
-    std::uint32_t n = 0;
-    sdk_map_num_camp_groups(&n);
-    std::vector<std::uint32_t> ids(n);
-    sdk_map_camp_groups(ids.data(), n, &n);
-    unsigned gems = 0;
-    for (std::uint32_t i = 0; i < n; ++i) {
-        camp_group_info info{};
-        sdk_map_camp_group(ids[i], &info);
-        gems += info.gems;
-    }
-    const int w = int(cambc::map::width()), h = int(cambc::map::height());
-    char engine = default_engine;
-    for (const auto &r : routes)
-        if (r.width == w && r.height == h && r.groups == int(n) && r.gems == int(gems))
-            engine = r.engine;
-    return engine;
-}
+constexpr int switch_from = 400;
+constexpr int switch_gap = 100;
 
-template <class Bot, class Draft>
-[[noreturn]] void run(Draft draft) {
-    Bot bot;
+bool behind() {
+    const int ours = int(cambc::global_submitted_gems(cambc::team::ally));
+    const int theirs = int(cambc::global_submitted_gems(cambc::team::enemy));
+    return theirs - ours >= switch_gap;
+}
+}  // namespace
+
+int main() {
+    eng_a::Bot first;
+    eng_b::Bot *other = nullptr;
     while (true) {
         const auto start_round = cambc::round_number();
         const bool drafting = cambc::is_draft();
         try {
             if (drafting)
-                draft();
-            else
-                bot.play_turn();
+                eng_a::play_draft();
+            else {
+                if (!other && int(start_round) >= switch_from && behind())
+                    other = new eng_b::Bot();
+                if (other)
+                    other->play_turn();
+                else
+                    first.play_turn();
+            }
         } catch (const std::exception &error) {
             std::cout << "bot error: " << error.what() << std::endl;
         } catch (...) {
@@ -54,12 +45,4 @@ template <class Bot, class Draft>
                       << " type=" << int(cambc::self().champion_name()) << '\n';
         cambc::end_turn();
     }
-}
-}  // namespace
-
-int main() {
-    if (choose_engine() == 'a')
-        run<eng_a::Bot>(eng_a::play_draft);
-    else
-        run<eng_b::Bot>(eng_b::play_draft);
 }
