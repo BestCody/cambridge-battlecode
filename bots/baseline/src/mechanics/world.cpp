@@ -545,7 +545,10 @@ void Bot::initialise() {
         }
         enemy_centre = count ? vec2{sx / count, sy / count} : position;
     }
-    search_job_cost = turn_work() - search_start;
+    {
+        const auto search_end = turn_work(); // An overrun restarts turn_work().
+        search_job_cost = search_end > search_start ? search_end - search_start : 0;
+    }
     own_spawn = bc::map::spawn_region(bc::team::ally);
     own_spawn_tile.load(own_spawn);
     const auto neutral_terrain = bc::map::walls() | bc::map::holes() | bc::map::altars();

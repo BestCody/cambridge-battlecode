@@ -411,7 +411,11 @@ class Bot {
     std::uint64_t turn_start_fuel = 0;
     std::uint64_t search_job_cost = 0; // The last map-wide search's work.
     std::uint64_t camp_count = 0;
-    std::uint64_t turn_work() const { return turn_start_fuel - bc::fuel_remaining(); }
+    std::uint64_t turn_work() const {
+        // Past an overrun the budget is refilled and can exceed the start.
+        const auto left = bc::fuel_remaining();
+        return left < turn_start_fuel ? turn_start_fuel - left : 0;
+    }
     unsigned slot = 0, round = 0;
     int target = -1, last_plan = -10000, last_report = -1000, stalls = 0;
     // The group camp choice planned a spell-range siege of (-1: none), for
