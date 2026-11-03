@@ -427,7 +427,7 @@ void Bot::retreat_to_spawn() {
     // A recall ends the fight report.
     if (safe && walk > recall_turns * stats.base_move_speed) {
         me.recall();
-        publish(TeamMemory::recalling);
+        publish(0);
         recall_tile = position;
         return;
     }
@@ -450,7 +450,7 @@ void Bot::retreat_to_spawn() {
         // Occupancy can block a short walk home. Do not wait on that route when
         // this tile already permits the recall that fulfils the same recovery.
         me.recall();
-        publish(TeamMemory::recalling);
+        publish(0);
         recall_tile = position;
         return;
     }

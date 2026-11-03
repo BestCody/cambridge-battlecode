@@ -72,7 +72,7 @@ void Bot::play_worker_turn() {
         // A capture's holder riding its recall home keeps its claim, so
         // teammates leave the capture to it; a hop keeps its claim too.
         if (!capture_recall && !state.contains(bc::champion_state::teleporting))
-            publish(TeamMemory::recalling);
+            publish(0);
         shared.set_attacked(slot, false);
         chase.mode = Chase::none;
         return;

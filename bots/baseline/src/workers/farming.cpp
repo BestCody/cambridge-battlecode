@@ -155,8 +155,6 @@ int Bot::worker_choose_group(int excluded) {
         m.where = home_centre;
         m.free = code != TeamMemory::unavailable && code != TeamMemory::bank &&
                  TeamMemory::fight_group(code, groups.size()) < 0;
-        if (code == TeamMemory::recalling)
-            m.busy = float(recall_turns);
         if (m.claim >= 0) {
             const auto &h = groups[std::size_t(m.claim)];
             m.where = h.centre;
