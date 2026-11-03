@@ -367,10 +367,16 @@ class TileBits {
     void load(const bc::bitboard &mask) {
         const auto size = bc::bitboard::linear_buffer_size();
         if (!bits)
-            bits.reset(new std::uint8_t[size]);
+            bits.reset(new std::uint8_t[size + 8]); // Room for word()'s last read.
         mask.export_linear_buffer(std::span(bits.get(), size));
     }
     bool operator[](int index) const { return bits[index >> 3] >> (index & 7) & 1; }
+    // Tiles index to index + 56 as bits 0-56 (higher bits are other tiles):
+    // one unaligned load for a run along a row.
+    std::uint64_t word(int index) const {
+        using unaligned = std::uint64_t __attribute__((aligned(1)));
+        return *reinterpret_cast<const unaligned *>(bits.get() + (index >> 3)) >> (index & 7);
+    }
 };
 
 // Diagnostic snapshot of this champion's last chosen state, reported when it

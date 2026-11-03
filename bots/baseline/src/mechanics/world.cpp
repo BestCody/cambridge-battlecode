@@ -1,5 +1,6 @@
 // Observation, cached routes and the shared threat/power estimates.
 #include "../bot.h"
+#include <bit>
 #include <cstring>
 #include <wasm_simd128.h>
 
@@ -459,13 +460,9 @@ void Bot::initialise() {
     // A type's power from its design: its health with its shield, against
     // its damage. The SDK already holds every design; building another
     // reloads it.
-    const auto design_power = [&](bc::champion_type type) {
-        const auto index = static_cast<std::size_t>(type);
-        std::optional<bc::champion> loaded;
-        const auto &immutable =
-            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
-        const auto design = immutable.base_stats();
-        const auto &described = kit_of(immutable, type).spells;
+    // From the design's stats and spells, which the roster below reads too
+    // (each base_stats() is an engine call).
+    const auto power_of = [&](const bc::champion_stats &design, const std::array<Spell, 2> &described) {
         float hp = design.base_health, heal = 0;
         for (const auto &spell : described) {
             if (spell.kind == bc::ability_kind::shield)
@@ -474,6 +471,13 @@ void Bot::initialise() {
                 heal += design.base_focus * spell.modifier / float(spell.cooldown);
         }
         return unit_power(hp, spell_dps(described, design.base_strength, design.base_focus), 0, heal, 1);
+    };
+    const auto design_power = [&](bc::champion_type type) {
+        const auto index = static_cast<std::size_t>(type);
+        std::optional<bc::champion> loaded;
+        const auto &immutable =
+            index < bc::champion_designs.size() ? bc::champion_designs[index] : loaded.emplace(type);
+        return power_of(immutable.base_stats(), kit_of(immutable, type).spells);
     };
     for (std::size_t s = 0; s < roster.size(); ++s) {
         // Draft order is public and persistent. A faster ally may already have
@@ -493,7 +497,7 @@ void Bot::initialise() {
         // The type's kit now, from its design, rather than on first sight:
         // its spells, described once.
         const auto &described = kit_of(immutable, drafted).spells;
-        roster_power.push_back(design_power(drafted));
+        roster_power.push_back(power_of(design, described));
         roster_kits.push_back({described, design.camp_damage_multiplier,
                                camp_dps(described, design.base_strength, design.base_focus, 1) *
                                    design.camp_damage_multiplier,
@@ -707,15 +711,33 @@ void Bot::initialise() {
             int reach;
         };
         std::vector<Striker> strikers;
+        constexpr float never = std::numeric_limits<float>::infinity();
+        const v128_t infinite = wasm_f32x4_splat(never), zero = wasm_f32x4_splat(0),
+                     lane = wasm_i32x4_make(0, 1, 2, 3);
+        // Lane i set for i < k: the lanes of a run of k tiles (all four from 4).
+        const auto lanes_below = [&](int k) { return wasm_i32x4_lt(lane, wasm_i32x4_splat(k)); };
+        const auto spawn_tiles = own_spawn.positions();
+        int spawn_box[4] = {map_width, map_height, -1, -1}; // x0, y0, x1, y1
+        for (const auto p : spawn_tiles) {
+            spawn_box[0] = std::min(spawn_box[0], p.x);
+            spawn_box[1] = std::min(spawn_box[1], p.y);
+            spawn_box[2] = std::max(spawn_box[2], p.x);
+            spawn_box[3] = std::max(spawn_box[3], p.y);
+        }
         for (auto &g : groups) {
             strikers.clear();
+            // Insertion in striker_work()'s order (a stable sort by strength
+            // per health, as it inserts): groups hold a few strikers.
             for (const auto &c : g.camps)
-                if (c.stats.base_strength > 0)
-                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
-                                        int(c.stats.base_attack_range)});
-            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
-                return a.strength * b.health > b.strength * a.health;
-            });
+                if (c.stats.base_strength > 0) {
+                    const Striker s{float(c.stats.base_strength), float(c.stats.base_health), c.position,
+                                    int(c.stats.base_attack_range)};
+                    std::size_t k = strikers.size();
+                    strikers.push_back(s);
+                    for (; k > 0 && s.strength * strikers[k - 1].health > strikers[k - 1].strength * s.health; --k)
+                        strikers[k] = strikers[k - 1];
+                    strikers[k] = s;
+                }
             // The strength reaching each tile from striker t on, built by adding
             // the strikers last to first into one array over the group's box:
             // summing every later striker per tile and striker cost about 2M
@@ -743,13 +765,20 @@ void Bot::initialise() {
             // infinity: strengths added to it leave it so and it is never the
             // least, so the scans need no tile lookups (all exact).
             static std::vector<float> reaching, least_of;
-            reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1));
-            for (int y = y0; y <= y1; ++y)
-                for (int x = x0; x <= x1; ++x) {
-                    const int index = tile_index({x, y});
-                    reaching[std::size_t(y - y0) * std::size_t(box) + std::size_t(x - x0)] =
-                        !open[index] || camp_tile[index] ? std::numeric_limits<float>::infinity() : 0.0f;
-                }
+            // Four floats of padding: the scans below take whole lanes past a
+            // run's end (adding zero, or masked out of the least).
+            reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1) + 4);
+            {
+                // 56 tiles a word: a strikable tile's bit gives 0 (all bits
+                // clear), any other infinity (the exponent bits alone).
+                float *out = reaching.data();
+                for (int y = y0; y <= y1; ++y)
+                    for (int i = 0, base = tile_index({x0, y}); i < box; i += 56) {
+                        const std::uint64_t strikable = open.word(base + i) & ~camp_tile.word(base + i);
+                        for (int j = 0, m = std::min(56, box - i); j < m; ++j)
+                            *out++ = std::bit_cast<float>((std::uint32_t((strikable >> j) & 1) - 1) & 0x7f800000u);
+                    }
+            }
             least_of.resize(n);
             float later = 0; // Strength from striker t on.
             for (std::size_t t = n; t-- > 0;) {
@@ -757,30 +786,39 @@ void Bot::initialise() {
                 later += s.strength;
                 const int ax = std::max(x0, s.position.x - s.reach), bx = std::min(x1, s.position.x + s.reach);
                 const int along = bx - ax + 1;
+                const v128_t strength = wasm_f32x4_splat(s.strength);
                 for (int y = std::max(y0, s.position.y - s.reach); y <= std::min(y1, s.position.y + s.reach); ++y) {
                     float *row = reaching.data() + std::size_t(y - y0) * std::size_t(box) + std::size_t(ax - x0);
-                    for (int i = 0; i < along; ++i)
-                        row[i] += s.strength;
+                    // Lanes past the run add zero, which leaves every value here as it is.
+                    for (int i = 0; i < along; i += 4)
+                        wasm_v128_store(row + i, wasm_f32x4_add(wasm_v128_load(row + i),
+                                                                wasm_v128_and(strength, lanes_below(along - i))));
                 }
                 float least = later;
                 // Strengths are never negative: a tile no striker reaches ends
                 // the search (a ranged champion's often comes first).
                 const int cx = std::max(0, s.position.x - ours), dx = std::min(map_width - 1, s.position.x + ours);
                 const int span = dx - cx + 1;
-                for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours) && least > 0; ++y) {
-                    const std::size_t at = std::size_t(y - y0) * std::size_t(box) + std::size_t(cx - x0);
-                    const float *hit = reaching.data() + at;
-                    for (int i = 0; i < span; ++i)
-                        least = std::min(least, hit[i]);
+                const int cy = std::max(0, s.position.y - ours), dy = std::min(map_height - 1, s.position.y + ours);
+                // The least so far in every lane, then folded once.
+                v128_t low = wasm_f32x4_splat(least);
+                for (int y = cy; y <= dy && !wasm_v128_any_true(wasm_f32x4_le(low, zero)); ++y) {
+                    const float *hit =
+                        reaching.data() + std::size_t(y - y0) * std::size_t(box) + std::size_t(cx - x0);
+                    for (int i = 0; i < span; i += 4)
+                        low = wasm_f32x4_min(
+                            low, wasm_v128_bitselect(wasm_v128_load(hit + i), infinite, lanes_below(span - i)));
                 }
+                least = std::min(std::min(wasm_f32x4_extract_lane(low, 0), wasm_f32x4_extract_lane(low, 1)),
+                                 std::min(wasm_f32x4_extract_lane(low, 2), wasm_f32x4_extract_lane(low, 3)));
                 least_of[t] = least;
                 // One of our spawn tiles within our range of the striker
-                // (CampGroup::spawn_strike; a flag only, the shares stay as measured).
-                for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours); ++y)
-                    for (int x = cx; x <= dx; ++x)
-                        if (own_spawn_tile[std::size_t(y) * std::size_t(map_width) + std::size_t(x)]) {
+                // (CampGroup::spawn_strike; a flag only, the shares stay as
+                // measured): the spawn's few tiles, past a test on their bounds.
+                if (cx <= spawn_box[2] && dx >= spawn_box[0] && cy <= spawn_box[3] && dy >= spawn_box[1])
+                    for (const auto p : spawn_tiles)
+                        if (p.x >= cx && p.x <= dx && p.y >= cy && p.y <= dy) {
                             ++spawn_struck;
-                            y = map_height;
                             break;
                         }
             }
