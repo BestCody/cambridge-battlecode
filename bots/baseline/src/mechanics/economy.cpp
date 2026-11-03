@@ -149,14 +149,32 @@ Item next_item(bc::champion_type type, const Bought &bought) {
     for (unsigned i = 0; i < build.size; ++i)
         if (bought[static_cast<unsigned>(build.steps[i].item)] < build.steps[i].count)
             return build.steps[i].item;
-    return build.repeat;
+    // The repeat (strategy.h alternate_health): Ryth's is Bruiser/Health
+    // (her passive turns bonus health into strength), and every repeat
+    // alternates whole emblems with Bruiser/Health.
+    Item repeat = build.repeat;
+    if (policy::ryth_health_repeat && type == bc::champion_type::ryth)
+        repeat = Item::bruiser_shard_of_health;
+    if (policy::alternate_health && repeat != Item::bruiser_shard_of_health) {
+        const Item health = Item::bruiser_shard_of_health;
+        const unsigned r = bought[static_cast<unsigned>(repeat)], h = bought[static_cast<unsigned>(health)];
+        if (r % 5 != 0) // An emblem begun is finished first.
+            return repeat;
+        if (h % 5 != 0)
+            return health;
+        // Health emblems up to health_repeat_ratio per main-stat one.
+        return float(h / 5) < policy::health_repeat_ratio * float(r / 5 + 1) - 0.5f ? health : repeat;
+    }
+    return repeat;
 }
 unsigned step_left(bc::champion_type type, const Bought &bought, Item item) {
     const auto build = build_for(type);
     for (unsigned i = 0; i < build.size; ++i)
         if (build.steps[i].item == item && bought[static_cast<unsigned>(item)] < build.steps[i].count)
             return build.steps[i].count - bought[static_cast<unsigned>(item)];
-    return ~0u; // The repeating item: as many as the gold allows.
+    // The repeating item: as many as the gold allows, or up to the emblem's
+    // end when the repeats alternate (next_item() picks the next).
+    return policy::alternate_health ? 5 - bought[static_cast<unsigned>(item)] % 5 : ~0u;
 }
 } // namespace
 

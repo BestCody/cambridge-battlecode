@@ -216,6 +216,18 @@ inline constexpr float spawn_siege_margin = 1.5f;
 // team on it from round 1, as 剑桥夜爬者 played it (first take round 415;
 // ours priced by health and hazard began at round 560 and took it at 835).
 inline constexpr float spawn_siege_score = 10.0f;
+// Builds (economy.cpp next_item()): the repeat emblem alternates whole
+// emblems with Bruiser/Health, and Ryth's repeat is Bruiser/Health instead
+// of Monster/Strength. The top teams' carries are health stacks (Mite:
+// Bruiser/Health the most-bought emblem of every champion; Nanyang's Vesper
+// at 3,373 health soloing harvest's two-golem geode; Ding's Marcella at
+// 6,900 on contest). Neutral against the stacker and test-bot locally
+// (92/142 against 94); judged by a practice series (v121).
+inline constexpr bool alternate_health = true;
+inline constexpr bool ryth_health_repeat = true;
+// Bruiser/Health emblems per main-stat Bruiser among the repeats (1: strict
+// alternation; 2: about Mite's mix).
+inline constexpr float health_repeat_ratio = 1.0f;
 // Pocket groups (Bot::prepare_pockets()): a group no walk from spawn reaches,
 // inside a ring of holes a dash crosses (01big_world's 21-gem cluster triples,
 // the-pond's four cluster groups, islands, fracture, membrane). Intercontinental
