@@ -1,4 +1,5 @@
 import sys, os, json, collections
+import sys as _s; _s.stdout.reconfigure(encoding="utf-8", errors="replace")
 # usage: goldsrc.py DIR... -> per side: camp-clear gold and kills per 300 rounds, earnedGold at 300/600/900/1200/2000, gems banked
 def rle(runs):
     out = []

@@ -1,4 +1,5 @@
 import sys, os, json, collections, subprocess
+import sys as _s; _s.stdout.reconfigure(encoding="utf-8", errors="replace")
 # usage: gamesum.py DIR... -> teams (from match.json, fetched once), result, gems banked at 300/600/900/1200/1500/2000, deaths per side
 def rle(runs):
     out = []

@@ -1,4 +1,5 @@
 import sys, os, json, collections
+import sys as _s; _s.stdout.reconfigure(encoding="utf-8", errors="replace")
 # usage: capseq.py DIR SIDE UNTIL -> every camp clear by SIDE until round UNTIL: round, group (gems/gold), champion; then per-champion totals
 d = sys.argv[1]; side = 'team' + sys.argv[2]; until = int(sys.argv[3])
 s = json.load(open(os.path.join(d, 'summary.json'), encoding='utf-8'))
