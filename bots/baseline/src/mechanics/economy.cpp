@@ -232,6 +232,10 @@ void Bot::ward_ahead(vec2 goal) {
     float value = -1e20f;
     // Placement tiles not blocked or holding an allied ward, built in place.
     auto &placements = step_tiles;
+    // A turn resumed after a fuel overrun may find us dead: no placement
+    // tiles around (-1,-1).
+    if (!me.is_alive())
+        throw ChampionGone{};
     me.ward_placement_tiles_into(placements);
     bc::vision::ward_tiles_into(bc::team::ally, occupancy);
     occupancy |= blocked;
