@@ -363,6 +363,24 @@ Tooling: `evaluate.py`'s config patcher (`NAME:const=value`) rewrites one `inlin
 **v112 against v110 on a wide block in the same hour (02:10-02:40; ten opponents, five maps each, `opponents_wide.txt`, `results_v112w.txt`, `results_v110w.txt`; 45 games in common, the dromedaries group fell to the quota on v112): v112 24, v110 25.** v110 won tangle and contours (0xDEADBEEF), the_pond (Ding), swirl and tangle (剑桥夜爬者); v112 won famine and honeycomb (Tokenmaxxing), oasis (Velvet), pilgrimage (剑桥夜爬者). Level overall, but tangle, contours and the_pond flipped from v110 to v112 in this run and in the shared-set run alike (`results_v112a.txt` against `results_v110a2.txt`), so that is a repeatable regression on three farming maps with no monolith, worth a look at what v112 changed there (the siege pricing applies to any group of 150 gems or more; the ally-health memory and the neighbour rule apply only inside it). The recommendation stays v112 on the fortress and monolith gains; the live version is v112.
 Tangle checked (`analysis/pg10/w112_tangle`, `w110_tangle`, both against 0xDEADBEEF in seat B): the 284-gem group is four golems and twenty clusters, strength 480, so the siege pricing excludes it and v112 prices tangle exactly as v110 does; the games still differ from round 1 (v112: 7,883 gold and 757 banked; v110: 7,149 and 1,023; fuel overruns 79 against 63, both starting at round 1). The repeatable flips on tangle, contours and the_pond are fuel-driven re-rolls of a deterministic game, not a strategy change: v112's few extra instructions per choice shift which turns freeze. That sensitivity (the first turn overruns on most maps, and every later overrun freezes a champion for a round) is a cost every version pays and a lead in itself: a cheaper first turn and cheaper camp choice would make every result steadier.
 
+## Today's judgements at a glance (2026-11-03, 07:40-12:40Z)
+
+| Version or knob | What it changes | Judge | Result | Verdict |
+| --- | --- | --- | --- | --- |
+| v119 pocket entries | dash into hole-ringed gem groups | pocket block, same hour as v112 | 11/20 against 6/20; wide blocks 26-29/50 | **live** |
+| v120 chains of dashes | stepping-stone chains (the pond) | pocket block, same hour | 7/20 against v119's 11/20 | off (`pocket_max_links` 1) |
+| v121 health builds | repeats alternate with Bruiser/Health | wide block, same hour | 22/50 against 26/50 | off |
+| v122 twin pick | Cassi and Issac, six bodies | two wide blocks | 46/100 against 56/100 | off (`twin_rosters`) |
+| v123 bank_min_bag 40 | voluntary bank trips need 40 gems | wide block | 25/50 against 28/50; bags lost to hunters | off |
+| death-site penalty | groups near recent deaths priced down | local, eight fight maps | 26/48 against 27/48, deaths 920 against 902 | off |
+| siege_gems 90 | geodes priced as sieges | local, geode maps | 28/60 against 36/60 | off |
+| early_gold_value 0.2 | gold worth less | local | 18/36 against 24/36; gems a clear unchanged | off |
+| first turn fits its fuel | reach measured in the background | local, 288 games | 82/144 against 88/144 | off; the path-search half kept as v124 (unsubmitted) |
+| planned pairs | followers take the leader's target | local, alone-death share | 46% against 45% alone; 17/32 against 23/32 | off |
+| stay_region | no recall home while a group nearby respawns soon | local, mechanism | returns 34% against 36%, trips 49 against 48 | off |
+| team_clear_share 0.87 | faster assumed clears | local, gems a clear | 16.3 against 15.0; 33/64 against 39/64 | off |
+| hard_camp_health 2400 | elk groups as party targets | local | identical games | off |
+
 ## Pocket groups: v119 (2026-11-03, 07:45-08:50Z; the top teams' replays against our capture sequences)
 
 **Method (`analysis/pg10/capseq.py DIR SIDE UNTIL`, `goldsrc.py`, `gamesum.py`):** on our worst maps (the practice record: contest 0-9, big_world 1-10, fragment 2-9, guardians, geodes, vault 0-5), fetch the top two teams' ranked games (`cambc matches list --team Mite --kind ranked --limit 100`, paged with the cursor) and compare their capture sequence with ours in the same seat. Contest: Intercontinental Fish wins the centre fights (2-10 deaths to 26-32) and takes the monoliths after; Mite earns 25,000 gold there from the fourteen gold groups and 7-9 kills per 300 rounds (Vesper 51 Bruiser emblems). A fight-class map; no structural rule found. Big_world: no deaths, a farming race we lose by 200-500 gems, and the sequences differ on one thing: Intercontinental Fish captures the two 21-gem cluster triples (g2, g3) four times by round 600 and we never do.
