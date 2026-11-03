@@ -1861,12 +1861,24 @@ bool Bot::visit_clears(const CampGroup &g) const {
     return damage + visit_cost(g) < health;
 }
 
+bool Bot::mate_alive(unsigned s) const {
+    // Nobody dies or respawns during our turn.
+    if (alive_round != int(round)) {
+        alive_round = int(round);
+        alive_slots = 0;
+        for (std::size_t k = 0; k < roster.size() && k < 64; ++k)
+            if (roster[k].is_alive())
+                alive_slots |= std::uint64_t{1} << k;
+    }
+    return s < 64 && (alive_slots >> s & 1);
+}
+
 int Bot::mate_claim(unsigned s) const {
     // A fight a teammate reports near a group, or the claim a dead one left,
     // is no claim: cluster runs, capture holders and hard groups' partners
     // read them as one where camp choice did not.
     const unsigned code = shared.get(s);
-    if (s == slot || s >= roster.size() || !roster[s].is_alive())
+    if (s == slot || s >= roster.size() || !mate_alive(s))
         return -1;
     return code >= 1 && code <= groups.size() ? int(code) - 1 : shared.camp_claim(code);
 }
