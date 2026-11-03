@@ -223,8 +223,8 @@ inline constexpr float spawn_siege_score = 10.0f;
 // at 3,373 health soloing harvest's two-golem geode; Ding's Marcella at
 // 6,900 on contest). Neutral against the stacker and test-bot locally
 // (92/142 against 94); judged by a practice series (v121).
-inline constexpr bool alternate_health = true;
-inline constexpr bool ryth_health_repeat = true;
+inline constexpr bool alternate_health = false; // true: v121, 22/50 against v119 26/50 on the wide block, same hour (five flips to losses, one to a win). Off.
+inline constexpr bool ryth_health_repeat = false;
 // Bruiser/Health emblems per main-stat Bruiser among the repeats (1: strict
 // alternation; 2: about Mite's mix).
 inline constexpr float health_repeat_ratio = 1.0f;
