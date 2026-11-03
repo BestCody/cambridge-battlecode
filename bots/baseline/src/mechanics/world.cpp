@@ -1079,8 +1079,9 @@ void Bot::measure_paths(int level) {
     // this is reused until we move; dynamic occupancy is routed locally.
     const int home_here = home_field.get(position);
     const bool connected = home_here != bc::distance_field::unreachable;
-    if (origin_position != position) {
+    if (origin_position != position || origin_walks != walks_revision) {
         origin_position = position;
+        origin_walks = walks_revision;
         path_search = 0;
         group_path.assign(groups.size(), bc::distance_field::unreachable);
         group_bounded.assign(groups.size(), 1);
@@ -2513,9 +2514,8 @@ void Bot::prepare_pockets() {
         g.entry_steps = best_steps;
         g.entry_region = walk_region_at(best_in.x, best_in.y);
         g.home_distance = best_walk + 1;
-        if (altar_field_ready)
-            if (const int altar = altar_field.get(best_out); altar != far)
-                g.altar_distance = altar + 1;
+        if (const int altar = altar_walk().get(best_out); altar != far)
+            g.altar_distance = altar + 1;
         if (hops_ready && i < group_hops.size())
             group_hops[i] = far; // The dash is the way in.
         pocket_groups.push_back(int(i));
@@ -2530,6 +2530,7 @@ void Bot::prepare_pockets() {
     for (std::size_t j = 0; j < groups.size(); ++j)
         if (walk_of[j] && groups[j].entry_steps == 0)
             pocket_patch(j);
+    ++walks_revision;
 }
 
 void Bot::pocket_field_step() {
@@ -2546,6 +2547,7 @@ void Bot::pocket_field_step() {
         const auto tiles = std::size_t(map_width) * std::size_t(map_height);
         walk_field.export_linear_buffer(std::span(g.walk_tiles.get(), tiles));
         pocket_patch(std::size_t(index));
+        ++walks_revision;
         return;
     }
 }
