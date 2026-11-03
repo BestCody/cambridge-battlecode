@@ -231,7 +231,10 @@ inline constexpr int pocket_rounds = 3;
 // within pocket_chain_reach tiles of the group's centre, pocket_tiles_per_step
 // take-off tiles a turn, at most pocket_region_tiles take-offs per region.
 inline constexpr int pocket_link_rounds = 9;
-inline constexpr int pocket_max_links = 4;
+// 1: single dashes only (v119). Chains (4, v120) won the pond 12/12 locally
+// but lost the pocket practice block 7/20 against v119's 11/20 (the pond 2/4
+// against 3/4): off until a better judge reads them.
+inline constexpr int pocket_max_links = 1;
 inline constexpr int pocket_chain_reach = 16;
 inline constexpr int pocket_tiles_per_step = 12;
 inline constexpr std::size_t pocket_region_tiles = 48;
