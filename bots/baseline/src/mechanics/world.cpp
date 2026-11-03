@@ -292,15 +292,17 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
                   : state.contains(bc::champion_state::submitting_gems) ||
                         state.contains(bc::champion_state::teleporting)) {
         std::int32_t left = 0;
-        bc::detail::check(bc::detail::sdk_champion_channel_time(handle, &left));
+        // After a fuel overrun the engine plays on: the channel can end
+        // between the state read above and this one, which then refuses.
+        const bool live = bc::detail::sdk_champion_channel_time(handle, &left) == 0;
         if (recalling) {
             recall_left = std::int8_t(left);
             const bool home = items[static_cast<unsigned>(bc::item_type::home_emblem_of_strength)] ||
                               items[static_cast<unsigned>(bc::item_type::home_emblem_of_focus)] ||
                               items[static_cast<unsigned>(bc::item_type::home_emblem_of_health)];
-            channel = !fresh_recall(left, home);
+            channel = live && !fresh_recall(left, home);
         } else
-            channel = left > 0;
+            channel = live && left > 0;
     }
     read_buffs(*this);
     damage_rate = strength;
