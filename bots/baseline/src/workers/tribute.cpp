@@ -228,6 +228,13 @@ void Bot::place_lock() {
         const vec2 altar = altars[i];
         if (distance(position, altar) > policy::lock_range || !lock_wanted(i))
             continue;
+        // Placing cancels every tribute channel at the altar, a teammate's too
+        // (34 of the 35 we placed in 140 games forced a restart, 132 turns).
+        bool channelling = false;
+        for (const auto &a : allies)
+            channelling = channelling || (a.tributing && distance(a.position, altar) <= int(rules::settings().submit_gems_range));
+        if (channelling)
+            continue;
         std::int32_t placed = 0;
         // The engine's own call: a refused placement returns a code instead of
         // ending the turn. Refused, the altar is locked out of view.
