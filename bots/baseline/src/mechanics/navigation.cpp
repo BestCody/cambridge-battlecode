@@ -1196,8 +1196,15 @@ bool Bot::cast_dash_to(vec2 to) {
         const auto design = describe(a);
         if ((walked && design.exclusive) || distance(position, to) > int(design.range) || blocked.is_set(to))
             return false;
-        if (!a.use(to))
+        if (!a.use(to)) {
+            // Refused for an occupant the view did not show (an ally in a
+            // bush): it is known now, so a second try this turn would be an
+            // engine error that throws away the rest of the turn.
+            blocked |= bc::vision::champion_tiles();
+            blocked.set(to);
+            blocked.set(position, false);
             return false;
+        }
         refresh_self();
         if (design.exclusive)
             walked = true;

@@ -3,7 +3,14 @@
 #include <cstring>
 #include <wasm_simd128.h>
 
-using unaligned_u64 = std::uint64_t __attribute__((aligned(1)));
+// Eight bytes of a packed bitboard from any byte. memcpy, not a cast: an
+// aligned(1) alias-declaration keeps uint64_t's 8-byte alignment, so the load
+// was misaligned (UB), and reading the byte buffer as uint64_t broke aliasing.
+static std::uint64_t load_u64(const std::uint8_t *p) {
+    std::uint64_t word;
+    std::memcpy(&word, p, sizeof word);
+    return word;
+}
 
 CampGroup::CampGroup(bc::map::camp_group g, std::span<CampMemory> members)
     : unit(std::move(g)), camps(members) {
@@ -870,7 +877,7 @@ bool Bot::region_step() {
     for (int t = base; t < end;) {
         // Tiles t to t + 55 as bits 0-55 (the export is packed row-major),
         // one unaligned load (a memcpy of 8 bytes cost 17 fuel).
-        std::uint64_t word = *reinterpret_cast<const unaligned_u64 *>(bits + (t >> 3));
+        std::uint64_t word = load_u64(bits + (t >> 3));
         const int n = std::min(56, end - t);
         const std::uint64_t open = (word >> (t & 7)) & ((std::uint64_t{1} << n) - 1);
         if (!open) {
@@ -880,7 +887,7 @@ bool Bot::region_step() {
         t += std::countr_zero(open);
         const int start = t - base;
         for (;;) {
-            word = *reinterpret_cast<const unaligned_u64 *>(bits + (t >> 3));
+            word = load_u64(bits + (t >> 3));
             const int m = std::min(56, end - t);
             const std::uint64_t closed = ~(word >> (t & 7)) & ((std::uint64_t{1} << m) - 1);
             if (closed) {
