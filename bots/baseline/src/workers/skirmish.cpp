@@ -142,7 +142,7 @@ bool Bot::worker_skirmish() {
         // Twins three times; the gate on every fight fed 20 deaths. The twin
         // pick's bodies (twin_cautious) always test for a teammate near.
         bool alone = true;
-        if (harvest_gate_alone || !harvesting())
+        if (harvesting() ? harvest_gate_alone : policy::twin_gate_alone)
             for (const auto &a : allies)
                 if (!a.channel && a.health >= a.max_health * policy::retreat_health &&
                     distance(position, a.position) <= policy::harvest_alone_range)

@@ -257,6 +257,10 @@ inline constexpr float death_site_penalty = 1.0f; // 0.5: 26/48 against 27/48 on
 // harvest_alone_range, and no pursuit (the harvest species' gate). v122's
 // losses: Cassi and Issac dead together three and five times a game.
 inline constexpr bool twin_cautious = true;
+// The twin's gate only when no healthy teammate is near (true, v122's local
+// check: the pair still died 18 times to champions in six games), or on
+// every fight that is not a kill (false: they flee unless the duel is won).
+inline constexpr bool twin_gate_alone = true; // false (flee unless the duel is won): 0/3 locally, the_farm 498 gems, the pair still dead 2-3 times a game
 // The first turn (200k fuel) cost about 290k on tangle, big_world and corners:
 // every champion froze for rounds 1 and 2 (FUEL_OVERRUN started=1 ended=3).
 // 72-79k of it was each group's reach_share and spawn_strike measurement and
