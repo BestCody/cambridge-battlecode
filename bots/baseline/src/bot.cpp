@@ -19,7 +19,7 @@ void Bot::take_turn() {
         we_first = !contested_altar && team_a == (round % 2 == 1); // Team A starts odd rounds.
     }
     // Per-turn flags: a turn cut short (ChampionGone) leaves them set.
-    walked = placed = false;
+    walked = placed = walking_to_hop = walking_in_pocket = false;
     if (!initialised) {
         // The first turn only sets up: on a large map initialisation takes
         // most of even this turn's doubled fuel. Champions shop and measure
