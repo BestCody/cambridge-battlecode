@@ -1,0 +1,30 @@
+  00corners              finished  loss  gems           b03c040b-132a-4434-b8ce-d2aa876e929b
+  02geodes               finished  loss  gems           43319bfc-1146-4601-8315-8cbebd8a7b04
+  01the_farm             finished  loss  gems           23a79b37-a28d-4ae4-a05a-6f177502ded0
+  00elkring              finished  win   gems           5fd71a53-d7e8-404a-a1ab-cf195e71421a
+  00rows                 finished  win   gems           606485bd-fecf-4cbf-a8eb-40027da62e2a
+77c57fe9 estrogen :3 2/5
+  03colosseum            finished  loss  gems           f1f1903c-e8f8-4a14-9fbc-dacda4abe2f5
+  00anvil                finished  win   gems           d63868c2-804b-4e93-b08e-ff5b661b47eb
+  02famine               finished  win   gems           2f1996d7-87bf-4f3e-9ba2-18e85f0e325b
+  00packs                finished  win   gems           95e93324-8bf3-4970-bd23-30d244118837
+  02tangle               finished  loss  gems           b5f5d87d-207f-49f8-b070-2dea6728efcd
+a9a92991 Ding 3/5
+  00expanse              finished  loss  gems           be64d3b3-298a-4ddb-90a8-0581cfeb13a5
+  00ambush               finished  loss  gems           544257e1-3eb6-461d-ab80-a52fab0a0596
+  02famine               finished  loss  gems           680b114e-bc98-4680-8979-a67cf584641d
+  00galaxy               finished  win   gems           df8aefa7-7d0d-45d4-9c70-e36f9f5f53fc
+  01hooks                finished  win   gems           650bcd58-7d73-4cbb-a233-99ee01addb1d
+4e179e16 Velvet Tributers 2/5
+  00collision            finished  win   gems           38dfe434-b60c-4565-ab1c-7f374528e087
+  adgato_gemcombat1      finished  win   gems           4ce6a13d-3e0f-4eec-bb7b-c7722bc939ff
+  01hooks                finished  win   gems           62fc6e52-21cd-449a-9fcc-fe589ad96c48
+  00corners              finished  win   gems           41b2a1ca-1b55-461d-971b-5466b7f7235d
+  02geodes               finished  loss  gems           80d0c870-46f1-4f07-82f8-2526b39783d1
+b420484a Tokenmaxxing 4/5
+  adgato_gemcombat3      finished  loss  gems           52601a7d-cf4a-44e2-977a-867579d7116f
+  00corners              finished  loss  gems           4a50e02d-ce78-4155-a98c-30b7c53b4a90
+  00gemfight             finished  loss  gems           ce9eb698-a693-4012-b3d0-14b049148678
+  01elk_arena            finished  win   gems           94f6bffb-66ef-4677-98ca-7a962191ad2b
+  00vault                finished  win   gems           3773bbb6-1db3-43e9-a1f4-e3456a31c1ba
+e64d9e0d naviepstokes 2/5

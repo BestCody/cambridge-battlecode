@@ -1,0 +1,5 @@
+  01corridors            finished  loss  gems           f16fb607-d222-47c1-aa04-c5dfc59492cf
+  00vault                finished  loss  gems           4fb50194-5e64-420c-9565-8f64c8b78985
+  02geodes               finished  loss  gems           0452eb3f-347d-49ce-ad8d-021b28da5aa9
+  02the_pack             finished  loss  gems           e29c1ba6-f087-4b75-a8a7-1820cf5fada7
+  00monolith             finished  loss  gems           d64c27e9-71da-43b6-9a0b-018fa4cd82c3

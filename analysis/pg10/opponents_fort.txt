@@ -1,0 +1,5 @@
+TOKEN a1e82708-dfd3-4609-8b9a-69f652d12185 03homonoliths,00contest,02cuts,02uncharted_lands,01starvation a,b,a,b,a
+DING 626450a6-dab1-46a3-b4f4-0df7867e275f 03homonoliths,00contest,02cuts,02uncharted_lands,01starvation b,a,b,a,b
+JUP f3a877ff-d808-4141-ac02-c370b662ed81 03homonoliths,00contest,02cuts,02uncharted_lands,01starvation a,b,a,b,a
+ESTRO e8aea141-4c4e-4841-998d-ad002227398e 03homonoliths,00contest,02cuts,02uncharted_lands,01starvation b,a,b,a,b
+JIANQ 958beb45-6e30-4c1d-a250-be7052ee7566 03homonoliths,00contest,02cuts,02uncharted_lands,01starvation a,b,a,b,a

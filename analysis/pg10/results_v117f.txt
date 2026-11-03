@@ -1,0 +1,30 @@
+  03homonoliths          finished  win   a887258a-736b-4d57-ba86-169811475c95
+  00contest              finished  loss  e3644efd-17b2-45e2-adb3-efe0c479c1af
+  02cuts                 finished  win   5f7c639d-ffa7-4bfa-9cf3-e28aa031599f
+  02uncharted_lands      finished  win   8e233f58-c2be-464b-b816-d56cceb1831d
+  01starvation           finished  win   52fc61d6-b6b3-4803-86da-7bf2db2ca361
+f445298b TOKEN 4/5 DONE
+  03homonoliths          finished  win   f2e9167f-0e57-4c2e-b9b6-bb725777417f
+  00contest              finished  win   99b43777-2b84-405e-829b-077c5e92b7b4
+  02cuts                 finished  win   6c4d034c-d333-4ddb-8fc8-aea0f57a143c
+  02uncharted_lands      finished  loss  60e18f5c-115e-4801-a4a1-08c245be25ea
+  01starvation           finished  win   9e4a9f61-c73c-428c-a08f-11b60e372fb7
+c61a703f DING 4/5 DONE
+  03homonoliths          finished  win   13111aae-4058-49e3-9c39-98730f30af75
+  00contest              finished  loss  c47c219e-21de-4213-9def-483bdc7e6c58
+  02cuts                 finished  loss  1949355b-2677-4071-bfed-98ea376f3662
+  02uncharted_lands      finished  loss  3766a2f4-837b-40cb-bb65-d4658321b0b9
+  01starvation           finished  win   62edc9f1-4b8e-4824-8399-e4ac5a301c6b
+419e3692 JUP 2/5 DONE
+  03homonoliths          finished  win   af980d79-ef6b-4197-a3fa-bf4305c8e690
+  00contest              finished  loss  28b681b7-a01f-4b68-a324-5e1150c3534d
+  02cuts                 finished  win   c7e22ffe-121f-4dc2-8c17-2b2efc23ce79
+  02uncharted_lands      finished  win   06e963d7-390c-4281-8cd5-d7818c652a93
+  01starvation           finished  loss  cf084742-cb91-47fe-a4ca-505bbfac0e30
+4b2b1c51 ESTRO 3/5 DONE
+  03homonoliths          finished  loss  40bc5e4b-a36b-4271-b5c7-f58473d636a4
+  00contest              finished  loss  e2d3566f-9d8d-4e1a-85b8-34562b70e613
+  02cuts                 finished  win   1bc31e67-bde2-4bdb-84c1-898af31b2dc5
+  02uncharted_lands      finished  win   c594722f-bf03-4c90-a1a8-f2b54ce0b4b6
+  01starvation           finished  loss  32923948-bf4d-4a52-82d2-61479a0ac212
+aaaed583 JIANQ 2/5 DONE

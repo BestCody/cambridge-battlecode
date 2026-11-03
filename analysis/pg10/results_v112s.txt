@@ -1,0 +1,6 @@
+  02famine               finished  win   a3b28df3-efe7-4089-9577-33f4285fb1df
+  01big_world            finished  win   beb86b82-b671-456e-b173-5fa14ffb1a5c
+  01the_farm             finished  loss  5aa3f551-19c6-41b4-925d-f153f12abd9b
+  00rows                 finished  win   0be8302b-45a7-4341-bd73-3e9bf09aa6d7
+  02fields               finished  win   4a4a549f-0393-431a-9e24-177e8d6b1c82
+77ad710a JUP 4/5 DONE
