@@ -711,6 +711,9 @@ class Bot {
     std::vector<int> group_path;
     std::vector<std::uint8_t> group_bounded;
     int path_search = 0;
+    // Counts walk fields changed in place (pockets); origin_walks is its value
+    // when group_path was made.
+    int walks_revision = 0, origin_walks = 0;
     // Camps of spawn-reachable groups still without a walk field: the
     // destinations of the search from here. Its distances, exported.
     bc::bitboard unwalked_camps{bc::uninitialized};
