@@ -19,7 +19,12 @@ bool Bot::move_step(vec2 tile) {
     }
     if (moved) {
         walked = true;
-        position = me.position();
+        // A turn that ran out of fuel resumes in a later round, perhaps dead
+        // (position -1,-1): every later engine call with it would throw.
+        const auto now = me.position();
+        if (now.x < 0 || now.y < 0)
+            throw ChampionGone{};
+        position = now;
         refresh_blocked();
         return true;
     }
