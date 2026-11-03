@@ -1159,33 +1159,41 @@ int Bot::dash_steps() const {
 
 int Bot::pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group) {
     const std::uint16_t here = walk_region_at(position.x, position.y);
-    // Inside a pocket, with the goals outside it (a goal inside would have a
-    // walk): to the landing, then the dash out to the entry.
+    // Inward: the goals in a pocket (its landing or its camps' tiles), and we
+    // stand in the region one of its chain's dashes takes off from: to that
+    // tile, walking (a travel dash on the way would be cooling on arrival),
+    // then the dash.
+    if (dash_steps() > 0)
+        for (const int i : pocket_groups) {
+            const auto &g = groups[std::size_t(i)];
+            if (g.entry_steps > dash_steps())
+                continue;
+            bool wanted = goals.is_set(g.entry_in);
+            for (const vec2 t : g.inside)
+                wanted = wanted || goals.is_set(t);
+            if (!wanted)
+                continue;
+            for (const auto &link : g.chain) {
+                if (walk_region_at(link.out.x, link.out.y) != here)
+                    continue;
+                if (position != link.out)
+                    return move_to(around(link.out, 0), link.out, urgent, false, engaged_group) ? 1 : 0;
+                return cast_dash_to(link.in) ? 1 : 0;
+            }
+        }
+    // Outward: in a pocket or on a stone of its chain, with the goals
+    // elsewhere (a goal in our region would have a walk): to the landing of
+    // the dash that reached this region, then the dash back.
     for (const int i : pocket_groups) {
         const auto &g = groups[std::size_t(i)];
-        if (g.entry_region != here)
-            continue;
-        if (position != g.entry_in)
-            return move_to(around(g.entry_in, 0), g.entry_in, urgent, false, engaged_group) ? 1 : 0;
-        return cast_dash_to(g.entry_out) ? 1 : 0;
-    }
-    // Outside: the goals in a pocket (its landing or its camps' tiles): to
-    // the entry, walking (a travel dash on the way would be cooling on
-    // arrival), then the dash in.
-    if (dash_steps() <= 0)
-        return -1;
-    for (const int i : pocket_groups) {
-        const auto &g = groups[std::size_t(i)];
-        if (g.entry_steps > dash_steps())
-            continue;
-        bool wanted = goals.is_set(g.entry_in);
-        for (const vec2 t : g.inside)
-            wanted = wanted || goals.is_set(t);
-        if (!wanted)
-            continue;
-        if (position != g.entry_out)
-            return move_to(around(g.entry_out, 0), g.entry_out, urgent, false, engaged_group) ? 1 : 0;
-        return cast_dash_to(g.entry_in) ? 1 : 0;
+        for (std::size_t k = g.chain.size(); k-- > 0;) {
+            const auto &link = g.chain[k];
+            if (walk_region_at(link.in.x, link.in.y) != here)
+                continue;
+            if (position != link.in)
+                return move_to(around(link.in, 0), link.in, urgent, false, engaged_group) ? 1 : 0;
+            return cast_dash_to(link.out) ? 1 : 0;
+        }
     }
     return -1;
 }

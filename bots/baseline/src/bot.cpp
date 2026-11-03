@@ -75,7 +75,9 @@ void Bot::take_turn() {
             else if (!pockets_ready && regions_ready)
                 prepare_pockets();
             else if (pockets_ready && pocket_cursor < pocket_groups.size())
-                pocket_field_step();
+                pocket_field_step(); // A found pocket's field first: the choice reads it.
+            else if (pockets_ready && !pocket_search_done)
+                pocket_search_step();
             else
                 prepare_sieges();
         }

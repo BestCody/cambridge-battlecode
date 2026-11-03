@@ -36,6 +36,11 @@ struct CampMemory {
     explicit CampMemory(const bc::camp &c)
         : unit(c), position(c.spawn_position()), stats(design(c)), health(stats.base_health) {}
 };
+// One dash of a pocket chain: from `out` (nearer spawn) to `in`.
+struct PocketLink {
+    vec2 out{-1, -1}, in{-1, -1};
+};
+
 struct CampGroup {
     // The group's identity and rewards (made without its camp list, which
     // camps holds).
@@ -104,6 +109,9 @@ struct CampGroup {
     int entry_steps = 0;
     std::uint16_t entry_region = 0;
     std::vector<vec2> inside;
+    // The dashes in, from a tile with a walk from spawn (entry_out) to the
+    // landing inside (entry_in), over stepping stones between.
+    std::vector<PocketLink> chain;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -1081,7 +1089,7 @@ class Bot {
     std::size_t pocket_cursor = 0;
     void prepare_pockets();
     void pocket_field_step();
-    void pocket_patch(std::size_t group);
+    void pocket_patch(std::size_t group, int only);
     // The steps our dash covers (0 without one).
     int dash_steps() const;
     // move_to() with no walk to the goals: into a pocket the goals are in
@@ -1090,6 +1098,43 @@ class Bot {
     // landing occupied), -1 no pocket concerned.
     int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
     bool cast_dash_to(vec2 to);
+    // The chain search (pocket_search_step()): a group at a time, breadth
+    // first over the walking regions from the pocket's, linked where a
+    // 2-step dash lands in another, until a landing with a walk from spawn;
+    // a few take-off tiles a turn.
+    struct PocketSearch {
+        std::size_t group = 0;
+        bool active = false;
+        std::vector<std::uint16_t> queue;
+        std::size_t head = 0;
+        std::uint16_t current = 0;
+        std::vector<vec2> tiles;
+        std::size_t at = 0;
+        std::vector<std::uint8_t> visited, depth;
+        std::vector<PocketLink> back;
+        std::vector<std::uint16_t> back_region;
+        int best_walk = 0, best_steps = 0;
+        PocketLink best;
+    } pocket_search;
+    bool pocket_search_done = false;
+    std::unique_ptr<std::uint16_t[]> pocket_home;
+    bc::bitboard pocket_crossing{bc::uninitialized};
+    bool pocket_search_step();
+    void pocket_found(std::size_t group, std::vector<PocketLink> chain, int walk);
+    // The rounds a chain's further links add: the cooldown and the dash each.
+    static int pocket_link_rounds_of(const CampGroup &g) {
+        return g.chain.size() > 1 ? int(g.chain.size() - 1) * policy::pocket_link_rounds : 0;
+    }
+    // Standing on a tile of the group's chain (waiting for the dash's
+    // cooldown there is no stall, and no reason to choose again).
+    bool on_pocket_chain(int group) const {
+        if (group < 0 || std::size_t(group) >= groups.size())
+            return false;
+        for (const auto &link : groups[std::size_t(group)].chain)
+            if (position == link.in || position == link.out)
+                return true;
+        return false;
+    }
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).

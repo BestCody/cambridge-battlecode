@@ -225,6 +225,16 @@ inline constexpr float spawn_siege_score = 10.0f;
 // pocket_rounds (the dash in and the cooldown before the dash out).
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
+// A chain of dashes over stepping stones (the-pond's island: Intercontinental
+// Fish's Issac dashes to a stone, waits the cooldown, dashes on): each further
+// link costs the cooldown and the dash; at most pocket_max_links links, searched
+// within pocket_chain_reach tiles of the group's centre, pocket_tiles_per_step
+// take-off tiles a turn, at most pocket_region_tiles take-offs per region.
+inline constexpr int pocket_link_rounds = 9;
+inline constexpr int pocket_max_links = 4;
+inline constexpr int pocket_chain_reach = 16;
+inline constexpr int pocket_tiles_per_step = 12;
+inline constexpr std::size_t pocket_region_tiles = 48;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of

@@ -312,7 +312,7 @@ int Bot::worker_choose_group(int excluded) {
         if (const int steps = groups[i].entry_steps; steps > 0) {
             if (our_dash < steps || walk == bc::distance_field::unreachable)
                 return int(bc::distance_field::unreachable);
-            return walk + policy::pocket_rounds;
+            return walk + policy::pocket_rounds + pocket_link_rounds_of(groups[i]);
         }
         if (!hopping)
             return walk;
@@ -1192,7 +1192,8 @@ void Bot::worker_farm() {
             bot.bounces = bounced ? bot.bounces + 1 : 0;
             const bool idle = (bot.position == from || bot.bounces >= policy::bounce_min) && t >= 0 &&
                               distance(bot.position, bot.groups[t].centre) > bot.range + 2 && self.is_alive() &&
-                              self.state().contains(ready) && !bot.groups[t].tiles().is_set(bot.position);
+                              self.state().contains(ready) && !bot.groups[t].tiles().is_set(bot.position) &&
+                              !bot.on_pocket_chain(t);
             bot.farm_stalls = idle ? bot.farm_stalls + 1 : 0;
         }
     } farm_stalls_count{*this, position};
@@ -1228,6 +1229,10 @@ void Bot::worker_farm() {
         const auto &h = groups[target];
         engaged = distance(position, h.centre) <= h.live_reach + 3;
     }
+    // On the way in over a pocket's chain of dashes, the plan stands: a
+    // choice made on a stepping stone would dash back out.
+    if (target >= 0 && on_pocket_chain(target))
+        engaged = true;
     // At most one choice per turn: one made earlier this turn stands.
     if (last_plan != int(round) &&
         (target < 0 || finished || (!taking && !engaged && int(round) - last_plan >= policy::replan_period))) {

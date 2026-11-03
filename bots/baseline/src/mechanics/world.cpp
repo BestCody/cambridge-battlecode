@@ -1193,7 +1193,7 @@ bool Bot::background_search() {
         walk_of[index] = g.walk_tiles.get();
         subtract(unwalked_camps, g.tiles());
         if (pockets_ready)
-            pocket_patch(std::size_t(index));
+            pocket_patch(std::size_t(index), -1);
         return true;
     }
     return false;
@@ -2416,95 +2416,194 @@ float Bot::respawn_threat(vec2 at) const {
 
 void Bot::prepare_pockets() {
     // Groups no walk from spawn reaches, inside a ring of holes a dash
-    // crosses (strategy.h pocket_entries): for each, the open tile beside one
-    // of its camps that a dash of the fewest steps reaches from the tile
-    // with the shortest walk from spawn. Holes stop a walk, not a dash;
-    // walls, altars, the enemy spawn and camps stop both.
+    // crosses (strategy.h pocket_entries): big_world's 21-gem cluster
+    // triples, the-pond's island over its stepping stones. Holes stop a
+    // walk, not a dash; walls, altars, the enemy spawn and camps stop both.
+    // The chains are searched a few tiles a turn (pocket_search_step()).
     pockets_ready = true;
-    if (!policy::pocket_entries)
-        return;
-    ensure_regions();
-    constexpr int far = bc::distance_field::unreachable;
-    const std::size_t tiles = std::size_t(map_width) * std::size_t(map_height);
-    std::unique_ptr<std::uint16_t[]> home;
-    bc::bitboard crossing{bc::uninitialized};
-    bool prepared = false;
-    std::array<vec2, 64> landings{};
-    for (std::size_t i = 0; i < groups.size(); ++i) {
-        auto &g = groups[i];
-        if (g.home_distance != far)
-            continue;
-        if (!prepared) {
-            prepared = true;
-            home.reset(new std::uint16_t[tiles]);
-            home_field.export_linear_buffer(std::span(home.get(), tiles));
-            crossing = dash_terrain | camp_tiles;
-        }
-        int best_walk = far, best_steps = 0;
-        vec2 best_out{-1, -1}, best_in{-1, -1};
-        g.inside.clear();
-        for (const auto &c : g.camps) {
-            g.inside.push_back(c.position);
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const vec2 in{c.position.x + dx, c.position.y + dy};
-                    if (in.x < 0 || in.y < 0 || in.x >= map_width || in.y >= map_height)
-                        continue;
-                    const int index = tile_index(in);
-                    if (!open_terrain.is_set(in) || camp_tile[index])
-                        continue;
-                    bool listed = false;
-                    for (const vec2 p : g.inside)
-                        listed = listed || p == in;
-                    if (listed)
-                        continue;
-                    g.inside.push_back(in);
-                    crossing.reachable_tiles_into(in, 2, step_tiles);
-                    const std::uint32_t count = step_tiles.positions_into(std::span(landings));
-                    for (std::uint32_t k = 0; k < count && k < landings.size(); ++k) {
-                        const vec2 out = landings[k];
-                        const int walk = int(home[tile_index(out)]);
-                        if (walk == far)
-                            continue;
-                        const int steps = distance(in, out);
-                        if (walk < best_walk || (walk == best_walk && steps < best_steps)) {
-                            best_walk = walk;
-                            best_steps = steps;
-                            best_out = out;
-                            best_in = in;
-                        }
-                    }
-                }
-        }
-        if (best_walk == far) {
-            if constexpr (policy::diagnostic)
-                std::printf("POCKETNONE r=%u g=%zu gems=%u inside=%zu\n", round, i, unsigned(g.unit.gem_value()),
-                            g.inside.size());
-            g.inside.clear();
-            continue;
-        }
-        g.entry_out = best_out;
-        g.entry_in = best_in;
-        g.entry_steps = best_steps;
-        g.entry_region = walk_region_at(best_in.x, best_in.y);
-        g.home_distance = best_walk + 1;
-        if (altar_field_ready)
-            if (const int altar = altar_field.get(best_out); altar != far)
-                g.altar_distance = altar + 1;
-        if (hops_ready && i < group_hops.size())
-            group_hops[i] = far; // The dash is the way in.
-        pocket_groups.push_back(int(i));
-        if constexpr (policy::diagnostic)
-            std::printf("POCKET r=%u g=%zu out=%d,%d in=%d,%d steps=%d walk=%d region=%u inside=%zu\n", round, i,
-                        best_out.x, best_out.y, best_in.x, best_in.y, best_steps, best_walk, unsigned(g.entry_region),
-                        g.inside.size());
-    }
     pocket_cursor = 0;
-    // The fields already built: the pockets' tiles in every one; a pocket
-    // group's own is rebuilt a turn at a time (pocket_field_step()).
+    pocket_search = {};
+    if (!policy::pocket_entries) {
+        pocket_search_done = true;
+        return;
+    }
+    ensure_regions();
+    const std::size_t tiles = std::size_t(map_width) * std::size_t(map_height);
+    pocket_home.reset(new std::uint16_t[tiles]);
+    home_field.export_linear_buffer(std::span(pocket_home.get(), tiles));
+    pocket_crossing = dash_terrain | camp_tiles;
+    pocket_search_done = false;
+}
+
+bool Bot::pocket_search_step() {
+    constexpr int far = bc::distance_field::unreachable;
+    auto &s = pocket_search;
+    std::array<vec2, 64> landings{};
+    int budget = policy::pocket_tiles_per_step;
+    while (budget > 0) {
+        if (!s.active) {
+            for (; s.group < groups.size() && groups[s.group].home_distance != far; ++s.group) {
+            }
+            if (s.group >= groups.size()) {
+                pocket_search_done = true;
+                return true;
+            }
+            // The pocket's tiles: the camps' and the open tiles beside them;
+            // its region is the first open one's.
+            auto &g = groups[s.group];
+            g.inside.clear();
+            std::uint16_t start = 0;
+            for (const auto &c : g.camps) {
+                g.inside.push_back(c.position);
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const vec2 in{c.position.x + dx, c.position.y + dy};
+                        if (in.x < 0 || in.y < 0 || in.x >= map_width || in.y >= map_height)
+                            continue;
+                        if (!open_terrain.is_set(in) || camp_tile[tile_index(in)])
+                            continue;
+                        bool listed = false;
+                        for (const vec2 p : g.inside)
+                            listed = listed || p == in;
+                        if (listed)
+                            continue;
+                        g.inside.push_back(in);
+                        if (!start)
+                            start = walk_region_at(in.x, in.y);
+                    }
+            }
+            if (!start) {
+                if constexpr (policy::diagnostic)
+                    std::printf("POCKETNONE r=%u g=%zu gems=%u closed\n", round, s.group, unsigned(g.unit.gem_value()));
+                g.inside.clear();
+                ++s.group;
+                continue;
+            }
+            g.entry_region = start;
+            const std::size_t labels = std::size_t(region_runs) + 2;
+            s.visited.assign(labels, 0);
+            s.depth.assign(labels, 0);
+            s.back.assign(labels, PocketLink{});
+            s.back_region.assign(labels, 0);
+            s.queue.clear();
+            s.head = 0;
+            s.queue.push_back(start);
+            s.visited[start] = 1;
+            s.current = 0;
+            s.active = true;
+        }
+        auto &g = groups[s.group];
+        if (s.current == 0) {
+            if (s.head >= s.queue.size()) {
+                if constexpr (policy::diagnostic)
+                    std::printf("POCKETNONE r=%u g=%zu gems=%u regions=%zu\n", round, s.group,
+                                unsigned(g.unit.gem_value()), s.queue.size());
+                g.inside.clear();
+                s.active = false;
+                ++s.group;
+                continue;
+            }
+            s.current = s.queue[s.head++];
+            if (int(s.depth[s.current]) + 1 > policy::pocket_max_links) {
+                s.current = 0;
+                continue;
+            }
+            // The region's open tiles within reach of the group, from its runs.
+            s.tiles.clear();
+            s.at = 0;
+            for (int y = std::max(0, g.centre.y - policy::pocket_chain_reach);
+                 y < map_height && y <= g.centre.y + policy::pocket_chain_reach &&
+                 s.tiles.size() < policy::pocket_region_tiles;
+                 ++y)
+                for (int r = region_rows[y]; r < region_rows[y + 1]; ++r)
+                    if (region_label[r] == s.current)
+                        for (int x = std::max(region_start[r], g.centre.x - policy::pocket_chain_reach);
+                             x < region_end[r] && x <= g.centre.x + policy::pocket_chain_reach &&
+                             s.tiles.size() < policy::pocket_region_tiles;
+                             ++x)
+                            if (!camp_tile[tile_index(vec2{x, y})])
+                                s.tiles.push_back(vec2{x, y});
+            s.best_walk = far;
+            s.best_steps = 0;
+            s.best = {};
+        }
+        while (budget > 0 && s.at < s.tiles.size()) {
+            const vec2 t = s.tiles[s.at++];
+            --budget;
+            pocket_crossing.reachable_tiles_into(t, 2, step_tiles);
+            const std::uint32_t count = step_tiles.positions_into(std::span(landings));
+            for (std::uint32_t k = 0; k < count && k < landings.size(); ++k) {
+                const vec2 landing = landings[k];
+                if (landing == t || !open_terrain.is_set(landing) || camp_tile[tile_index(landing)] ||
+                    distance(landing, g.centre) > policy::pocket_chain_reach)
+                    continue;
+                const int walk = int(pocket_home[tile_index(landing)]);
+                if (walk != far) {
+                    // A tile with a walk from spawn: the chain's first dash,
+                    // from the shortest walk, then the fewest steps.
+                    const int steps = distance(landing, t);
+                    if (walk < s.best_walk || (walk == s.best_walk && steps < s.best_steps)) {
+                        s.best_walk = walk;
+                        s.best_steps = steps;
+                        s.best = {landing, t};
+                    }
+                    continue;
+                }
+                const std::uint16_t region = walk_region_at(landing.x, landing.y);
+                if (!region || region == s.current || s.visited[region])
+                    continue;
+                s.visited[region] = 1;
+                s.depth[region] = std::uint8_t(s.depth[s.current] + 1);
+                s.back[region] = {landing, t};
+                s.back_region[region] = s.current;
+                s.queue.push_back(region);
+            }
+        }
+        if (s.at >= s.tiles.size()) {
+            if (s.best_walk != far) {
+                std::vector<PocketLink> chain{s.best};
+                for (std::uint16_t region = s.current; region != g.entry_region; region = s.back_region[region])
+                    chain.push_back(s.back[region]);
+                pocket_found(s.group, std::move(chain), s.best_walk);
+                s.active = false;
+                ++s.group;
+            }
+            s.current = 0;
+        }
+    }
+    return false;
+}
+
+void Bot::pocket_found(std::size_t i, std::vector<PocketLink> chain, int walk) {
+    constexpr int far = bc::distance_field::unreachable;
+    auto &g = groups[i];
+    g.chain = std::move(chain);
+    g.entry_out = g.chain.front().out;
+    g.entry_in = g.chain.back().in;
+    g.entry_steps = 0;
+    for (const auto &link : g.chain)
+        g.entry_steps = std::max(g.entry_steps, distance(link.out, link.in));
+    const int extra = 1 + pocket_link_rounds_of(g);
+    g.home_distance = walk + extra;
+    if (altar_field_ready)
+        if (const int altar = altar_field.get(g.entry_out); altar != far)
+            g.altar_distance = altar + extra;
+    if (hops_ready && i < group_hops.size())
+        group_hops[i] = far; // The dashes are the way in.
+    pocket_groups.push_back(int(i));
+    // The fields already built: this pocket's tiles in every one; its own
+    // is rebuilt a turn at a time (pocket_field_step()).
     for (std::size_t j = 0; j < groups.size(); ++j)
-        if (walk_of[j] && groups[j].entry_steps == 0)
-            pocket_patch(j);
+        if (walk_of[j] && groups[j].chain.empty())
+            pocket_patch(j, int(i));
+    if constexpr (policy::diagnostic) {
+        std::printf("POCKET r=%u g=%zu gems=%u links=%zu walk=%d steps=%d region=%u inside=%zu chain=", round, i,
+                    unsigned(g.unit.gem_value()), g.chain.size(), walk, g.entry_steps, unsigned(g.entry_region),
+                    g.inside.size());
+        for (const auto &link : g.chain)
+            std::printf(" %d,%d>%d,%d", link.out.x, link.out.y, link.in.x, link.in.y);
+        std::printf("\n");
+    }
 }
 
 void Bot::pocket_field_step() {
@@ -2520,26 +2619,28 @@ void Bot::pocket_field_step() {
         walk_field.compute(static_blocked, search_goals, search_visited);
         const auto tiles = std::size_t(map_width) * std::size_t(map_height);
         walk_field.export_linear_buffer(std::span(g.walk_tiles.get(), tiles));
-        pocket_patch(std::size_t(index));
+        pocket_patch(std::size_t(index), -1);
         return;
     }
 }
 
-void Bot::pocket_patch(std::size_t group) {
-    // Group `group`'s walk field at every other pocket's inside tiles: the
-    // walk from that pocket's entry, the dash out and the steps to its
-    // landing, so a champion inside chooses its next group as from outside.
+void Bot::pocket_patch(std::size_t group, int only) {
+    // Group `group`'s walk field at every other pocket's inside tiles (or
+    // pocket `only`'s): the walk from that pocket's entry, the dashes in and
+    // the steps to its landing, so a champion inside chooses its next group
+    // as from outside.
     std::uint16_t *field = groups[group].walk_tiles.get();
     if (!field)
         return;
     constexpr int far = bc::distance_field::unreachable;
     for (const int i : pocket_groups) {
-        if (std::size_t(i) == group)
+        if (std::size_t(i) == group || (only >= 0 && i != only))
             continue;
         const auto &p = groups[std::size_t(i)];
         const int base = int(field[tile_index(p.entry_out)]);
+        const int extra = 1 + pocket_link_rounds_of(p);
         for (const vec2 t : p.inside)
-            field[tile_index(t)] =
-                base == far ? std::uint16_t(far) : std::uint16_t(std::min(far - 1, base + 1 + distance(t, p.entry_in)));
+            field[tile_index(t)] = base == far ? std::uint16_t(far)
+                                               : std::uint16_t(std::min(far - 1, base + extra + distance(t, p.entry_in)));
     }
 }
