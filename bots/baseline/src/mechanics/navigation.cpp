@@ -1136,6 +1136,9 @@ bool Bot::take_hop() {
     for (const vec2 p : beside.positions())
         if (p != landing)
             landings.push_back(p);
+    // The occupancy is from the turn's start: stale after a fuel overrun.
+    if (bc::round_number() != round)
+        return false;
     for (const vec2 destination : landings) {
         if (blocked.is_set(destination) || !hop_lands_in_reach(destination))
             continue;
@@ -1196,7 +1199,8 @@ bool Bot::cast_dash_to(vec2 to) {
         if (!a.is_dash() || !ready(a, can_cast))
             continue;
         const auto design = describe(a);
-        if ((walked && design.exclusive) || distance(position, to) > int(design.range) || blocked.is_set(to))
+        if ((walked && design.exclusive) || distance(position, to) > int(design.range) || blocked.is_set(to) ||
+            bc::round_number() != round)
             return false;
         if (!a.use(to)) {
             // Refused for an occupant the view did not show (an ally in a
