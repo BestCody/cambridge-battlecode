@@ -86,3 +86,6 @@ compile_commands.json
 !/analysis/pg10/*.py
 !/analysis/pg10/*.txt
 /bots/stacker/
+
+# Debug-mode copy of the bot (cambc build without --release: debug_block prints, fuel paused inside them).
+/bots/_dbg/
