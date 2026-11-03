@@ -722,6 +722,10 @@ bool Bot::confront_hidden() {
     if (me.ward_cooldown() <= 0 && !me.buffs().has_stun() &&
         !me.restrictions().contains(bc::buff_restrictions::ward)) {
         auto &placements = step_tiles;
+        // A turn resumed after a fuel overrun may find us dead: no placement
+        // tiles around (-1,-1).
+        if (!me.is_alive())
+            throw ChampionGone{};
         me.ward_placement_tiles_into(placements);
         bc::vision::ward_tiles_into(bc::team::ally, occupancy);
         occupancy |= blocked;

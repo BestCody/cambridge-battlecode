@@ -121,6 +121,10 @@ bool Bot::worker_tribute() {
             bc::vision::altar_lock_at(selected).is_enemy()) {
             // A melee champion within submit range may be out of the lock's
             // reach: step beside it first (attacking from two tiles threw).
+            // A turn resumed after a fuel overrun may find us dead: no
+            // attack tiles around (-1,-1).
+            if (!me.is_alive())
+                throw ChampionGone{};
             if (!me.attack_tiles().is_set(selected) && me.can_move())
                 move_to(around(selected, 1), selected, false, false);
             const bool reach = me.attack_tiles().is_set(selected);

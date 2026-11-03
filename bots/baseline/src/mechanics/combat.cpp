@@ -85,6 +85,8 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     auto basic_choice = [&]() -> int {
         if (!me.can_attack())
             return -1;
+        if (!me.is_alive())
+            throw ChampionGone{}; // No attack tiles around a dead self's (-1,-1).
         me.attack_tiles_into(attack_area);
         const auto &attack_tiles = attack_area;
         float best = 0;
