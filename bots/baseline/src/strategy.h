@@ -59,6 +59,17 @@ inline constexpr float home_capture_health = 0.68275f;
 // keeps its gems, 47% and 2%; ours 2-4% either way), so short trips out to
 // the groups near home end in a recall home and the next one starts there.
 inline constexpr int short_trip_rounds = 19;
+// The region cycle (home_after_capture()): a short trip's capture does not
+// end in a recall while a group within stay_radius of here is alive with
+// stay_min_gems gems or cooling with its respawn within stay_wait rounds,
+// no enemy was seen near it lately, and our bag is stay_bag or less (a bigger
+// bag is hunted: v123). The top teams return to one of their last three
+// groups 38-42% of the time, we 29%, going home between (2026-11-03).
+inline constexpr bool stay_region = false; // true: 41/64 against 39/64 locally but the mechanism unmoved (returns to a recent group 34% against 36%, trips 49 against 48 a game): the recall after a capture is not where the trips come from. Off.
+inline constexpr int stay_radius = 14;
+inline constexpr int stay_wait = 45;
+inline constexpr unsigned stay_min_gems = 11;
+inline constexpr unsigned stay_bag = 30;
 // ... and, healthy or far out, carrying an emblem's gold (five shards) to
 // spend: the trip home buys it.
 inline constexpr unsigned home_capture_gold = 155;

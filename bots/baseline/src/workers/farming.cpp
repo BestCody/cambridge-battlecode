@@ -1732,6 +1732,19 @@ bool Bot::home_after_capture(const CampGroup &g) const {
     // A short trip out ends home, with a bag worth the trip (bank_min_bag).
     if (policy::bank_min_bag > 0 && gems < policy::bank_min_bag)
         return false;
+    // The region cycle (strategy.h stay_region): more to do near here soon,
+    // with a bag small enough not to be hunted, and the bank trips an altar
+    // nearby offers still taken (worker_tribute()).
+    if (policy::stay_region && gems <= policy::stay_bag)
+        for (std::size_t i = 0; i < groups.size(); ++i) {
+            const auto &o = groups[i];
+            if (distance(position, o.centre) > policy::stay_radius || enemy_near_lately(int(i)))
+                continue;
+            const bool soon = o.status == CampGroup::cooling && o.respawn - int(round) <= policy::stay_wait;
+            const bool worth = o.status == CampGroup::alive && o.unit.gem_value() >= policy::stay_min_gems;
+            if (soon || worth)
+                return false;
+        }
     return int(round) - left_spawn < policy::short_trip_rounds;
 }
 
