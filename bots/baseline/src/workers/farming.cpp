@@ -153,8 +153,7 @@ int Bot::worker_choose_group(int excluded) {
         m.range = roster_kits[s].range;
         m.health = m.max_health = roster_kits[s].health;
         m.where = home_centre;
-        m.free = code != TeamMemory::unavailable && code != TeamMemory::bank &&
-                 TeamMemory::fight_group(code, groups.size()) < 0;
+        m.free = code != TeamMemory::unavailable && TeamMemory::fight_group(code, groups.size()) < 0;
         if (m.claim >= 0) {
             const auto &h = groups[std::size_t(m.claim)];
             m.where = h.centre;
