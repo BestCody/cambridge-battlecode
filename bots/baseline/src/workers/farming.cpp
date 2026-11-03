@@ -1729,7 +1729,9 @@ bool Bot::home_after_capture(const CampGroup &g) const {
     // asks again.
     if (run_continues())
         return false;
-    // A short trip out ends home.
+    // A short trip out ends home, with a bag worth the trip (bank_min_bag).
+    if (policy::bank_min_bag > 0 && gems < policy::bank_min_bag)
+        return false;
     return int(round) - left_spawn < policy::short_trip_rounds;
 }
 

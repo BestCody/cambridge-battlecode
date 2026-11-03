@@ -141,6 +141,14 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
+// The voluntary trips (an altar within bank_nearby steps, a wait while the
+// target cools, a short trip's recall after a capture) only with a bag of
+// bank_min_bag gems or more (0: as before). Over 18 practice games we
+// banked 35 times a game with a mean bag of 20 gems; the opponents 29 times
+// with 47 (Jupiter 114, Ding 100-172), for the same clear counts: half our
+// trips carry the walk home and back for 20 gems. Hurt, emblem-gold,
+// winning and deadline trips are unchanged.
+inline constexpr unsigned bank_min_bag = 40;
 // A winning bag channels under fire only when the channel is this short (tribute.cpp).
 inline constexpr int win_channel_turns = 4;
 inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)

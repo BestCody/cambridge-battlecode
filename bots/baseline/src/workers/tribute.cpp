@@ -63,7 +63,10 @@ bool Bot::worker_tribute() {
     // only altar is in the centre room, and at 3 steps ours channelled
     // tributes in the middle of the centre fight (locally 2/2 to 0/2).
     const bool clear = !policy::bank_nearby_clear || enemies.empty();
-    const bool trip = spawn.is_set(position) || (((closest <= policy::bank_nearby && clear) || wait_bank) && !holding && !walled);
+    // The voluntary trips carry at least bank_min_bag gems (strategy.h).
+    const bool enough = policy::bank_min_bag == 0 || gems >= policy::bank_min_bag;
+    const bool trip = spawn.is_set(position) ||
+                      (((closest <= policy::bank_nearby && clear) || wait_bank) && enough && !holding && !walled);
     if constexpr (policy::diagnostic)
         if (spawn.is_set(position) || banking)
             std::printf("TRIB r=%u id=%u pos=%d,%d gems=%u closest=%d banking=%d trip=%d share=%d holding=%d "
