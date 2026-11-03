@@ -8,7 +8,7 @@ cache = os.path.join(out_dir, 'rounds_cache'); os.makedirs(cache, exist_ok=True)
 for cfg in cfgs:
     agg = collections.Counter(); n = 0
     for rep in sorted(glob.glob(f'{out_dir}/{cfg}-*.repl26a')):
-        base = os.path.basename(rep)[:-8]; seat = base.split('-')[3] if '-test-bot-' in base else base.split('-')[2]
+        base = os.path.basename(rep)[:-8]; seat = [x for x in base.split('-') if x in ('A', 'B')][0]
         rt = os.path.join(cache, base + '.rounds.txt')
         if not os.path.exists(rt) or os.path.getsize(rt) == 0:
             with open(rt, 'w') as f: subprocess.run(['node', 'rounds.mjs', os.path.abspath(rep)], cwd='scripts/analysis', stdout=f, stderr=subprocess.DEVNULL)
