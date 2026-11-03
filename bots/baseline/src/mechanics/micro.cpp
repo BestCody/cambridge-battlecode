@@ -818,7 +818,10 @@ bool Bot::attack_combo(bool escaping) {
             }
         }
     }
-    if (best.score <= 0)
+    // A search that ran out of fuel resumes next round, where the plan's
+    // tiles, ranges and allowances are stale: acting on it threw (an
+    // available attack reset, a cast out of range, a known occupied step).
+    if (best.score <= 0 || bc::round_number() != round)
         return false;
     bool acted = false;
     if (best.origin) {
@@ -1023,7 +1026,8 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
             }
         }
         // On camps, spend the dash only when it does real work.
-        if (best.x < 0 || (!fighting_champions && best_score < damage * 0.5f))
+        // A landing chosen before a fuel overrun is stale next round (attack_combo()).
+        if (best.x < 0 || (!fighting_champions && best_score < damage * 0.5f) || bc::round_number() != round)
             continue;
         if (ability.use(best)) {
             walked |= spell.exclusive;
