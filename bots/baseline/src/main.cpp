@@ -24,6 +24,19 @@ int main() {
     while (true) {
         const auto start_round = cambc::round_number();
         const bool drafting = cambc::is_draft();
+        // An action refused on a turn that ran out of fuel and resumed: what it
+        // acted on has moved. The new round is played from a fresh look.
+        const auto replay = [&] {
+            if (drafting || cambc::round_number() == start_round)
+                return;
+            try {
+                if (other)
+                    other->play_turn();
+                else
+                    first.play_turn();
+            } catch (...) {
+            }
+        };
         try {
             if (drafting)
                 eng_a::play_draft();
@@ -37,8 +50,10 @@ int main() {
             }
         } catch (const std::exception &error) {
             std::cout << "bot error: " << error.what() << std::endl;
+            replay();
         } catch (...) {
             std::cout << "bot error: unknown exception" << std::endl;
+            replay();
         }
         if (!drafting && cambc::round_number() != start_round)
             std::cout << "FUEL_OVERRUN started=" << start_round << " ended=" << cambc::round_number()
