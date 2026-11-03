@@ -36,7 +36,7 @@ unsigned Bot::fight_demand(vec2 at) const {
     unsigned demand = same_fight(reported_group, at) ? reported_force : 0;
     const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
     for (unsigned s = 0; s < count; ++s) {
-        if (s == slot || !roster[s].is_alive())
+        if (s == slot)
             continue;
         const unsigned code = shared.get(s);
         const unsigned force = TeamMemory::requested_force(code, groups.size());
@@ -51,7 +51,7 @@ float Bot::reported_power(vec2 at) const {
     unsigned force = 0;
     const unsigned count = std::min<unsigned>(roster.size(), TeamMemory::slots);
     for (unsigned s = 0; s < count; ++s) {
-        if (s == slot || !roster[s].is_alive())
+        if (s == slot)
             continue;
         const unsigned code = shared.get(s);
         const unsigned asked = TeamMemory::requested_force(code, groups.size());
