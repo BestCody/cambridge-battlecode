@@ -857,6 +857,19 @@ bool Bot::attack_combo(bool escaping) {
             acted |= used;
         }
     }
+    // As combat() after its own kills: a champion killed leaves incoming()'s
+    // estimate (health written 0, its packed enemies and nearest units made
+    // again).
+    if (acted) {
+        bool gone = false;
+        for (auto &e : enemies)
+            if (e.health > 0) {
+                e.health = live_health(e);
+                gone = gone || e.health <= 0;
+            }
+        if (gone)
+            ++threat_revision;
+    }
     refresh_self();
     return acted;
 }
