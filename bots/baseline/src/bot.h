@@ -680,10 +680,11 @@ class Bot {
     std::unique_ptr<std::uint16_t[]> region_label;
     std::uint16_t walk_region_at(int x, int y) const;
     // The labelling, a row a step (begin_regions() in initialise(), then
-    // region_step() in spare work; ensure_regions() before any hop reads it).
+    // region_step() in spare work; ensure_regions() before any hop reads it):
+    // each row's joins, then each row's labels (region_row map_height + y).
     int region_row = 0;
     bool regions_ready = false;
-    std::uint64_t region_step_cost = 0; // The dearest row so far.
+    std::uint64_t region_step_cost = 0; // The dearest step so far.
     void begin_regions();
     bool region_step();
     void ensure_regions();
