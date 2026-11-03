@@ -265,9 +265,9 @@ inline constexpr bool twin_cautious = true;
 // candidates) and the rest reach_per_turn a turn in the background, with
 // reach_share 1 (every striker reaches us) until then; the path search is
 // the choice's own.
-inline constexpr int reach_at_start = 24;
+inline constexpr int reach_at_start = 10000; // 24 with first_turn_paths false: the first turn fits, but 82/144 against 88/144 locally (test-bot 39/72 to 46/72); old behaviour kept
 inline constexpr int reach_per_turn = 4;
-inline constexpr bool first_turn_paths = false; // true: the second-bound path search on the first turn, as before
+inline constexpr bool first_turn_paths = true; // true: the second-bound path search on the first turn, as before
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental
