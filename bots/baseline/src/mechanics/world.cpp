@@ -461,6 +461,14 @@ void Bot::initialise() {
             siege_reach = std::max(siege_reach, s.range);
     if (bc::draft_memory.size() >= sizeof opening)
         std::memcpy(&opening, bc::draft_memory.data(), sizeof opening);
+    // Draft memory the draft never wrote (its first turn lost) reads as zeros,
+    // which would claim a fortress-gem, gold-scarce map with no spacing. Such a
+    // plan measures nothing; its map summaries come from the map instead.
+    if (opening.magic != DraftPlan::tag) {
+        opening = DraftPlan{};
+        opening.magic = 0;
+        summarise_map(opening, bc::map::camp_groups());
+    }
     roster = bc::champions(bc::team::ally);
     std::sort(roster.begin(), roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
     roster_power.reserve(roster.size());
@@ -485,15 +493,12 @@ void Bot::initialise() {
         return unit_power(hp, spell_dps(described, design.base_strength, design.base_focus), 0, heal, 1);
     };
     for (std::size_t s = 0; s < roster.size(); ++s) {
-        // Draft order is public and persistent. A faster ally may already have
-        // dashed into a bush before this champion's first turn, so even its
-        // type must come from the draft rather than a live vision query. A
-        // body past the plan's roster (more than it holds) takes its type
-        // from its identity, which needs no vision either. The SDK already
-        // holds every design; building another reloads it.
-        const auto drafted =
-            s < std::min<std::size_t>(opening.body_count, opening.roster_types.size()) ? opening.roster_types[s]
-                                                                                       : roster[s].champion_name();
+        // A faster ally may already have dashed into a bush before this
+        // champion's first turn, so its type comes from its identity, which
+        // needs no vision, rather than from the draft's planned roster (a
+        // random pick after a lost draft turn differs from the plan). The SDK
+        // already holds every design; building another reloads it.
+        const auto drafted = roster[s].champion_name();
         const auto index = static_cast<std::size_t>(drafted);
         std::optional<bc::champion> loaded;
         const auto &immutable =

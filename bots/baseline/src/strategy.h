@@ -547,6 +547,9 @@ inline bc::bitboard altar_goals_of(const std::vector<vec2> &altars, const bc::bi
 // every gem on the map sits behind a fortress (contest: 20 gold clusters and two
 // monoliths). Gold clusters cannot win the game; the fortress has to be taken.
 inline bool fortress_gems(const DraftPlan &plan) { return plan.cheap_gem_groups == 0; }
+// The plan's map summaries (cheap_gem_groups, map_gold_forties, spacing), from
+// the static map: by the draft, and again in play when draft memory holds no plan.
+void summarise_map(DraftPlan &plan, const std::vector<bc::map::camp_group> &groups);
 // Weight on a camp group's gem reward. 1.0 normally; raised on a fortress-gem
 // map so gems outrank the gold clusters that would otherwise soak every job.
 inline float gem_reward_weight(const DraftPlan &plan) {

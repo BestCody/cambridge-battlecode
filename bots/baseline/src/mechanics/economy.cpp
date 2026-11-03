@@ -181,7 +181,14 @@ void Bot::buy_equipment() {
         const unsigned count = std::min(me.gold_count() / item.cost(), step_left(type, bought, item));
         if (!count || !me.can_buy(item, count))
             break;
-        me.buy(item, count);
+        // can_buy() checks the shop, the item and the gold, not a full
+        // inventory, a stat overflow or the count, on which buy() throws and
+        // would end the turn on every visit to spawn.
+        try {
+            me.buy(item, count);
+        } catch (const bc::error &) {
+            break;
+        }
         bought[static_cast<unsigned>(item)] += count;
         equipment_dirty = true;
     }
