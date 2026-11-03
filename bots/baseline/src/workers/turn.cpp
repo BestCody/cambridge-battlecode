@@ -161,8 +161,8 @@ void Bot::play_worker_turn() {
     // A guaranteed winning deposit has higher value than any additional kill.
     if (gems && gems + bc::global_submitted_gems(bc::team::ally) >= rules::settings().winning_gems) {
         banking = true;
-        worker_tribute();
-        return;
+        if (worker_tribute())
+            return;
     }
     // XSquare's order: the fight first, a hurt champion playing it in hurt
     // mode (no strength of its own on our side, the safest tile, a fight only
