@@ -42,7 +42,7 @@ int Bot::choose_opening(int &until) const {
         const auto &g = groups[i];
         if (g.home_distance == bc::distance_field::unreachable || g.home_distance > g.enemy_distance)
             continue;
-        if (centre_opening() && g.home_distance > opening_reach_now)
+        if (centre_opening() && g.home_distance > policy::opening_reach)
             continue;
         // Without a trip home: what each member spends before it leaves,
         // above the casualty margin and the walk out of the camps' reach
@@ -238,14 +238,12 @@ int Bot::worker_choose_group(int excluded) {
         // whether the clear is planned as a spell-range siege.
         float *run_reward, *run_time;
         std::int32_t *run_won, *siege_won;
-        // The death-site multiplier (strategy.h death_site_penalty).
-        float *death;
     };
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[25 * padded]);
+        lanes.floats.reset(new float[24 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane : {&lanes.gem, &lanes.enemy_side, &lanes.status, &lanes.respawn, &lanes.path,
                             &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won, &lanes.siege_won}) {
@@ -257,13 +255,10 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work, &lanes.reach_share,
                             &lanes.claim_rate, &lanes.claim_eta, &lanes.front_range, &lanes.front_first,
                             &lanes.front_visit, &lanes.front_count, &lanes.factor, &lanes.camp_count, &lanes.home,
-                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief, &lanes.cohesion,
-                            &lanes.death}) {
+                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief, &lanes.cohesion}) {
             *lane = next_float;
             next_float += padded;
         }
-        for (std::size_t i = count; i < padded; ++i)
-            lanes.death[i] = 1.0f;
         for (std::size_t i = count; i < padded; ++i) {
             for (auto *lane : {lanes.gem, lanes.enemy_side, lanes.status, lanes.respawn, lanes.siege_open,
                                lanes.marks})
@@ -386,16 +381,6 @@ int Bot::worker_choose_group(int excluded) {
             splash[i] = g.splash;
             pressure[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : g.pressure;
             claim[i] = float(claims[i]);
-        }
-        for (std::size_t i = 0; i < count; ++i) {
-            int deaths = 0;
-            if (i < group_death_last.size()) {
-                deaths += int(round) - group_death_last[i] <= policy::death_site_memory;
-                deaths += int(round) - group_death_prev[i] <= policy::death_site_memory;
-            }
-            lanes.death[i] = deaths == 0 ? 1.0f
-                             : deaths == 1 ? policy::death_site_penalty
-                                           : policy::death_site_penalty * policy::death_site_penalty;
         }
         for (std::size_t i = 0; i < count; ++i)
             lanes.sighted[i] = i < enemy_seen_near.size() &&
@@ -771,7 +756,7 @@ int Bot::worker_choose_group(int excluded) {
             const v128_t without_value = wasm_v128_and(
                 claimed, wasm_f32x4_div(wasm_f32x4_div(kept, wasm_f32x4_pmax(one, time_kept_without)),
                                         wasm_f32x4_add(one, wasm_f32x4_mul(time_kept_without, splat(policy::plan_hazard)))));
-            v128_t value = wasm_f32x4_sub(with_value, wasm_f32x4_mul(without_value, splat(policy::join_share)));
+            v128_t value = wasm_f32x4_sub(with_value, without_value);
             value = pick(zero, value, wasm_f32x4_gt(time_with, splat(rounds_left)));
             // A cluster group's run (gather_run) is one plan: the group's
             // reward and time with its members', under the same hazard. The
@@ -798,14 +783,12 @@ int Bot::worker_choose_group(int excluded) {
             // A centre map's opening: our own side first (policy::opening_rounds).
             if (far_opening)
                 factor = pick(wasm_f32x4_mul(factor, splat(policy::opening_far_mul)), factor,
-                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(opening_reach_now))));
+                              wasm_f32x4_gt(wasm_v128_load(&lanes.home[i]), splat(float(policy::opening_reach))));
             factor = pick(wasm_f32x4_mul(factor, splat(policy::enemy_held_camp_bonus)), factor, enemy_here);
             // Camps by a stronger group we broke contact with wait out the
             // sighting (worker_sighting_memory).
             factor = pick(wasm_f32x4_mul(factor, splat(policy::worker_sighting_penalty)), factor,
                           wasm_v128_load(&lanes.sighted[i]));
-            // Deaths near the group lately (strategy.h death_site_penalty).
-            factor = wasm_f32x4_mul(factor, wasm_v128_load(&lanes.death[i]));
             // While the squad is depleted, converge on the allies still on
             // the map instead of spreading out and feeding into a grouped
             // enemy one at a time.
@@ -1736,22 +1719,7 @@ bool Bot::home_after_capture(const CampGroup &g) const {
     // asks again.
     if (run_continues())
         return false;
-    // A short trip out ends home, with a bag worth the trip (bank_min_bag).
-    if (policy::bank_min_bag > 0 && gems < policy::bank_min_bag)
-        return false;
-    // The region cycle (strategy.h stay_region): more to do near here soon,
-    // with a bag small enough not to be hunted, and the bank trips an altar
-    // nearby offers still taken (worker_tribute()).
-    if (policy::stay_region && gems <= policy::stay_bag)
-        for (std::size_t i = 0; i < groups.size(); ++i) {
-            const auto &o = groups[i];
-            if (distance(position, o.centre) > policy::stay_radius || enemy_near_lately(int(i)))
-                continue;
-            const bool soon = o.status == CampGroup::cooling && o.respawn - int(round) <= policy::stay_wait;
-            const bool worth = o.status == CampGroup::alive && o.unit.gem_value() >= policy::stay_min_gems;
-            if (soon || worth)
-                return false;
-        }
+    // A short trip out ends home.
     return int(round) - left_spawn < policy::short_trip_rounds;
 }
 

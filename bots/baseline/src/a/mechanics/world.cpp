@@ -604,19 +604,6 @@ void Bot::initialise() {
     }
     {
         // A centre map (bot.h): the opening farms our own side first.
-        float total = 0, richest = 0;
-        int richest_walk = 0;
-        for (const auto &g : groups) {
-            const float gems = float(g.unit.gem_value());
-            total += gems;
-            if (gems > richest) {
-                richest = gems;
-                richest_walk = g.home_distance;
-            }
-        }
-        centre_map = total > 0 && richest >= policy::centre_share * total && richest_walk >= policy::opening_reach;
-        opening_reach_now = policy::opening_reach;
-        opening_rounds_now = policy::opening_rounds;
         // No gem group within reach of spawn and gold that is: the gold first
         // (03colosseum: all gems at the centre, wolves around the edge; Olympus's
         // gold led 2578 to 968 at round 300).
@@ -650,10 +637,8 @@ void Bot::initialise() {
         }
         harvest_own_gold_now = own_gold;
         const float mid_share = all_gems > 0 ? mid_gems / all_gems : 0.0f;
-        harvest_map = policy::harvest_all ||
-                      (own_gold >= policy::harvest_own_gold && mid_share >= policy::harvest_mid_share &&
-                       int(roster.size()) >= policy::harvest_picks);
-        harvest_gate_alone = false;
+        harvest_map = own_gold >= policy::harvest_own_gold && mid_share >= policy::harvest_mid_share &&
+                      int(roster.size()) >= policy::harvest_picks;
         // No altar of ours: the enemy is in view all game, and a watching champion
         // would never farm (bot.h watch_map).
         watch_map = opening.magic == DraftPlan::tag && opening.centre_altars;

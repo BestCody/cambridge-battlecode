@@ -39,38 +39,6 @@ void Bot::worker_track_sightings() {
     }
 }
 
-void Bot::note_death_site(vec2 p) {
-    if (group_death_last.size() != groups.size()) {
-        group_death_last.assign(groups.size(), -100000);
-        group_death_prev.assign(groups.size(), -100000);
-    }
-    for (std::size_t i = 0; i < groups.size(); ++i)
-        if (distance(p, groups[i].centre) <= policy::death_site_range) {
-            group_death_prev[i] = group_death_last[i];
-            group_death_last[i] = int(round);
-        }
-}
-
-void Bot::track_deaths() {
-    // Teammates in view: where each was last seen. One alive last turn and
-    // dead now, seen within 15 rounds, died about where it was seen.
-    for (std::size_t k = 0; k < allies.size(); ++k) {
-        const unsigned s = ally_slot[k];
-        if (s < TeamMemory::slots) {
-            ally_seen_pos[s] = allies[k].position;
-            ally_seen_round[s] = int(round);
-        }
-    }
-    for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s) {
-        if (s == slot)
-            continue;
-        const bool alive = roster[s].is_alive();
-        if (ally_was_alive[s] && !alive && int(round) - ally_seen_round[s] <= 15)
-            note_death_site(ally_seen_pos[s]);
-        ally_was_alive[s] = alive;
-    }
-}
-
 void Bot::track_ghosts() {
     // An enemy we have seen and cannot see now could be on any tile it can
     // have walked to since, unless that tile is in view: start from its last

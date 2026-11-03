@@ -80,17 +80,6 @@ inline constexpr float home_capture_health = 0.68275f;
 // keeps its gems, 47% and 2%; ours 2-4% either way), so short trips out to
 // the groups near home end in a recall home and the next one starts there.
 inline constexpr int short_trip_rounds = 19;
-// The region cycle (home_after_capture()): a short trip's capture does not
-// end in a recall while a group within stay_radius of here is alive with
-// stay_min_gems gems or cooling with its respawn within stay_wait rounds,
-// no enemy was seen near it lately, and our bag is stay_bag or less (a bigger
-// bag is hunted: v123). The top teams return to one of their last three
-// groups 38-42% of the time, we 29%, going home between (2026-11-03).
-inline constexpr bool stay_region = false; // true: 41/64 against 39/64 locally but the mechanism unmoved (returns to a recent group 34% against 36%, trips 49 against 48 a game): the recall after a capture is not where the trips come from. Off.
-inline constexpr int stay_radius = 14;
-inline constexpr int stay_wait = 45;
-inline constexpr unsigned stay_min_gems = 11;
-inline constexpr unsigned stay_bag = 30;
 // ... and, healthy or far out, carrying an emblem's gold (five shards) to
 // spend: the trip home buys it.
 inline constexpr unsigned home_capture_gold = 155;
@@ -173,14 +162,6 @@ inline constexpr float worker_sighting_penalty = 0.41529f;
 // and whenever an altar is within bank_nearby steps, as the top three bank on
 // every trip home (about 20 banks a game of 28-39 gems; ours 6-10).
 inline constexpr int bank_nearby = 3;
-// The voluntary trips (an altar within bank_nearby steps, a wait while the
-// target cools, a short trip's recall after a capture) only with a bag of
-// bank_min_bag gems or more (0: as before). Over 18 practice games we
-// banked 35 times a game with a mean bag of 20 gems; the opponents 29 times
-// with 47 (Jupiter 114, Ding 100-172), for the same clear counts: half our
-// trips carry the walk home and back for 20 gems. Hurt, emblem-gold,
-// winning and deadline trips are unchanged.
-inline constexpr unsigned bank_min_bag = 0; // 40 (v123): 25/50 against v119 28/50 on the wide block, same hour (seven flips to wins, ten to losses), after 62/96 to 58/96 locally. Off.
 // A winning bag channels under fire only when the channel is this short (tribute.cpp).
 inline constexpr int win_channel_turns = 4;
 inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)
@@ -200,12 +181,6 @@ inline constexpr float worker_commit_bonus = 1.1102f;
 // claimants') times team_clear_share. A champion with a dash walks
 // dash_travel_scale of the steps.
 inline constexpr float team_clear_share = 0.61002f;
-// A claimed group is worth what we add over its claimants alone (with minus
-// without); join_share scales the without term (1: as measured; lower: joining
-// a claimed group is worth more). Intercontinental Fish clears with 2.74
-// champions within 6 of the group (3.47 on 25-gem groups), the field 2.11,
-// ours 1.79; target sharing by pairs left it at 1.97 (2026-11-03).
-inline constexpr float join_share = 1.0f; // 0 (v124 on the platform): packs at the clear, 21/50 against v119 28/50 on the wide block, same hour. Off.
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
@@ -262,18 +237,6 @@ inline constexpr float spawn_siege_margin = 1.5f;
 // team on it from round 1, as 剑桥夜爬者 played it (first take round 415;
 // ours priced by health and hazard began at round 560 and took it at 835).
 inline constexpr float spawn_siege_score = 10.0f;
-// Builds (economy.cpp next_item()): the repeat emblem alternates whole
-// emblems with Bruiser/Health, and Ryth's repeat is Bruiser/Health instead
-// of Monster/Strength. The top teams' carries are health stacks (Mite:
-// Bruiser/Health the most-bought emblem of every champion; Nanyang's Vesper
-// at 3,373 health soloing harvest's two-golem geode; Ding's Marcella at
-// 6,900 on contest). Neutral against the stacker and test-bot locally
-// (92/142 against 94); judged by a practice series (v121).
-inline constexpr bool alternate_health = false; // true: v121, 22/50 against v119 26/50 on the wide block, same hour (five flips to losses, one to a win). Off.
-inline constexpr bool ryth_health_repeat = false;
-// Bruiser/Health emblems per main-stat Bruiser among the repeats (1: strict
-// alternation; 2: about Mite's mix).
-inline constexpr float health_repeat_ratio = 1.0f;
 // Pocket groups (Bot::prepare_pockets()): a group no walk from spawn reaches,
 // inside a ring of holes a dash crosses (01big_world's 21-gem cluster triples,
 // the-pond's four cluster groups, islands, fracture, membrane). Intercontinental
@@ -281,24 +244,6 @@ inline constexpr float health_repeat_ratio = 1.0f;
 // captures by round 600 on big_world, where we take none. A champion with a
 // dash of the entry's steps prices the group at its walk to the entry plus
 // pocket_rounds (the dash in and the cooldown before the dash out).
-// Death sites (Bot::note_death_site()): a group within death_site_range of
-// where we or a teammate in view died in the last death_site_memory rounds
-// is worth death_site_penalty of its value per death (two at most). Starfish
-// against a top team: 50 deaths, 26 of them on the land bridge out of our
-// spawn by the first gold group, their Vesper and Marcella standing there
-// all game; the sighting memory (9 rounds) forgets them between respawns.
-inline constexpr int death_site_range = 6;
-inline constexpr int death_site_memory = 250;
-inline constexpr float death_site_penalty = 1.0f; // 0.5: 26/48 against 27/48 on eight fight maps, deaths 920 against 902, contest 0/6 against 3/6 (its only gems sit where we die). Off.
-// The twin pick (Cassi 600 health, Issac 900; one dies, both die): no fight
-// that is not a kill or a finish unless a healthy teammate is within
-// harvest_alone_range, and no pursuit (the harvest species' gate). v122's
-// losses: Cassi and Issac dead together three and five times a game.
-inline constexpr bool twin_cautious = true;
-// The twin's gate only when no healthy teammate is near (true, v122's local
-// check: the pair still died 18 times to champions in six games), or on
-// every fight that is not a kill (false: they flee unless the duel is won).
-inline constexpr bool twin_gate_alone = true; // false (flee unless the duel is won): 0/3 locally, the_farm 498 gems, the pair still dead 2-3 times a game
 // The first turn (200k fuel) cost about 290k on tangle, big_world and corners:
 // every champion froze for rounds 1 and 2 (FUEL_OVERRUN started=1 ended=3).
 // 72-79k of it was each group's reach_share and spawn_strike measurement and
@@ -307,9 +252,8 @@ inline constexpr bool twin_gate_alone = true; // false (flee unless the duel is 
 // candidates) and the rest reach_per_turn a turn in the background, with
 // reach_share 1 (every striker reaches us) until then; the path search is
 // the choice's own.
-inline constexpr int reach_at_start = 10000; // 24 with first_turn_paths false: the first turn fits, but 82/144 against 88/144 locally (test-bot 39/72 to 46/72); old behaviour kept
+inline constexpr int reach_at_start = 10000;
 inline constexpr int reach_per_turn = 4;
-inline constexpr bool first_turn_paths = false; // true: the second-bound path search on the first turn, as before (v119); false: the first choice searches its own walks on turn 2, the same result (see take_turn), and the first turn ends a round earlier on big maps (tangle, big_world, corners: four champions lose one round instead of two)
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental
@@ -392,13 +336,6 @@ inline constexpr float vesper_scout_gold_value = 0.5f;
 // paired 39:29). naviepstokes and dromedaries run the same carry, earning up
 // to 71% of their team's gold on her.
 inline constexpr float marcella_capture_bonus = 100000.0f;
-// On a map with at most scarce_map_gold on all its camps, gold is worth
-// scarce_gold_boost times as much: items are what decide fights, and there is
-// little to buy them with. On gemfight (about 500 gold) ours never cleared the
-// elk groups, 22 gems and 110 gold, for 7-gem clusters worth no gold, and had
-// 244 gold at round 300 to 1,217.
-inline constexpr unsigned scarce_map_gold = 800;
-inline constexpr float scarce_gold_boost = 1.0f;
 // A capture the engine reports contested while we hold it with no enemy in
 // view is swept (worker_farm()): its holder walks the tiles toward the enemy
 // spawn and back until the enemy is seen. On vault (seat A against test-bot)
@@ -446,18 +383,16 @@ inline constexpr unsigned island_bag = 60;
 inline constexpr std::array<bc::item_passive, 2> front_passives = {bc::item_passive::prospector, bc::item_passive::capture};
 // The watch rules run where no altar is ours (bot.h watch_map): everywhere they
 // cost the chase and the joining that win other maps (280 games: 180 to 177).
-// Centre maps (a group with centre_share of the gems, opening_reach or more
-// steps from spawn: gemfight's 78-gem centre is 30 steps through a spiral of
-// holes, vault's 343). For the first opening_rounds, groups past
+// Centre maps (no gem group within opening_reach of spawn, and gold that is).
+// For the first opening_rounds, groups past
 // opening_reach are worth opening_far_mul in camp choice and left out of the
 // opening group: Intercontinental Fish clears the wolf and gold camps beside
 // its spawn with all five, then the elk group, and reaches the centre as a
 // group with 500 gold; ours walked there one by one with nothing and lost
-// the fight (practice 2026-11-01, 0 of 10). 0 rounds switches it off.
+// the fight (practice 2026-11-01, 0 of 10).
 // Against test-bot, which rushes the centre too, 80 rounds lost 85/140 to
 // 91 (paired +3 -9: both gemfight seats, pilgrimage, tangle): we arrive
 // second. Untested against the top teams beyond one 10-game probe (v80).
-inline constexpr float centre_share = 0.35f;
 inline constexpr int opening_reach = 15;
 inline constexpr int opening_rounds = 80;
 inline constexpr float opening_far_mul = 0.1f;
@@ -483,11 +418,9 @@ inline constexpr float harvest_near_enemy = 0.1f; // a group with an enemy seen 
 // every death stepped through (anvil, oasis, hooks) the victim's teammates
 // were 10-24 tiles away.
 inline constexpr float harvest_cohesion = 0.1f;
-inline constexpr int harvest_alone_range = 4; // the fight gate applies with no healthy teammate this near
 inline constexpr float harvest_enemy_side = 0.3f;
 inline constexpr int harvest_emblems = 3;
 inline constexpr int harvest_until = 500;
-inline constexpr bool harvest_all = false; // every map plays the species (for tables)
 // The species' map class (analysis/mapfeat/tree.py on the species against
 // v106, 4 games a map): the gold on the groups nearer our spawn than the
 // enemy's (walk, home within harvest_own_share of the enemy's) at least
@@ -605,11 +538,11 @@ inline Spell describe(const bc::ability &a) {
 // leaving only of a recalling holder's claim, so one bit holds both.
 // Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
 struct TeamMemory {
-    static constexpr unsigned bits = 9, mask = (1u << bits) - 1;
+    static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
     static constexpr unsigned field = bits + 1, field_mask = (1u << field) - 1;
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
-    static constexpr unsigned slots = 6;
+    static constexpr unsigned slots = 5;
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and the squad it takes to beat the
     // enemies the reporter sees, or identify a champion travelling to that

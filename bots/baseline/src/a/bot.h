@@ -617,20 +617,14 @@ class Bot {
     bc::distance_field home_field, altar_field, origin_field;
     vec2 home_centre{}; // The middle of our spawn region.
     vec2 enemy_centre{}; // The middle of the enemy's.
-    // A centre map: one group holds centre_share of the map's gems and is
-    // opening_reach or more steps from our spawn (centre_opening()).
+    // A centre map: no gem group within opening_reach of our spawn and gold
+    // that is (centre_opening()).
     bool centre_map = false;
-    int opening_reach_now = 20, opening_rounds_now = 0; // policy's, or the routed map's (world.cpp)
     // No altar of ours (DraftPlan::centre_altars): the watch rules run (worker_skirmish()).
     bool watch_map = false;
-    bool harvest_map = false, harvest_ready = false, harvest_gate_alone = false; // the harvest species (strategy.h harvest_*)
+    bool harvest_map = false, harvest_ready = false; // the harvest species (strategy.h harvest_*)
     float harvest_own_gold_now = 0; // the gold on our half, as the species' map class counts it
     bool harvesting() const { return harvest_map && !harvest_ready; }
-    // The twin pick's bodies fight only for a kill or with a teammate near
-    // (strategy.h twin_cautious).
-    bool twin_cautious() const {
-        return policy::twin_cautious && (type == bc::champion_type::cassi || type == bc::champion_type::issac);
-    }
     // The spawn-strike rules (policy::spawn_siege) apply only where the only
     // gems sit behind fortresses (homonoliths): on every map, a wolf or elk
     // group beside spawn priced free cost 88/140 to 78 (spawn_140).
@@ -651,7 +645,7 @@ class Bot {
     DraftPlan opening;
     // Whether the draft's plan holds this map's group and altar measures.
     // A centre map's opening (strategy.h): our own side first.
-    bool centre_opening() const { return centre_map && int(round) < opening_rounds_now; }
+    bool centre_opening() const { return centre_map && int(round) < policy::opening_rounds; }
     bool draft_measured() const {
         return opening.magic == DraftPlan::tag && opening.group_count == groups.size();
     }
@@ -1124,16 +1118,6 @@ class Bot {
     // landing occupied), -1 no pocket concerned.
     int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
     bool cast_dash_to(vec2 to);
-    // Death sites (strategy.h death_site_*): the rounds of the last two
-    // deaths near each group, ours and teammates' in view (tracked from the
-    // roster's life and the last tile each was seen on).
-    std::vector<int> group_death_last, group_death_prev;
-    std::array<std::uint8_t, TeamMemory::slots> ally_was_alive{};
-    std::array<int, TeamMemory::slots> ally_seen_round{};
-    std::array<vec2, TeamMemory::slots> ally_seen_pos{};
-    bool own_death_noted = false;
-    void note_death_site(vec2 p);
-    void track_deaths();
     // The chain search (pocket_search_step()): a group at a time, breadth
     // first over the walking regions from the pocket's, linked where a
     // 2-step dash lands in another, until a landing with a walk from spawn;

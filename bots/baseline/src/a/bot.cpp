@@ -29,9 +29,7 @@ void Bot::take_turn() {
         worker_priority();
         // The first camp choice searches its own walks on the next turn
         // (strategy.h reach_at_start: a second-bound search here took the
-        // turn past its doubled fuel; first_turn_paths keeps it).
-        if (policy::first_turn_paths && bc::self().is_alive())
-            measure_paths(2);
+        // turn past its doubled fuel).
         spare_region_steps(); // Last: the turn's required work is done.
         return;
     }

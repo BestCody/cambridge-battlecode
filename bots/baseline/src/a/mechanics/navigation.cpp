@@ -828,16 +828,15 @@ bool Bot::carrying_crystal() const {
 }
 
 float Bot::gold_value_now() const {
-    const float scarcity = 40u * opening.map_gold_forties <= policy::scarce_map_gold ? policy::scarce_gold_boost : 1.0f;
     if (harvesting())
-        return policy::harvest_gold_value * gold_type_weight() * scarcity;
+        return policy::harvest_gold_value * gold_type_weight();
     if (type == bc::champion_type::vesper_vale && int(round) < policy::vesper_scout_rounds)
-        return policy::vesper_scout_gold_value * scarcity;
+        return policy::vesper_scout_gold_value;
     const float progress = std::min(1.0f, round / float(std::max(1u, rules::settings().max_rounds / 2)));
     // As much more as a gold makes us stronger than it makes a teammate:
     // each shard of Marcella's build adds 14 focus to a 2 x focus spell, of
     // Ryth's a share of health (gold_type_weight()).
-    return (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * gold_type_weight() * scarcity;
+    return (policy::early_gold_value * (1 - progress) + policy::late_gold_value * progress) * gold_type_weight();
 }
 
 float Bot::hop_threshold() const {
