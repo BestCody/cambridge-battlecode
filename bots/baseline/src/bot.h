@@ -91,6 +91,11 @@ struct CampGroup {
     // group alone from our attack range (Bot::initialise()): only camps whose
     // reach covers the tile we strike from hit us.
     float reach_share = 1;
+    // Every striker of the group is in our attack range of one of our own
+    // spawn tiles, which heal to full at each turn end (homonoliths: the
+    // 600-gem monolith stack sits in the spawn region): struck from there
+    // the group costs nothing (policy::spawn_siege).
+    bool spawn_strike = false;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -439,6 +444,10 @@ class Bot {
     std::array<std::uint8_t, TeamMemory::slots> ally_slot{};
     unsigned seen_slots = 0;
     std::array<int, TeamMemory::slots> slot_ally{};
+    // Each teammate's largest maximum health seen (0: never seen): out of
+    // view it is counted at that, not at its type's base, by the party
+    // plans (a siege at round 1,000 counted a 2,500-health teammate at 1,000).
+    std::array<float, TeamMemory::slots> ally_max_seen{};
     // Each enemy in view's entry in enemy_roster, in enemies' order.
     std::array<std::uint8_t, 8> enemy_slot{};
     // This round's fight report: the group nearest the enemy we see and the
@@ -588,6 +597,10 @@ class Bot {
     bool harvest_map = false, harvest_ready = false, harvest_gate_alone = false; // the harvest species (strategy.h harvest_*)
     float harvest_own_gold_now = 0; // the gold on our half, as the species' map class counts it
     bool harvesting() const { return harvest_map && !harvest_ready; }
+    // The spawn-strike rules (policy::spawn_siege) apply only where the only
+    // gems sit behind fortresses (homonoliths): on every map, a wolf or elk
+    // group beside spawn priced free cost 88/140 to 78 (spawn_140).
+    bool spawn_siege_map() const { return policy::spawn_siege && fortress_gems(opening); }
     // The cohesion hazard in force: the species keeps the team within the
     // camp spacing of each other's claims in both of its phases.
     float cohesion_hazard_now() const { return harvest_map ? policy::harvest_cohesion : policy::cohesion_hazard; }

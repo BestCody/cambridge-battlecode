@@ -1,0 +1,24 @@
+  03homonoliths          finished  loss  d399883a-ba24-4fbb-9f41-c83b2d7176ee
+  00contest              finished  loss  aeec4643-790a-4b2c-af95-d9ab434c6e01
+  02cuts                 finished  win   abc502b5-6ca2-438a-a360-45a24cebfa73
+  02uncharted_lands      finished  loss  95045fc0-e250-47fb-bcef-5c94b70fb6af
+  01starvation           finished  loss  0285a8cf-0380-479b-86a4-c2aa675b21a4
+02bd871b DING 1/5 DONE
+  03homonoliths          finished  loss  09cca856-a024-4df2-a99a-a21567e108cb
+  00contest              finished  loss  695b36b8-2859-4db5-95b4-7f7553effbd7
+  02cuts                 finished  loss  77e2935d-ffb6-41e0-b025-223d3f3a8632
+  02uncharted_lands      finished  loss  8206f1e0-9d23-404b-87ba-dd214120796a
+  01starvation           finished  loss  9cd2f068-856b-42a6-be08-f35992a293b9
+cb80399b JUP 0/5 DONE
+  03homonoliths          finished  win   c14447ff-dfde-47ed-b751-0677d809c663
+  00contest              finished  loss  52a8f426-072b-4d5b-bbfd-1de44b85b324
+  02cuts                 finished  win   b9da05e0-1ff6-477c-abc6-aa03f6520bcb
+  02uncharted_lands      finished  win   5ada2c5e-d949-4735-8b27-435d0ed872ae
+  01starvation           finished  win   7bf79b33-2beb-495d-b0d0-998f2b7fa67f
+c32ea832 ESTRO 4/5 DONE
+  03homonoliths          finished  loss  aeef20b4-6939-418e-b9ce-e104f8c71bdf
+  00contest              finished  loss  a97f1150-e4be-4f46-a2c6-718b3b84e22f
+  02cuts                 finished  win   9a9f0df9-4e8f-452b-8984-3950489581bf
+  02uncharted_lands      finished  loss  b36950c7-62aa-4e47-8d32-c8c58265cbf2
+  01starvation           finished  loss  f81f79f8-0b4d-4fc4-b714-2c9614a935fe
+500cd4af JIANQ 1/5 DONE

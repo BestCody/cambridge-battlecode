@@ -767,6 +767,7 @@ void Bot::initialise() {
             x1 = std::min(map_width - 1, x1 + ours);
             y1 = std::min(map_height - 1, y1 + ours);
             const int box = x1 - x0 + 1;
+            std::size_t spawn_struck = 0;
             // A tile we cannot strike from (closed, or a camp's) starts at
             // infinity: strengths added to it leave it so and it is never the
             // least, so the scans need no tile lookups (all exact).
@@ -802,7 +803,19 @@ void Bot::initialise() {
                         least = std::min(least, hit[i]);
                 }
                 least_of[t] = least;
+                // One of our spawn tiles within our range of the striker: it
+                // heals to full at the turn's end (CampGroup::spawn_strike; a
+                // flag only, the shares stay as measured).
+                if (policy::spawn_siege)
+                    for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours); ++y)
+                        for (int x = cx; x <= dx; ++x)
+                            if (own_spawn_tile[std::size_t(y) * std::size_t(map_width) + std::size_t(x)]) {
+                                ++spawn_struck;
+                                y = map_height;
+                                break;
+                            }
             }
+            g.spawn_strike = spawn_struck == n;
             float living = 0, whole = 0, reached = 0;
             for (const auto &s : strikers)
                 living += s.strength;
@@ -1216,6 +1229,7 @@ void Bot::observe() {
             slot_ally[s] = int(allies.size());
             seen_slots |= 1u << s;
             allies.emplace_back(roster[s], *info);
+            ally_max_seen[s] = std::max(ally_max_seen[s], allies.back().max_health);
         }
     ++threat_revision; // New units: what incoming() listed from them is stale.
     mark_camps_in_view();
@@ -1860,6 +1874,8 @@ float Bot::dps(const CampGroup &g) const {
 float Bot::visit_cost(const CampGroup &g) const {
     // The reach camp choice reads (CampGroup's shared facts): the walk out
     // of it from our attack range under the living strikers' fire.
+    if (g.spawn_strike && spawn_siege_map())
+        return 0.0f;
     const float reach = float(g.status == CampGroup::alive ? g.live_reach : g.reach);
     const float exit_steps = std::max(0.0f, reach - float(range - 1));
     return g.pressure * exit_steps * camp_mitigation * mitigation;

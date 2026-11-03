@@ -1,0 +1,18 @@
+  02famine               finished  win   ad913db5-2a6d-44e0-84bf-d5a1dea017dd
+  01big_world            finished  loss  e71c9237-4700-4d70-9865-1cf419b285a3
+  01the_farm             finished  win   3ca69fbb-026d-469c-b9db-b474374a8c33
+  00rows                 finished  loss  d74a0501-4cf6-41ba-b745-4f503c2c94ca
+  02fields               finished  loss  def36e7e-ebd6-4d96-8370-fc4bb29345b6
+17d055ff TOKEN 2/5 DONE
+  02famine               finished  loss  537b0ef0-dbc3-4962-a5d7-6dae3e71eba1
+  01big_world            finished  loss  f4392d38-3404-49f7-8690-eb3719b5e9a4
+  01the_farm             finished  win   0686315a-4768-4b27-a6c4-44f9a2812cf7
+  00rows                 finished  win   3d5247d1-364f-4f36-aaa5-1c398617e335
+  02fields               finished  loss  26117633-c0ee-4796-8de2-da8417ddcb95
+6b259a5b DING 2/5 DONE
+  02famine               finished  loss  c25eac25-a81d-430e-94f7-b951f2f6daa6
+  01big_world            finished  loss  ad99c69e-988d-45f8-ba67-a0e6073d9c2b
+  01the_farm             finished  loss  c168487f-bd42-46d8-be80-07badc6efc5e
+  00rows                 finished  win   68492345-21c1-41e6-bd09-84eeb857afba
+  02fields               finished  win   616f2628-f6da-47b1-a6ac-3090a59402d5
+5fc8dac1 JUP 2/5 DONE

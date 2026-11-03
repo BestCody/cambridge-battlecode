@@ -168,6 +168,54 @@ inline constexpr float dash_travel_scale = 0.69475f;
 // wolves by round 38-65; ours, valuing a far golem group above a near
 // cluster, 30% of those games and round 102.
 inline constexpr float plan_hazard = 0.020924f;
+// Siege pricing for monolith groups (siege_gems gems or more; 0: off), a
+// specialist on the 22 maps that carry one. Measured on the peers' replays
+// (NIRVAN_CLAUDE.md, "Monoliths", 2026-11-02): a monolith strikes only the
+// nearest champion every round (200 before Jungle and Durability), so a party's
+// fronts swap and the walk out is free; each stun (Ryth, Marcella's enhanced
+// attack, Heart of Ruin's dash), a self-shield (1.5 x Focus) and a heal take
+// about a hit in eight off the front; and three ordinary champions clear one
+// in 66 rounds for about 3,200 health, test-bot's five in 40. The generalist
+// model priced that at 14,000-44,000 damage, 50-300 trips home and a plan of
+// 760-5,900 rounds, so no party ever began one; Ding, Tokenmaxxing and
+// test-bot take them two or three times a game and win famine, big_world and
+// rows on them alone. A 200-gem capture is not cut short the way a cluster
+// run is: siege_hazard replaces plan_hazard.
+inline constexpr float siege_gems = 150;
+inline constexpr float siege_hazard = 0.0f;
+inline constexpr float siege_min_front = 0.25f; // the front's share of the camp's hits with every save counted
+// A siege begins only when the party finishes it without a trip home (at most
+// siege_max_trips): priced at round 20 it was adopted at base stats and
+// dropped within 10-40 rounds as teammates' states changed, over and over,
+// so nobody's walk became a clear. The peers' first take is at round 550-850
+// with 1,500-3,000 health each. An adopted siege (our last plan's party)
+// scores siege_commit times its plan against the alternatives.
+inline constexpr float siege_max_trips = 0;
+inline constexpr float siege_commit = 1.5f;
+// One monolith at most (the group's camp strength, before any neighbour):
+// a pair strikes two champions a round, and the front that leaves at the
+// retreat line walks four rounds out of reach 5 under both (boss-battle:
+// deaths 6 to 30 in 2 games, 10 to the camps). Pairs and stacks (boss-battle,
+// great-wall, rows, corridors) keep the generalist pricing.
+inline constexpr float siege_max_pressure = 200;
+// Camps struck from our own spawn tiles cost nothing: spawn heals to full at
+// each turn end (docs/GameRules.md, "remain on spawn until that turn ends to
+// heal fully"). 03homonoliths (ranked, 2026-11-02 22:30, 0-1200): the only
+// gems are a 600-gem, 60,000-health, 600-strength monolith stack inside each
+// spawn region; 剑桥夜爬者 chipped theirs from round 11 and took it at rounds
+// 415 and 870, ours walked past it at round 2 and farmed 20-gold clusters,
+// 4,864 gold to 3,380 and no gems: a champion on spawn with any health
+// missing waited to heal, was struck at the round's start, and waited again.
+// With spawn_siege such a group has no striker work, no pressure, its strike
+// tiles are the spawn's, and a hit we outlast by spawn_siege_margin is no
+// reason to wait.
+inline constexpr bool spawn_siege = true;
+inline constexpr float spawn_siege_margin = 1.5f;
+// On a map whose only gems sit behind fortresses (fortress_gems), the living
+// fortress at our spawn scores at least this (scores run 0.1-2): the whole
+// team on it from round 1, as 剑桥夜爬者 played it (first take round 415;
+// ours priced by health and hazard began at round 560 and took it at 835).
+inline constexpr float spawn_siege_score = 10.0f;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of

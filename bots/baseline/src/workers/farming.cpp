@@ -347,7 +347,9 @@ int Bot::worker_choose_group(int excluded) {
             // has no living camps, and was read as no hard group, reach 0).
             const bool whole = g.status != CampGroup::alive;
             remaining[i] = whole ? g.max_health : g.health;
-            lanes.striker_work[i] = whole ? g.whole_work : g.live_work;
+            // Struck from our spawn (CampGroup::spawn_strike) a group costs
+            // nothing: no striker work, no pressure on the walk out.
+            lanes.striker_work[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : whole ? g.whole_work : g.live_work;
             lanes.reach_share[i] = g.reach_share;
             lanes.reach[i] = float(whole ? g.reach : g.live_reach);
             // Tiles past the camp spacing to the nearest teammate's claim
@@ -362,7 +364,7 @@ int Bot::worker_choose_group(int excluded) {
                     lanes.cohesion[i] = std::max(0.0f, nearest_claim - opening.spacing);
             }
             splash[i] = g.splash;
-            pressure[i] = g.pressure;
+            pressure[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : g.pressure;
             claim[i] = float(claims[i]);
         }
         for (std::size_t i = 0; i < count; ++i)
@@ -791,6 +793,14 @@ int Bot::worker_choose_group(int excluded) {
                 for (std::size_t k = i; k < i + 4 && k < count; ++k)
                     if (lanes.scores[k] != skipped && lanes.scores[k] > 0 && enemy_near_lately(int(k)))
                         lanes.scores[k] *= policy::harvest_near_enemy;
+            // The fortress at our spawn on a map with no other gem source
+            // (homonoliths) is the whole team's job while it stands: priced
+            // by its 60,000 health and the plan hazard it scored 0.03 against
+            // a 20-gold cluster's 0.4, and ours began it at round 560.
+            if (spawn_siege_map())
+                for (std::size_t k = i; k < i + 4 && k < count; ++k)
+                    if (groups[k].spawn_strike && groups[k].status == CampGroup::alive && lanes.scores[k] != skipped)
+                        lanes.scores[k] = std::max(lanes.scores[k], policy::spawn_siege_score);
         }
     };
     // A group whose walk is still a lower bound (past the bounded search)
@@ -896,10 +906,40 @@ int Bot::worker_choose_group(int excluded) {
             const float reward = lanes.gem_reward[i] + gold_weight * lanes.gold[i];
             const float our_walk = float(std::max(0, lanes.path[i] - our_range)) * travel_scale;
             const float belief = lanes.belief[i];
+            // A monolith group is priced as a siege (policy::siege_gems):
+            // measured on the peers' replays, not modelled. The camp strikes
+            // only the nearest champion, so the party's fronts swap and the
+            // walk out is free; each stun, self-shield and heal in the party
+            // takes about a hit in eight off the front; no cluster-run hazard.
+            const bool siege = policy::siege_gems > 0 && g.unit.gem_value() >= policy::siege_gems &&
+                               g.max_pressure <= policy::siege_max_pressure;
+            const float hazard = siege ? policy::siege_hazard : policy::plan_hazard;
             const auto plan_value = [&](float time) {
                 const float walk = std::min(our_walk, time);
                 time = walk + belief * (time - walk);
-                return belief * reward / std::max(1.0f, time) / (1 + time * policy::plan_hazard);
+                return belief * reward / std::max(1.0f, time) / (1 + time * hazard);
+            };
+            const auto kit_saves = [](const std::array<Spell, 2> &spells) {
+                float saves = 0;
+                for (const auto &s : spells)
+                    switch (s.kind) {
+                    case bc::ability_kind::cc:
+                    case bc::ability_kind::dash:
+                        saves += s.duration > 0 ? 1.0f : 0.0f;
+                        break;
+                    case bc::ability_kind::attack_reset:
+                        saves += s.enhanced ? 1.0f : 0.0f;
+                        break;
+                    case bc::ability_kind::shield:
+                        saves += 1.5f;
+                        break;
+                    case bc::ability_kind::heal:
+                        saves += 1.0f;
+                        break;
+                    default:
+                        break;
+                    }
+                return saves;
             };
             const float claim_speed = lanes.claim_rate[i] * policy::team_clear_share;
             // No plan here ends its clear before `start` and a round a camp
@@ -970,6 +1010,10 @@ int Bot::worker_choose_group(int excluded) {
             };
             join(our_range, first_visit, usable, exit_cost(our_range) * camp_scale);
             const bool we_front = float(our_range) <= front;
+            // The siege's party: every member is a front in turn, with what
+            // it has now and its whole health less the casualty margin.
+            float siege_saves = siege ? kit_saves(kit) : 0.0f, siege_first = first_visit,
+                  siege_visit = usable * (1 - policy::casualty_margin), siege_fronts = 1;
             // With the claimants, us and the k soonest (k = 0: no party).
             float party_speed = 0, rate_asked = 0;
             for (unsigned k = 0; k <= n; ++k) {
@@ -984,6 +1028,17 @@ int Bot::worker_choose_group(int excluded) {
                         plan_value(soonest_clear + settle) * lanes.factor[i] - party_best * rate_asked / our_rate <= best)
                         break;
                     join(m.range, policy::camp_visit_health(m.health, m.max_health), m.max_health, exit_cost(m.range));
+                    if (siege) {
+                        // Out of view, a teammate counts at the most health it
+                        // was seen with (ally_max_seen), not its type's base.
+                        const unsigned s = soon[k - 1].second;
+                        const bool seen = slot_ally[s] >= 0;
+                        const float mh = seen ? m.max_health : std::max(m.max_health, ally_max_seen[s]);
+                        siege_saves += kit_saves(roster_kits[s].spells);
+                        siege_first += seen ? policy::camp_visit_health(m.health, m.max_health) : mh;
+                        siege_visit += mh * (1 - policy::casualty_margin);
+                        siege_fronts += 1;
+                    }
                 }
                 // The clear: each party strikes from its arrival, the asked
                 // ones from the last of them.
@@ -1019,19 +1074,40 @@ int Bot::worker_choose_group(int excluded) {
                 if (end < 0)
                     end = t + left / striking;
                 end = std::max(end, cohorts[0].at + lanes.camp_count[i] / (lanes.claims[i] + 1 + float(k)));
-                const float damage = work / striking * (we_front && float(our_range) == front ? camp_scale : 1.0f) *
-                                     (lanes.claims[i] > 0 || k > 0 ? 1.0f : lanes.reach_share[i]);
-                const float each = visit / std::max(1.0f, fronts);
-                if (each < 100)
-                    continue;
-                const float trips = std::ceil(std::max(0.0f, damage - first) / each);
-                // Without trips home, a party adds nothing a choice cannot.
-                if (k == 0) {
-                    if (trips == 0)
-                        break;
-                    continue;
+                float damage, each, trips, time;
+                if (siege) {
+                    // The front's share of the camp's hits over the clear,
+                    // at our mitigation; the party trips home in turns.
+                    const float share = std::max(policy::siege_min_front, (8.0f - std::min(siege_saves, 6.0f)) / 8.0f);
+                    // A living hard group whose reach covers this one's
+                    // tiles strikes the party too (guardians' monolith pair:
+                    // priced as one, ours died beside it 15 times in 2 games).
+                    float pressure = lanes.pressure[i];
+                    for (std::size_t j = 0; j < count; ++j)
+                        if (j != i && groups[j].status == CampGroup::alive && groups[j].live_hard &&
+                            distance(groups[j].centre, g.centre) <= groups[j].live_reach + 2)
+                            pressure += groups[j].pressure;
+                    damage = pressure * camp_scale * share * std::max(1.0f, end - cohorts[0].at);
+                    each = siege_visit;
+                    trips = std::ceil(std::max(0.0f, damage - siege_first) / std::max(100.0f, each));
+                    if (k == 0 || trips > policy::siege_max_trips) // Alone it is the group's own pricing (score_lanes()).
+                        continue;
+                    time = end + trips * trip_time / siege_fronts + settle;
+                } else {
+                    damage = work / striking * (we_front && float(our_range) == front ? camp_scale : 1.0f) *
+                             (lanes.claims[i] > 0 || k > 0 ? 1.0f : lanes.reach_share[i]);
+                    each = visit / std::max(1.0f, fronts);
+                    if (each < 100)
+                        continue;
+                    trips = std::ceil(std::max(0.0f, damage - first) / each);
+                    // Without trips home, a party adds nothing a choice cannot.
+                    if (k == 0) {
+                        if (trips == 0)
+                            break;
+                        continue;
+                    }
+                    time = end + trips * trip_time / std::max(1.0f, fronts) + settle;
                 }
-                const float time = end + trips * trip_time / std::max(1.0f, fronts) + settle;
                 if constexpr (policy::diagnostic)
                     if (g.unit.gem_value() >= 25 && round % 25 == 0)
                         std::printf("PARTY r=%u id=%u g=%zu k=%u end=%.0f trips=%.0f each=%.0f damage=%.0f first=%.0f time=%.0f left=%.0f "
@@ -1040,8 +1116,9 @@ int Bot::worker_choose_group(int excluded) {
                                     plan_value(time), without, lanes.factor[i], party_best * rate_asked / our_rate, best);
                 if (time > rounds_left)
                     continue;
+                const float commit = siege && int(i) == request_group ? policy::siege_commit : 1.0f;
                 const float score =
-                    (plan_value(time) - without) * lanes.factor[i] - party_best * rate_asked / our_rate;
+                    (plan_value(time) - without) * lanes.factor[i] * commit - party_best * rate_asked / our_rate;
                 if (score > best) {
                     best = score;
                     choice = int(i);
@@ -1061,6 +1138,9 @@ int Bot::worker_choose_group(int excluded) {
     // A party plan's clear is the party's: no siege or run of our own.
     siege_group = choice >= 0 && party < 0 && lanes.siege_won[choice] ? choice : -1;
     request_group = party;
+    if constexpr (policy::diagnostic)
+        if (party >= 0)
+            std::printf("PARTYGO r=%u id=%u g=%d best=%.2f\n", round, id(bc::self()), party, best);
     if (choice >= 0 && party < 0 && cluster_run.empty() && lanes.run_won[choice]) {
         gather_run(std::size_t(choice), &cluster_run);
         std::reverse(cluster_run.begin(), cluster_run.end());
@@ -1389,6 +1469,12 @@ void Bot::worker_farm() {
                     row[x] += strength;
             }
         }
+        // Our own spawn tiles heal to full at the turn's end: struck from
+        // one, nothing reaches us (CampGroup::spawn_strike).
+        if (g.spawn_strike && spawn_siege_map())
+            for (std::uint32_t t = 0; t < count; ++t)
+                if (own_spawn_tile[std::size_t(tiles[t].y * map_width + tiles[t].x)])
+                    hits[std::size_t(tiles[t].y * map_width + tiles[t].x)] = 0;
         // The least sum, then the tiles with it as bits imported in one engine
         // call: most tiles tie (beyond every camp's reach), and a push and a
         // set per tile cost about 30k a turn on the-pack.

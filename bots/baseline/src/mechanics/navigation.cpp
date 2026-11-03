@@ -269,8 +269,26 @@ void Bot::drop_waking_landings(bc::bitboard &landings, int reach, float radius, 
 }
 
 bool Bot::health_recovery_needed() const {
-    if (own_spawn_tile[tile_index(position)])
+    if (own_spawn_tile[tile_index(position)]) {
+        // Spawn heals to full at the turn's end. Striking our target's camps
+        // from here with no enemy in view (homonoliths: the monolith stack
+        // in the spawn region), a hit we outlast is no reason to wait: ours
+        // waited a turn, were struck at the round's start, waited again,
+        // and never hit the stack while the enemy took theirs from round 11.
+        if (spawn_siege_map() && enemies.empty() && target >= 0) {
+            float reaching = 0;
+            bool striking = false;
+            for (const auto &c : camps)
+                if (c.strength > 0 && !camp_dormant(c) && group_at(c.position) == target) {
+                    if (distance(position, c.position) <= c.range)
+                        reaching += c.strength;
+                    striking = striking || distance(position, c.position) <= range;
+                }
+            if (striking && health > reaching * camp_mitigation * mitigation * policy::spawn_siege_margin)
+                return false;
+        }
         return health < max_health;
+    }
     // Also home when the health left only covers the damage it is taking
     // (camp damage included) for the rounds it takes to walk out of reach of
     // the awake camps hitting us (two at least): camps do not chase, but a
