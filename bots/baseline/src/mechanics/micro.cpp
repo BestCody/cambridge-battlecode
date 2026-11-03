@@ -1033,6 +1033,10 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 groups[farm_group].attacked = round;
             return true;
         }
+        // Refused for an unseen occupant, now known (see cast_dash_to()).
+        blocked |= bc::vision::champion_tiles();
+        blocked.set(best);
+        blocked.set(position, false);
     }
     return false;
 }
