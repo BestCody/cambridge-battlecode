@@ -98,9 +98,6 @@ struct CampGroup {
     vec2 entry_out{-1, -1}, entry_in{-1, -1};
     int entry_steps = 0;
     std::uint16_t entry_region = 0;
-    // The round from which the entry's own landing is tried again after it
-    // was refused or occupied (policy::pocket_entry_retry).
-    int entry_retry_round = 0;
     std::vector<vec2> inside;
     // Every striker of the group is in our attack range of one of our own
     // spawn tiles (policy::spawn_siege_margin).
@@ -1091,7 +1088,6 @@ class Bot {
     // landing occupied), -1 no pocket concerned.
     int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
     bool cast_dash_to(vec2 to);
-    bool dash_into_region(std::uint16_t region);
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).

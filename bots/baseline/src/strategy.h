@@ -183,10 +183,6 @@ inline constexpr float plan_hazard = 0.020924f;
 // dash of the entry's steps prices the group at its walk to the entry plus
 // pocket_rounds (the dash in and the cooldown before the dash out).
 inline constexpr int pocket_rounds = 3;
-// A pocket entry whose landing a dash found occupied (an unseen teammate or
-// enemy in a bush) is not tried again for this many rounds: another landing
-// in the same region is taken instead of standing still every turn.
-inline constexpr int pocket_entry_retry = 8;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of

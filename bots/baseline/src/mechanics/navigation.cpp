@@ -1161,31 +1161,15 @@ int Bot::dash_steps() const {
 
 int Bot::pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group) {
     const std::uint16_t here = walk_region_at(position.x, position.y);
-    // To the take-off, then the dash to the landing. A landing found occupied
-    // is not tried again for policy::pocket_entry_retry rounds; meanwhile, or
-    // with the take-off held, another landing in the same region is taken.
-    const auto cross = [&](CampGroup &g, vec2 from, vec2 to) {
-        if (position == from && int(round) >= g.entry_retry_round) {
-            if (cast_dash_to(to))
-                return 1;
-            if (blocked.is_set(to))
-                g.entry_retry_round = int(round) + policy::pocket_entry_retry;
-        }
-        if ((position == from || blocked.is_set(from) || int(round) < g.entry_retry_round) &&
-            dash_into_region(walk_region_at(to.x, to.y)))
-            return 1;
-        if (position == from)
-            return 0;
-        const auto take_off = around(from, blocked.is_set(from) ? 1.0f : 0.0f);
-        return move_to(take_off, from, urgent, false, engaged_group) ? 1 : 0;
-    };
     // Inside a pocket, with the goals outside it (a goal inside would have a
     // walk): to the landing, then the dash out to the entry.
     for (const int i : pocket_groups) {
-        auto &g = groups[std::size_t(i)];
+        const auto &g = groups[std::size_t(i)];
         if (g.entry_region != here)
             continue;
-        return cross(g, g.entry_in, g.entry_out);
+        if (position != g.entry_in)
+            return move_to(around(g.entry_in, 0), g.entry_in, urgent, false, engaged_group) ? 1 : 0;
+        return cast_dash_to(g.entry_out) ? 1 : 0;
     }
     // Outside: the goals in a pocket (its landing or its camps' tiles): to
     // the entry, walking (a travel dash on the way would be cooling on
@@ -1193,7 +1177,7 @@ int Bot::pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group) 
     if (dash_steps() <= 0)
         return -1;
     for (const int i : pocket_groups) {
-        auto &g = groups[std::size_t(i)];
+        const auto &g = groups[std::size_t(i)];
         if (g.entry_steps > dash_steps())
             continue;
         bool wanted = goals.is_set(g.entry_in);
@@ -1201,22 +1185,11 @@ int Bot::pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group) 
             wanted = wanted || goals.is_set(t);
         if (!wanted)
             continue;
-        return cross(g, g.entry_out, g.entry_in);
+        if (position != g.entry_out)
+            return move_to(around(g.entry_out, 0), g.entry_out, urgent, false, engaged_group) ? 1 : 0;
+        return cast_dash_to(g.entry_in) ? 1 : 0;
     }
     return -1;
-}
-
-bool Bot::dash_into_region(std::uint16_t region) {
-    // Any free landing a legal dash path reaches in the walking region.
-    occupied_into(dash_blocked, dash_terrain);
-    dash_blocked.reachable_tiles_into(position, static_cast<std::uint16_t>(dash_steps()), step_tiles);
-    subtract_into(search_goals, step_tiles, blocked);
-    const std::uint32_t count = search_goals.positions_into(dash_landings);
-    for (std::uint32_t i = 0; i < count; ++i)
-        if (const vec2 p = dash_landings[i];
-            p != position && walk_region_at(p.x, p.y) == region && cast_dash_to(p))
-            return true;
-    return false;
 }
 
 bool Bot::cast_dash_to(vec2 to) {
