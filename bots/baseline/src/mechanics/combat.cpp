@@ -52,6 +52,14 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
     };
     // Our rate on the farmed group's camps (camp choice's own).
     const float camp_rate = !fighting_champions && farm_group >= 0 ? dps(groups[farm_group]) : 1.0f;
+    // kill_value() sums every enemy's life: read once until a hit changes
+    // one (the strikes below reset it), not once per target weighed.
+    float kill = -1;
+    const auto kill_now = [&]() {
+        if (kill < 0)
+            kill = kill_value();
+        return kill;
+    };
     auto weight = [&](const ObservedUnit &u, float damage, bool cc) {
         if (!eligible(u))
             return 0.0f;
@@ -60,7 +68,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         const float useful = value;
         // An enemy champion as the micro counts it: a kill, then damage.
         if (effective >= u.health + u.shield)
-            value += u.enemy() ? kill_value() : u.strength * 8;
+            value += u.enemy() ? kill_now() : u.strength * 8;
         if (!u.enemy())
             // Strikers first (striker_work()): a hit ends a striker
             // useful / rate rounds sooner and spares its strength each of
@@ -71,8 +79,10 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         if (cc && !damage::held(u) && !u.immune) {
             if (!u.enemy())
                 value += controls[&u - targets.data()];
-            else if (effective < u.health + u.shield)
-                value += stun_value(u, u.health + u.shield - effective);
+            else if (effective < u.health + u.shield) {
+                const float window = stun_follow_up(u); // stun_value(), with the kill read once.
+                value += stun_prevented(u) + (u.health + u.shield - effective <= window ? kill_now() : window);
+            }
         }
         if (u.retaliation() > 0 && effective > 0) {
             const float recoil = u.retaliation() * mitigation;
@@ -87,13 +97,14 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             return -1;
         me.attack_tiles_into(attack_area);
         const auto &attack_tiles = attack_area;
+        const float basic = basic_damage();
         float best = 0;
         int index = -1;
         for (std::size_t i = 0; i < targets.size(); ++i) {
             auto &u = targets[i];
             if (!eligible(u) || !attack_tiles.is_set(u.position) || !present(u))
                 continue;
-            float value = weight(u, basic_damage(), false);
+            float value = weight(u, basic, false);
             if (value > best) {
                 best = value;
                 index = i;
@@ -113,6 +124,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
         // this turn's choices.
         if (u.enemy() && !attack_area.is_set(u.unit().position())) {
             u.health = 0;
+            kill = -1;
             return false;
         }
         const vec2 struck = u.position;
@@ -128,6 +140,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                 t.health = live_health(t);
                 gone = gone || t.health <= 0;
             }
+        kill = -1;
         // A champion killed leaves incoming()'s estimate: its packed enemies
         // and nearest units are made again.
         if (fighting_champions && gone)
@@ -157,9 +170,10 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
             if (me.can_attack())
                 continue;
             float score = 0;
+            const float basic = basic_damage();
             for (const auto &u : targets)
                 if (eligible(u) && distance(position, u.position) <= range && present(u))
-                    score = std::max(score, weight(u, basic_damage(), s.enhanced));
+                    score = std::max(score, weight(u, basic, s.enhanced));
             if (score > best_score) {
                 best_score = score;
                 best_slot = slot_index;
@@ -304,6 +318,7 @@ bool Bot::combat(bool fighting_champions, int farm_group, bool escaping) {
                     gone = gone || u.health <= 0;
                 }
             }
+            kill = -1;
             // As after an attack: a champion killed leaves incoming().
             if (fighting_champions && gone)
                 ++threat_revision;

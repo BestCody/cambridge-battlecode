@@ -317,13 +317,17 @@ bool Bot::worker_skirmish() {
         }
         return bits;
     };
-    const auto sides = [&](vec2 tile) {
+    // The sides' power from the bits of the units acting on a tile.
+    const auto sides_of = [&](std::uint32_t their_bits, std::uint32_t our_bits) {
         std::pair<float, float> s{0.0f, own};
-        for (std::uint32_t m = acting(their_lanes, their_count, tile); m; m &= m - 1)
+        for (std::uint32_t m = their_bits; m; m &= m - 1)
             s.first += theirs_list[__builtin_ctz(m)].power;
-        for (std::uint32_t m = acting(our_lanes, our_count, tile); m; m &= m - 1)
+        for (std::uint32_t m = our_bits; m; m &= m - 1)
             s.second += ours_list[__builtin_ctz(m)].power;
         return s;
+    };
+    const auto sides = [&](vec2 tile) {
+        return sides_of(acting(their_lanes, their_count, tile), acting(our_lanes, our_count, tile));
     };
     // The enemies a tile we reach can strike, once: alive, off their spawn,
     // within our longest reach of a tile a step takes us to.
@@ -541,7 +545,10 @@ bool Bot::worker_skirmish() {
         s.strike = nothing_ready || dealt > 0;
         if (our_count > 0)
             s.ally = -nearest_of(our_lanes.x, our_lanes.y, our_count, tile);
-        const auto [theirs, ours] = sides(tile);
+        // The units acting on the tile, once for its sides and the lone-unit test.
+        const std::uint32_t their_acting = acting(their_lanes, their_count, tile),
+                            our_acting = acting(our_lanes, our_count, tile);
+        const auto [theirs, ours] = sides_of(their_acting, our_acting);
         s.ours = ours;
         if (s.taken >= life || (s.taken > dealt && s.ours <= theirs))
             s.safety = 0;
@@ -552,9 +559,9 @@ bool Bot::worker_skirmish() {
         // XSquare's lone unit: no teammate that can act on the tile by next
         // turn (a fixed 3 tiles left out ranged teammates 4 away, already on
         // our side) and two or more enemies that can.
-        if (s.safety == 2 && acting(our_lanes, our_count, tile) == 0) {
+        if (s.safety == 2 && our_acting == 0) {
             unsigned acting_enemies = 0;
-            for (std::uint32_t m = acting(their_lanes, their_count, tile); m; m &= m - 1)
+            for (std::uint32_t m = their_acting; m; m &= m - 1)
                 acting_enemies += theirs_list[__builtin_ctz(m)].power > 0;
             if (acting_enemies >= 2)
                 s.safety = 1;

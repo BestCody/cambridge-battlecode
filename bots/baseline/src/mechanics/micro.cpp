@@ -952,6 +952,12 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         };
         static std::vector<Hittable> hittable;
         hittable.clear();
+        float kill = -1; // kill_value(), read once for every unit.
+        const auto kill_now = [&]() {
+            if (kill < 0)
+                kill = kill_value();
+            return kill;
+        };
         for (const auto &unit : targets)
             if (unit.health > 0 && float(distance(position, unit.position) - steps) <= spell.radius &&
                 !(fighting_champions ? enemy_spawn_tile[tile_index(unit.position)]
@@ -961,9 +967,11 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
                 float extra = 0;
                 if (fighting_champions) {
                     if (dealt >= unit.health + unit.shield)
-                        extra = kill_value();
-                    else if (!unit.immune && !damage::held(unit))
-                        extra = stun_value(unit, unit.health + unit.shield - dealt);
+                        extra = kill_now();
+                    else if (!unit.immune && !damage::held(unit)) {
+                        const float window = stun_follow_up(unit); // stun_value(), with the kill read once.
+                        extra = stun_prevented(unit) + (unit.health + unit.shield - dealt <= window ? kill_now() : window);
+                    }
                 }
                 const bool twin = fighting_champions && dealt >= unit.health + unit.shield &&
                                   (unit.type == bc::champion_type::cassi || unit.type == bc::champion_type::issac);
@@ -988,6 +996,14 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
         float best_score = 0;
         int best_safety = -1;
         Bot::ExitCheck exits{*this};
+        // What every landing's checks share, read at the first that needs it:
+        // the danger where we stand, and each side's powers as sides_at()
+        // sums them (own_power()'s engine reads among them), in its order.
+        float danger_here = -1;
+        float own = 0;
+        static std::vector<const ObservedUnit *> theirs_list;
+        static std::vector<float> theirs_power, allies_power;
+        bool sides_read = false;
         for (std::uint32_t k = 0; k < count; ++k) {
             const vec2 tile = dash_landings[k];
             if (tile == position || enemy_spawn_tile[tile_index(tile)])
@@ -1006,15 +1022,44 @@ bool Bot::impact_dash(bool fighting_champions, int farm_group) {
             }
             if (!hits)
                 continue;
+            // Safe (the best class) and no better than the best, a landing
+            // cannot be chosen: its danger, sides and exits need no reads.
+            if (best_safety == 2 && !(score > best_score))
+                continue;
             // A bruiser wants to be in the fight; only refuse a landing it
             // would not survive, this round or before it could leave. Then,
             // as the micro ranks a tile, a safe one (our side on it no weaker
             // than theirs, sides_at()) before an outnumbered one, then what
             // it hits (it was what it hits less 0.2 of the damage there).
             const float danger = incoming(tile);
-            if (danger >= health && danger > incoming(position))
-                continue;
-            const auto [theirs, ours] = sides_at(tile);
+            if (danger >= health) {
+                if (danger_here < 0)
+                    danger_here = incoming(position);
+                if (danger > danger_here)
+                    continue;
+            }
+            if (!sides_read) {
+                sides_read = true;
+                own = own_power();
+                theirs_list.clear();
+                theirs_power.clear();
+                for (const auto *list : {&enemies, &ghosts})
+                    for (const auto &e : *list)
+                        if (e.health > 0 && !e.channel) {
+                            theirs_list.push_back(&e);
+                            theirs_power.push_back(unit_power_of(e, enemy_spawn_tile[tile_index(e.position)]));
+                        }
+                allies_power.resize(allies.size());
+                for (std::size_t a = 0; a < allies.size(); ++a)
+                    allies_power[a] = unit_power_of(allies[a], false);
+            }
+            float theirs = 0, ours = own;
+            for (std::size_t e = 0; e < theirs_list.size(); ++e)
+                if (acts_on(*theirs_list[e], tile))
+                    theirs += theirs_power[e];
+            for (std::size_t a = 0; a < allies.size(); ++a)
+                if (allies[a].health > 0 && !allies[a].channel && acts_on(allies[a], tile))
+                    ours += allies_power[a];
             const int safety = theirs > ours ? 1 : 2;
             if (std::tie(safety, score) > std::tie(best_safety, best_score) && !exits.lethal(tile)) {
                 best_safety = safety;
