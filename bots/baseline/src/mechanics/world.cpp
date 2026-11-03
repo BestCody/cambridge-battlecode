@@ -719,113 +719,20 @@ void Bot::initialise() {
     }
     camp_count = camp_pool.size(); // Every group's camps.
     camp_tile.load(camp_tiles);
+    open_tile.load(open_terrain);
     {
-        // Each group's reach_share for our attack range: its strikers fall in
-        // striker_work()'s order, and while one is the target we strike it
-        // from the open tile in our range of it that the least strength
-        // reaches (a camp strikes only within its own reach). Striker work
-        // counted every living striker against us: for a ranged champion
-        // the elk groups beside spawn cost 55-86% of that from their best
-        // tiles (boss-battle), a melee one all of it.
-        TileBits open;
-        open.load(open_terrain);
-        const int ours = int(stats.base_attack_range);
-        struct Striker {
-            float strength, health;
-            vec2 position;
-            int reach;
-        };
-        std::vector<Striker> strikers;
-        for (auto &g : groups) {
-            strikers.clear();
-            for (const auto &c : g.camps)
-                if (c.stats.base_strength > 0)
-                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
-                                        int(c.stats.base_attack_range)});
-            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
-                return a.strength * b.health > b.strength * a.health;
-            });
-            // The strength reaching each tile from striker t on, built by adding
-            // the strikers last to first into one array over the group's box:
-            // summing every later striker per tile and striker cost about 2M
-            // on the-pack's 48-wolf groups. Camp strengths are whole numbers,
-            // so the sums are exact in any order.
-            const std::size_t n = strikers.size();
-            if (!n) {
-                g.reach_share = 1.0f;
-                continue;
-            }
-            int x0 = map_width, y0 = map_height, x1 = 0, y1 = 0;
-            for (const auto &s : strikers) {
-                x0 = std::min(x0, s.position.x);
-                y0 = std::min(y0, s.position.y);
-                x1 = std::max(x1, s.position.x);
-                y1 = std::max(y1, s.position.y);
-            }
-            x0 = std::max(0, x0 - ours);
-            y0 = std::max(0, y0 - ours);
-            x1 = std::min(map_width - 1, x1 + ours);
-            y1 = std::min(map_height - 1, y1 + ours);
-            const int box = x1 - x0 + 1;
-            std::size_t spawn_struck = 0;
-            // A tile we cannot strike from (closed, or a camp's) starts at
-            // infinity: strengths added to it leave it so and it is never the
-            // least, so the scans need no tile lookups (all exact).
-            static std::vector<float> reaching, least_of;
-            reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1));
-            for (int y = y0; y <= y1; ++y)
-                for (int x = x0; x <= x1; ++x) {
-                    const int index = tile_index({x, y});
-                    reaching[std::size_t(y - y0) * std::size_t(box) + std::size_t(x - x0)] =
-                        !open[index] || camp_tile[index] ? std::numeric_limits<float>::infinity() : 0.0f;
-                }
-            least_of.resize(n);
-            float later = 0; // Strength from striker t on.
-            for (std::size_t t = n; t-- > 0;) {
-                const Striker &s = strikers[t];
-                later += s.strength;
-                const int ax = std::max(x0, s.position.x - s.reach), bx = std::min(x1, s.position.x + s.reach);
-                const int along = bx - ax + 1;
-                for (int y = std::max(y0, s.position.y - s.reach); y <= std::min(y1, s.position.y + s.reach); ++y) {
-                    float *row = reaching.data() + std::size_t(y - y0) * std::size_t(box) + std::size_t(ax - x0);
-                    for (int i = 0; i < along; ++i)
-                        row[i] += s.strength;
-                }
-                float least = later;
-                // Strengths are never negative: a tile no striker reaches ends
-                // the search (a ranged champion's often comes first).
-                const int cx = std::max(0, s.position.x - ours), dx = std::min(map_width - 1, s.position.x + ours);
-                const int span = dx - cx + 1;
-                for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours) && least > 0; ++y) {
-                    const std::size_t at = std::size_t(y - y0) * std::size_t(box) + std::size_t(cx - x0);
-                    const float *hit = reaching.data() + at;
-                    for (int i = 0; i < span; ++i)
-                        least = std::min(least, hit[i]);
-                }
-                least_of[t] = least;
-                // One of our spawn tiles within our range of the striker: it
-                // heals to full at the turn's end (CampGroup::spawn_strike; a
-                // flag only, the shares stay as measured).
-                if (policy::spawn_siege)
-                    for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours); ++y)
-                        for (int x = cx; x <= dx; ++x)
-                            if (own_spawn_tile[std::size_t(y) * std::size_t(map_width) + std::size_t(x)]) {
-                                ++spawn_struck;
-                                y = map_height;
-                                break;
-                            }
-            }
-            g.spawn_strike = spawn_struck == n;
-            float living = 0, whole = 0, reached = 0;
-            for (const auto &s : strikers)
-                living += s.strength;
-            for (std::size_t t = 0; t < n; ++t) {
-                whole += living * strikers[t].health;
-                reached += least_of[t] * strikers[t].health;
-                living -= strikers[t].strength;
-            }
-            g.reach_share = whole > 0 ? reached / whole : 1.0f;
-        }
+        // Each group's reach_share and spawn_strike (measure_reach()): on
+        // this turn the groups within reach_at_start of spawn, the opening's
+        // candidates; the rest in the background by walk (strategy.h).
+        reach_order.clear();
+        for (std::size_t i = 0; i < groups.size(); ++i)
+            if (groups[i].home_distance <= policy::reach_at_start)
+                measure_reach(i);
+            else
+                reach_order.push_back(int(i));
+        std::sort(reach_order.begin(), reach_order.end(),
+                  [&](int a, int b) { return groups[std::size_t(a)].home_distance < groups[std::size_t(b)].home_distance; });
+        reach_cursor = 0;
     }
     bush_tile.load(bc::map::bushes());
     enemy_spawn_tile.load(bc::map::spawn_region(bc::team::enemy));
@@ -2643,4 +2550,120 @@ void Bot::pocket_patch(std::size_t group, int only) {
             field[tile_index(t)] = base == far ? std::uint16_t(far)
                                                : std::uint16_t(std::min(far - 1, base + extra + distance(t, p.entry_in)));
     }
+}
+
+void Bot::measure_reach(std::size_t group) {
+    // The group's reach_share for our attack range: its strikers fall in
+    // striker_work()'s order, and while one is the target we strike it
+    // from the open tile in our range of it that the least strength
+    // reaches (a camp strikes only within its own reach). Striker work
+    // counted every living striker against us: for a ranged champion
+    // the elk groups beside spawn cost 55-86% of that from their best
+    // tiles (boss-battle), a melee one all of it. And spawn_strike: every
+    // striker in our range of one of our spawn tiles.
+    auto &g = groups[group];
+    const TileBits &open = open_tile;
+    const int ours = int(stats.base_attack_range);
+    struct Striker {
+        float strength, health;
+        vec2 position;
+        int reach;
+    };
+    static std::vector<Striker> strikers;
+    strikers.clear();
+    {
+
+            for (const auto &c : g.camps)
+                if (c.stats.base_strength > 0)
+                    strikers.push_back({float(c.stats.base_strength), float(c.stats.base_health), c.position,
+                                        int(c.stats.base_attack_range)});
+            std::stable_sort(strikers.begin(), strikers.end(), [](const Striker &a, const Striker &b) {
+                return a.strength * b.health > b.strength * a.health;
+            });
+            // The strength reaching each tile from striker t on, built by adding
+            // the strikers last to first into one array over the group's box:
+            // summing every later striker per tile and striker cost about 2M
+            // on the-pack's 48-wolf groups. Camp strengths are whole numbers,
+            // so the sums are exact in any order.
+            const std::size_t n = strikers.size();
+            if (!n) {
+                g.reach_share = 1.0f;
+                return;
+            }
+            int x0 = map_width, y0 = map_height, x1 = 0, y1 = 0;
+            for (const auto &s : strikers) {
+                x0 = std::min(x0, s.position.x);
+                y0 = std::min(y0, s.position.y);
+                x1 = std::max(x1, s.position.x);
+                y1 = std::max(y1, s.position.y);
+            }
+            x0 = std::max(0, x0 - ours);
+            y0 = std::max(0, y0 - ours);
+            x1 = std::min(map_width - 1, x1 + ours);
+            y1 = std::min(map_height - 1, y1 + ours);
+            const int box = x1 - x0 + 1;
+            std::size_t spawn_struck = 0;
+            // A tile we cannot strike from (closed, or a camp's) starts at
+            // infinity: strengths added to it leave it so and it is never the
+            // least, so the scans need no tile lookups (all exact).
+            static std::vector<float> reaching, least_of;
+            reaching.resize(std::size_t(box) * std::size_t(y1 - y0 + 1));
+            for (int y = y0; y <= y1; ++y)
+                for (int x = x0; x <= x1; ++x) {
+                    const int index = tile_index({x, y});
+                    reaching[std::size_t(y - y0) * std::size_t(box) + std::size_t(x - x0)] =
+                        !open[index] || camp_tile[index] ? std::numeric_limits<float>::infinity() : 0.0f;
+                }
+            least_of.resize(n);
+            float later = 0; // Strength from striker t on.
+            for (std::size_t t = n; t-- > 0;) {
+                const Striker &s = strikers[t];
+                later += s.strength;
+                const int ax = std::max(x0, s.position.x - s.reach), bx = std::min(x1, s.position.x + s.reach);
+                const int along = bx - ax + 1;
+                for (int y = std::max(y0, s.position.y - s.reach); y <= std::min(y1, s.position.y + s.reach); ++y) {
+                    float *row = reaching.data() + std::size_t(y - y0) * std::size_t(box) + std::size_t(ax - x0);
+                    for (int i = 0; i < along; ++i)
+                        row[i] += s.strength;
+                }
+                float least = later;
+                // Strengths are never negative: a tile no striker reaches ends
+                // the search (a ranged champion's often comes first).
+                const int cx = std::max(0, s.position.x - ours), dx = std::min(map_width - 1, s.position.x + ours);
+                const int span = dx - cx + 1;
+                for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours) && least > 0; ++y) {
+                    const std::size_t at = std::size_t(y - y0) * std::size_t(box) + std::size_t(cx - x0);
+                    const float *hit = reaching.data() + at;
+                    for (int i = 0; i < span; ++i)
+                        least = std::min(least, hit[i]);
+                }
+                least_of[t] = least;
+                // One of our spawn tiles within our range of the striker: it
+                // heals to full at the turn's end (CampGroup::spawn_strike; a
+                // flag only, the shares stay as measured).
+                if (policy::spawn_siege)
+                    for (int y = std::max(0, s.position.y - ours); y <= std::min(map_height - 1, s.position.y + ours); ++y)
+                        for (int x = cx; x <= dx; ++x)
+                            if (own_spawn_tile[std::size_t(y) * std::size_t(map_width) + std::size_t(x)]) {
+                                ++spawn_struck;
+                                y = map_height;
+                                break;
+                            }
+            }
+            g.spawn_strike = spawn_struck == n;
+            float living = 0, whole = 0, reached = 0;
+            for (const auto &s : strikers)
+                living += s.strength;
+            for (std::size_t t = 0; t < n; ++t) {
+                whole += living * strikers[t].health;
+                reached += least_of[t] * strikers[t].health;
+                living -= strikers[t].strength;
+            }
+            g.reach_share = whole > 0 ? reached / whole : 1.0f;
+    }
+}
+
+void Bot::measure_reach_step() {
+    for (int k = 0; k < policy::reach_per_turn && reach_cursor < reach_order.size(); ++k)
+        measure_reach(std::size_t(reach_order[reach_cursor++]));
 }

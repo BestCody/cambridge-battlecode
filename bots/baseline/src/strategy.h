@@ -257,6 +257,17 @@ inline constexpr float death_site_penalty = 1.0f; // 0.5: 26/48 against 27/48 on
 // harvest_alone_range, and no pursuit (the harvest species' gate). v122's
 // losses: Cassi and Issac dead together three and five times a game.
 inline constexpr bool twin_cautious = true;
+// The first turn (200k fuel) cost about 290k on tangle, big_world and corners:
+// every champion froze for rounds 1 and 2 (FUEL_OVERRUN started=1 ended=3).
+// 72-79k of it was each group's reach_share and spawn_strike measurement and
+// 17-29k the second-bound path search. Now only the groups within
+// reach_at_start of spawn are measured on the first turn (the opening's
+// candidates) and the rest reach_per_turn a turn in the background, with
+// reach_share 1 (every striker reaches us) until then; the path search is
+// the choice's own.
+inline constexpr int reach_at_start = 24;
+inline constexpr int reach_per_turn = 4;
+inline constexpr bool first_turn_paths = false; // true: the second-bound path search on the first turn, as before
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental

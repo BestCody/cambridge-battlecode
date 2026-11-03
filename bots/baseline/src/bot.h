@@ -699,7 +699,14 @@ class Bot {
     // read, only where camp_tile is set), bush tiles, tiles no area spell may
     // be centred on (walls, holes and altars), and the two spawns.
     std::unique_ptr<std::uint16_t[]> tile_group;
-    TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile, own_spawn_tile;
+    TileBits camp_tile, bush_tile, no_centre_tile, enemy_spawn_tile, own_spawn_tile, open_tile;
+    // Each group's reach_share and spawn_strike (measure_reach()): the near
+    // groups on the first turn, the rest a few a turn (reach_cursor over
+    // reach_order, the groups by walk from spawn).
+    std::vector<int> reach_order;
+    std::size_t reach_cursor = 0;
+    void measure_reach(std::size_t group);
+    void measure_reach_step();
     // Each open tile's walking region (tiles joined by steps; 0: blocked),
     // labelled once: terrain never changes. A crystal hop lands only in the
     // region of what it heads for (hop_lands_in_reach()).

@@ -24,12 +24,10 @@ void Bot::take_turn() {
         initialise();
         buy_equipment();
         worker_priority();
-        // The search the first camp choice starts from, as far as the second
-        // bound: the doubled fuel of this turn takes the walks a choice would
-        // otherwise search for on the next, and the largest map still fits.
-        // The choice searches further itself until no camp beyond could change
-        // it, so it is the same whatever is measured here.
-        if (bc::self().is_alive())
+        // The first camp choice searches its own walks on the next turn
+        // (strategy.h reach_at_start: a second-bound search here took the
+        // turn past its doubled fuel; first_turn_paths keeps it).
+        if (policy::first_turn_paths && bc::self().is_alive())
             measure_paths(2);
         spare_region_steps(); // Last: the turn's required work is done.
         return;
@@ -72,6 +70,8 @@ void Bot::take_turn() {
             profiling::Scope job(profiling::Stage::sieges);
             if (!hops_ready)
                 prepare_hops();
+            else if (reach_cursor < reach_order.size())
+                measure_reach_step();
             else if (!pockets_ready && regions_ready)
                 prepare_pockets();
             else if (pockets_ready && pocket_cursor < pocket_groups.size())
