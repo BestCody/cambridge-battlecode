@@ -545,7 +545,10 @@ void Bot::initialise() {
         }
         enemy_centre = count ? vec2{sx / count, sy / count} : position;
     }
-    search_job_cost = turn_work() - search_start;
+    {
+        const auto search_end = turn_work(); // An overrun restarts turn_work().
+        search_job_cost = search_end > search_start ? search_end - search_start : 0;
+    }
     own_spawn = bc::map::spawn_region(bc::team::ally);
     own_spawn_tile.load(own_spawn);
     const auto neutral_terrain = bc::map::walls() | bc::map::holes() | bc::map::altars();
@@ -865,10 +868,19 @@ void Bot::begin_regions() {
 }
 
 bool Bot::region_step() {
-    // The next row's runs, joined to the row above's; after the last row, the
-    // labels. True once they are done.
+    // The next row's runs, joined to the row above's; after the last row, a
+    // row's labels a step. True once they are done.
     if (regions_ready)
         return true;
+    if (region_row >= map_height) {
+        // The labels a row at a time: all at once cost ten rows' joins, past
+        // the fuel spare_region_steps() keeps for a step.
+        const int y = region_row++ - map_height;
+        for (int r = region_rows[y]; r < region_rows[y + 1]; ++r)
+            region_label[r] = std::uint16_t(region_root(r) + 1);
+        regions_ready = region_row == 2 * map_height;
+        return regions_ready;
+    }
     const std::uint8_t *const bits = region_bits.get();
     int *const run_start = region_start.get(), *const run_end = region_end.get();
     const int y = region_row++;
@@ -918,20 +930,19 @@ bool Bot::region_step() {
     }
     region_above = region_row_first;
     region_row_first = region_runs;
-    if (region_row < map_height)
-        return false;
-    region_rows[map_height] = region_runs;
-    for (int r = 0; r < region_runs; ++r)
-        region_label[r] = std::uint16_t(region_root(r) + 1);
-    regions_ready = true;
-    return true;
+    if (region_row == map_height)
+        region_rows[map_height] = region_runs;
+    return false;
 }
 
 void Bot::spare_region_steps() {
     while (!regions_ready && bc::fuel_remaining() > 2 * region_step_cost + 2000) {
         const auto before = bc::fuel_remaining();
         region_step();
-        region_step_cost = std::max(region_step_cost, before - bc::fuel_remaining());
+        // A step a fuel overrun suspended resumed on a fresh budget: no cost.
+        const auto after = bc::fuel_remaining();
+        if (after < before)
+            region_step_cost = std::max(region_step_cost, before - after);
     }
 }
 
