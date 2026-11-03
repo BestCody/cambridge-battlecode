@@ -149,9 +149,14 @@ BuffState read_buff_state(const std::variant<const bc::champion *, const bc::cam
     // The engine writes the first `count` records, the only ones read.
     if (const auto *const *camp = std::get_if<const bc::camp *>(&ref)) {
         std::array<bc::detail::camp_buff_data, kinds> raw;
-        bc::detail::check(
+        // After a fuel overrun the engine plays on: a unit read in view can
+        // have left it since. It is treated as having left, without buffs.
+        const auto code =
             bc::detail::sdk_camp_buffs(static_cast<std::uint32_t>(static_cast<bc::handle_camp_t>(**camp)),
-                                       raw.data(), raw.size(), &count));
+                                       raw.data(), raw.size(), &count);
+        if (code == static_cast<std::int32_t>(bc::error_code::api_not_in_vision))
+            return state;
+        bc::detail::check(code);
         if (count > raw.size())
             throw std::runtime_error("invalid engine buff count");
         for (std::uint32_t i = 0; i < count; ++i)
@@ -159,9 +164,12 @@ BuffState read_buff_state(const std::variant<const bc::champion *, const bc::cam
     } else {
         std::array<bc::detail::buff_data, kinds> raw;
         const auto &champion = *std::get<const bc::champion *>(ref);
-        bc::detail::check(bc::detail::sdk_champion_buff_data(
+        const auto code = bc::detail::sdk_champion_buff_data(
             static_cast<std::uint32_t>(static_cast<bc::handle_champion_t>(champion)), raw.data(), raw.size(),
-            &count));
+            &count);
+        if (code == static_cast<std::int32_t>(bc::error_code::api_not_in_vision))
+            return state;
+        bc::detail::check(code);
         if (count > raw.size())
             throw std::runtime_error("invalid engine buff count");
         for (std::uint32_t i = 0; i < count; ++i) {
@@ -191,6 +199,20 @@ const ItemEffect &item_effect(bc::item_type item) {
     return effect;
 }
 } // namespace
+
+ObservedUnit *observe_sighting(std::vector<ObservedUnit> &into, const bc::champion &c,
+                               const bc::detail::champion_info &info) {
+    // After a fuel overrun the engine plays on: a champion sighted in view can
+    // leave it before the record's further reads, which then refuse. It is
+    // left out, as if it had left view before the sighting.
+    try {
+        return &into.emplace_back(c, info);
+    } catch (const bc::error &error) {
+        if (error.code() != bc::error_code::api_not_in_vision)
+            throw;
+        return nullptr;
+    }
+}
 
 void read_buffs(ObservedUnit &out) {
     const auto state = read_buff_state(out.ref);
@@ -1218,7 +1240,8 @@ void Bot::observe() {
     for (std::size_t i = 0; i < enemy_roster.size() && i < enemy_slot.size(); ++i)
         if (const auto info = sighting(enemy_roster[i])) {
             enemy_slot[enemies.size()] = std::uint8_t(i);
-            judge_recall(enemies.emplace_back(enemy_roster[i], *info), i);
+            if (auto *seen = observe_sighting(enemies, enemy_roster[i], *info))
+                judge_recall(*seen, i);
         }
     seen_slots = 0;
     slot_ally.fill(-1);

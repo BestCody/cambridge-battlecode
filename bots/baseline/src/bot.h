@@ -345,6 +345,9 @@ bool read_camp(const bc::camp &c, bc::detail::camp_state &info);
 int group_state(const CampGroup &g, int &timer);
 // The unit's health now, or 0 when it is out of sight.
 float live_health(const ObservedUnit &u);
+// A champion's record from its sighting, or none when it left view since.
+ObservedUnit *observe_sighting(std::vector<ObservedUnit> &into, const bc::champion &c,
+                               const bc::detail::champion_info &info);
 // The unit's stun and shield now (the shield kept when it has none).
 void read_buffs(ObservedUnit &out);
 // The unit's shield now, 0 when it has none.

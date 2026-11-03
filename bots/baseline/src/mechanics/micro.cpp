@@ -929,7 +929,8 @@ void Bot::observe_fight() {
         // now is judged like any sighting, and one we struck has its channel
         // read again (a hit ends a recall). A record costs about what copying
         // the last one did.
-        judge_recall(current.emplace_back(c, *info), i);
+        if (auto *seen = observe_sighting(current, c, *info))
+            judge_recall(*seen, i);
     }
     enemies.swap(current);
     ++threat_revision; // Their nearest units moved.
