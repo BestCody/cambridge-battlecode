@@ -459,6 +459,14 @@ void Bot::initialise() {
             siege_reach = std::max(siege_reach, s.range);
     if (bc::draft_memory.size() >= sizeof opening)
         std::memcpy(&opening, bc::draft_memory.data(), sizeof opening);
+    // Draft memory the draft never wrote (its first turn lost) reads as zeros,
+    // which would claim a fortress-gem, gold-scarce map with no spacing. Such a
+    // plan measures nothing; its map summaries come from the map instead.
+    if (opening.magic != DraftPlan::tag) {
+        opening = DraftPlan{};
+        opening.magic = 0;
+        summarise_map(opening, bc::map::camp_groups());
+    }
     roster = bc::champions(bc::team::ally);
     std::sort(roster.begin(), roster.end(), [](const auto &a, const auto &b) { return id(a) < id(b); });
     roster_power.reserve(roster.size());
