@@ -106,7 +106,9 @@ bool Bot::cast_mobility(const bc::distance_field &field, bool urgent, int engage
                     }
                 level = next;
             }
-            if (best < 0 || (!urgent && original - score < 1.75f))
+            // Landings chosen before a fuel overrun are stale next round: one
+            // occupied since throws (micro.cpp attack_combo()).
+            if (best < 0 || (!urgent && original - score < 1.75f) || bc::round_number() != round)
                 return false;
             if (a.use(choices[best])) {
                 refresh_self();
