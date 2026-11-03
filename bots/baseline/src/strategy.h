@@ -184,7 +184,7 @@ inline constexpr float team_clear_share = 0.61002f;
 // a claimed group is worth more). Intercontinental Fish clears with 2.74
 // champions within 6 of the group (3.47 on 25-gem groups), the field 2.11,
 // ours 1.79; target sharing by pairs left it at 1.97 (2026-11-03).
-inline constexpr float join_share = 0.0f;
+inline constexpr float join_share = 1.0f; // 0 (v124 on the platform): packs at the clear, 21/50 against v119 28/50 on the wide block, same hour. Off.
 inline constexpr float dash_travel_scale = 0.69475f;
 // Camp choice discounts a plan by its length, dividing its score by
 // 1 + plan_hazard * duration (rounds): a long plan is more likely to be cut
