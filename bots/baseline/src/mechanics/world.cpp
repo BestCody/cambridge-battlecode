@@ -2495,9 +2495,8 @@ void Bot::prepare_pockets() {
         g.entry_steps = best_steps;
         g.entry_region = walk_region_at(best_in.x, best_in.y);
         g.home_distance = best_walk + 1;
-        if (altar_field_ready)
-            if (const int altar = altar_field.get(best_out); altar != far)
-                g.altar_distance = altar + 1;
+        if (const int altar = altar_walk().get(best_out); altar != far)
+            g.altar_distance = altar + 1;
         if (hops_ready && i < group_hops.size())
             group_hops[i] = far; // The dash is the way in.
         pocket_groups.push_back(int(i));
