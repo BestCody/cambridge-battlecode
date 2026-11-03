@@ -88,11 +88,15 @@ int Bot::worker_choose_group(int excluded) {
     std::uint64_t alive = 0; // Bit s: roster slot s.
     int alive_allies = 0;
     for (std::size_t s = 0; s < roster.size() && s < 64; ++s)
-        if (roster[s].is_alive()) {
+        if (mate_alive(unsigned(s))) {
             alive |= std::uint64_t{1} << s;
             ++alive_allies;
         }
     const auto living = [&](unsigned s) { return s < 64 && (alive >> s & 1); };
+    // Each teammate's claim (mate_claim()), read once for the loops below.
+    std::array<int, TeamMemory::slots> claim_of;
+    for (unsigned s = 0; s < TeamMemory::slots; ++s)
+        claim_of[s] = s < roster.size() ? mate_claim(s) : -1;
     const bool depleted = float(alive_allies) <= float(roster.size()) * policy::depleted_alive_fraction;
     // A body down, a champion out of contact stays on our side of the map: no
     // group nearer the enemy spawn. One body down our deaths per champion-round
@@ -111,7 +115,7 @@ int Bot::worker_choose_group(int excluded) {
     static std::vector<int> claimed_groups;
     claimed_groups.clear();
     for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-        if (const int c = mate_claim(s); c >= 0) {
+        if (const int c = claim_of[s]; c >= 0) {
             ++claims[c];
             if constexpr (policy::cohesion_hazard > 0)
                 claimed_groups.push_back(c);
@@ -131,7 +135,7 @@ int Bot::worker_choose_group(int excluded) {
         }
     claim_rates.assign(groups.size(), 0.0f);
     for (unsigned s = 0; s < kits; ++s)
-        if (const int c = mate_claim(s); c >= 0)
+        if (const int c = claim_of[s]; c >= 0)
             claim_rates[std::size_t(c)] += mate_rate[s];
     // Each teammate: where it is (in view, else at its claimed group, else
     // home), its health (in view, else its type's base), and what keeps it
@@ -149,7 +153,7 @@ int Bot::worker_choose_group(int excluded) {
             continue;
         auto &m = mates[s];
         const unsigned code = shared.get(s);
-        m.claim = mate_claim(s);
+        m.claim = claim_of[s];
         m.range = roster_kits[s].range;
         m.health = m.max_health = roster_kits[s].health;
         m.where = home_centre;
@@ -329,7 +333,7 @@ int Bot::worker_choose_group(int excluded) {
     if (claim_ended.size() != groups.size())
         claim_ended.assign(groups.size(), std::numeric_limits<int>::min());
     for (unsigned s = 0; s < TeamMemory::slots; ++s) {
-        const int c = s < roster.size() ? mate_claim(s) : -1;
+        const int c = claim_of[s];
         if (last_claim[s] >= 0 && last_claim[s] != c && std::size_t(last_claim[s]) < claim_ended.size())
             claim_ended[std::size_t(last_claim[s])] = int(round);
         last_claim[s] = c;
@@ -372,26 +376,20 @@ int Bot::worker_choose_group(int excluded) {
             splash[i] = g.splash;
             pressure[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : g.pressure;
             claim[i] = float(claims[i]);
-        }
-        for (std::size_t i = 0; i < count; ++i)
             lanes.sighted[i] = i < enemy_seen_near.size() &&
                                        int(round) - enemy_seen_near[i] <= policy::worker_sighting_memory
                                    ? -1
                                    : 0;
-        // A group out of view, last seen alive before a teammate's claim on
-        // it ended, is taken with policy::claimed_dead_share until its respawn
-        // would be past (counted from the claim's end).
-        for (std::size_t i = 0; i < count; ++i) {
-            const auto &g = groups[i];
+            // A group out of view, last seen alive before a teammate's claim
+            // on it ended, is taken with policy::claimed_dead_share until its
+            // respawn would be past (counted from the claim's end).
             const bool doubtful = g.status == CampGroup::alive && g.seen < int(round) && claim_ended[i] > g.seen &&
                                   int(round) - claim_ended[i] < g.unit.max_respawn_timer() + capture_time + 1;
             lanes.belief[i] = doubtful ? 1.0f - policy::claimed_dead_share : 1.0f;
-        }
-        // The claimants, as one party: their summed camp rate, arriving at
-        // their rate-weighted walk (walk_bound(): from where each is in view,
-        // else from the group, to within the camps' reach and 3, where
-        // worker_farm() strikes from), and their front.
-        for (std::size_t i = 0; i < count; ++i) {
+            // The claimants, as one party (below): their summed camp rate,
+            // arriving at their rate-weighted walk (walk_bound(): from where
+            // each is in view, else from the group, to within the camps'
+            // reach and 3, where worker_farm() strikes from), and their front.
             lanes.claim_rate[i] = claim_rates[i];
             lanes.claim_eta[i] = 0;
             lanes.front_range[i] = float(bc::distance_field::unreachable);
@@ -477,7 +475,7 @@ int Bot::worker_choose_group(int excluded) {
         link_clusters();
         taken.assign(count, 0);
         for (unsigned s = 0; s < roster.size() && s < TeamMemory::slots; ++s)
-            if (const int claimed = mate_claim(s); claimed >= 0)
+            if (const int claimed = claim_of[s]; claimed >= 0)
                 taken[std::size_t(claimed)] = 1;
         run_mark.resize(count);
     }
@@ -868,6 +866,22 @@ int Bot::worker_choose_group(int excluded) {
         for (unsigned s = 0; s < kits; ++s)
             if (s != slot && living(s) && mates[s].free)
                 all_mates_speed += mate_rate[s] * policy::team_clear_share;
+        // A teammate's walk to a group without its own field is bounded from
+        // the landmark fields at the teammate: read once per teammate, not
+        // once per group (each read is an engine call).
+        std::array<int, TeamMemory::slots> mate_home{}, mate_altar{};
+        unsigned landmarks_read = 0;
+        const auto mate_walk = [&](unsigned s, int group) {
+            const vec2 from = mates[s].where;
+            if (const std::uint16_t *walks = walk_of[group])
+                return int(walks[tile_index(from)]);
+            if (!(landmarks_read >> s & 1)) {
+                landmarks_read |= 1u << s;
+                mate_home[s] = home_field.get(from);
+                mate_altar[s] = altar_field_ready ? int(altar_field.get(from)) : bc::distance_field::unreachable;
+            }
+            return landmark_bound(group, from, mate_home[s], mate_altar[s]);
+        };
         for (std::size_t i = 0; i < count && least_asked != std::numeric_limits<float>::infinity(); ++i) {
             const auto &g = groups[i];
             // Groups whose walk is measured, with a request code to ask with.
@@ -913,22 +927,6 @@ int Bot::worker_choose_group(int excluded) {
             const auto exit_cost = [&](int member_range) {
                 return lanes.pressure[i] * std::max(0.0f, lanes.reach[i] - float(member_range - 1));
             };
-            // The teammates not on it, soonest first.
-            std::array<std::pair<float, unsigned>, TeamMemory::slots> soon{};
-            unsigned n = 0;
-            for (unsigned s = 0; s < kits; ++s) {
-                const auto &m = mates[s];
-                if (s == slot || !living(s) || !m.free || m.claim == int(i))
-                    continue;
-                const float walk = float(walk_bound(m.where, int(i)));
-                const float arrival = std::max(
-                    start, m.busy + (m.busy > 0 ? 0.0f : 0.5f * float(policy::replan_period)) +
-                               std::max(0.0f, walk - (lanes.reach[i] + 3.0f)));
-                unsigned k = n++;
-                for (; k > 0 && soon[k - 1].first > arrival; --k)
-                    soon[k] = soon[k - 1];
-                soon[k] = {arrival, s};
-            }
             const float health_left = lanes.remaining[i], work = lanes.striker_work[i];
             const float trip_time = recall_trip + lanes.home[i] * travel_scale;
             // The front (scored as in score_lanes()): the claimants', then
@@ -945,6 +943,28 @@ int Bot::worker_choose_group(int excluded) {
                 without = plan_value(claim_at +
                                      std::max(health_left / claim_speed, lanes.camp_count[i] / std::max(1.0f, lanes.claims[i])) +
                                      trips * trip_time / std::max(1.0f, fronts) + settle);
+            }
+            // The bound above, less what the claimants add without us (every
+            // plan's score subtracts it).
+            const float bound = lanes.factor[i] >= 0 ? (plan_value(soonest_clear + settle) - without) * lanes.factor[i]
+                                                     : std::numeric_limits<float>::infinity();
+            if (bound - least_given_up <= best)
+                continue;
+            // The teammates not on it, soonest first.
+            std::array<std::pair<float, unsigned>, TeamMemory::slots> soon{};
+            unsigned n = 0;
+            for (unsigned s = 0; s < kits; ++s) {
+                const auto &m = mates[s];
+                if (s == slot || !living(s) || !m.free || m.claim == int(i))
+                    continue;
+                const float walk = float(mate_walk(s, int(i)));
+                const float arrival = std::max(
+                    start, m.busy + (m.busy > 0 ? 0.0f : 0.5f * float(policy::replan_period)) +
+                               std::max(0.0f, walk - (lanes.reach[i] + 3.0f)));
+                unsigned k = n++;
+                for (; k > 0 && soon[k - 1].first > arrival; --k)
+                    soon[k] = soon[k - 1];
+                soon[k] = {arrival, s};
             }
             const auto join = [&](int member_range, float member_first, float member_visit, float exit) {
                 if (float(member_range) < front) {
@@ -969,8 +989,7 @@ int Bot::worker_choose_group(int excluded) {
                     // A bigger party gives up more: once this one's best
                     // possible value (the bound above) less what it asks
                     // cannot beat the best, no bigger one can.
-                    if (lanes.factor[i] >= 0 &&
-                        plan_value(soonest_clear + settle) * lanes.factor[i] - party_best * rate_asked / our_rate <= best)
+                    if (bound - party_best * rate_asked / our_rate <= best)
                         break;
                     join(m.range, policy::camp_visit_health(m.health, m.max_health), m.max_health, exit_cost(m.range));
                 }
@@ -1162,7 +1181,7 @@ void Bot::worker_farm() {
         const unsigned asked = shared.camp_request(target);
         bool answering = false;
         for (unsigned s = 0; asked && s < roster.size() && s < TeamMemory::slots; ++s)
-            if (s != slot && roster[s].is_alive() && shared.get(s) == asked)
+            if (s != slot && mate_alive(s) && shared.get(s) == asked)
                 answering = true;
         if (answering)
             code = shared.camp_coming(target);

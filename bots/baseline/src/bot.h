@@ -1066,6 +1066,11 @@ class Bot {
     // A teammate's camp claim: the group a living teammate's plain claim
     // names, else -1 (every reader of claims uses this one rule).
     int mate_claim(unsigned s) const;
+    // Whether roster slot s is alive: read from the engine once a turn (each
+    // read is an engine call, and claims are read many times a turn).
+    bool mate_alive(unsigned s) const;
+    mutable int alive_round = -1;
+    mutable std::uint64_t alive_slots = 0;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
     // Pocket groups (strategy.h pocket_rounds): found once the walking
