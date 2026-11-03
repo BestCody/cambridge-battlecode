@@ -216,6 +216,15 @@ inline constexpr float spawn_siege_margin = 1.5f;
 // team on it from round 1, as 剑桥夜爬者 played it (first take round 415;
 // ours priced by health and hazard began at round 560 and took it at 835).
 inline constexpr float spawn_siege_score = 10.0f;
+// Pocket groups (Bot::prepare_pockets()): a group no walk from spawn reaches,
+// inside a ring of holes a dash crosses (01big_world's 21-gem cluster triples,
+// the-pond's four cluster groups, islands, fracture, membrane). Intercontinental
+// Fish (ladder #2) dashes in, clears, captures and dashes out: four such
+// captures by round 600 on big_world, where we take none. A champion with a
+// dash of the entry's steps prices the group at its walk to the entry plus
+// pocket_rounds (the dash in and the cooldown before the dash out).
+inline constexpr bool pocket_entries = true;
+inline constexpr int pocket_rounds = 3;
 // A group out of view that we last saw alive before a teammate's claim on
 // it ended was dead at our choice claimed_dead_share of the time, until its
 // respawn could be past (47-48% of 2,297 such choices in two logged runs of

@@ -305,7 +305,15 @@ int Bot::worker_choose_group(int excluded) {
     const bool hopping = carrying_crystal();
     const bool on_spawn = hopping && hops_ready && home_field.get(position) == 0;
     const float threshold = hopping ? hop_threshold() : 0.0f;
+    const int our_dash = dash_steps();
     const auto hop_walk = [&](std::size_t i, int walk) {
+        // A pocket group (prepare_pockets()): a dash of its steps or no
+        // walk; with one, the dash in and the cooldown before the dash out.
+        if (const int steps = groups[i].entry_steps; steps > 0) {
+            if (our_dash < steps || walk == bc::distance_field::unreachable)
+                return int(bc::distance_field::unreachable);
+            return walk + policy::pocket_rounds;
+        }
         if (!hopping)
             return walk;
         if (on_spawn && float(walk - group_hops[i]) > threshold)
@@ -1246,6 +1254,11 @@ void Bot::worker_farm() {
         capture_since = -1;
     if (target < 0) {
         publish(0);
+        // Nothing chosen from inside a pocket (prepare_pockets()): out of it
+        // towards home, so the next choice is made where walks exist.
+        if (pockets_ready && !pocket_groups.empty() && me.can_move() &&
+            home_field.get(position) == bc::distance_field::unreachable)
+            move_to(own_spawn, home_centre, false, false);
         return;
     }
     auto &g = groups[target];

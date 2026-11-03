@@ -96,6 +96,14 @@ struct CampGroup {
     // 600-gem monolith stack sits in the spawn region): struck from there
     // the group costs nothing (policy::spawn_siege).
     bool spawn_strike = false;
+    // A dash-only pocket (policy::pocket_entries, Bot::prepare_pockets()):
+    // the tile outside to dash from, the tile inside to land on, the dash
+    // steps between them (0: no pocket), the pocket's walking region and
+    // its tiles (the camps', the landing and the open tiles beside the camps).
+    vec2 entry_out{-1, -1}, entry_in{-1, -1};
+    int entry_steps = 0;
+    std::uint16_t entry_region = 0;
+    std::vector<vec2> inside;
     void refresh_live();
     CampGroup(bc::map::camp_group g, std::span<CampMemory> members);
     // The most camps within splash radius of one camp, counted over every pair.
@@ -1064,6 +1072,24 @@ class Bot {
     int mate_claim(unsigned s) const;
     bc::bitboard siege_tiles(const CampGroup &g, float reach, bool assume_alive) const;
     void prepare_sieges();
+    // Pocket groups (strategy.h pocket_entries): found once the walking
+    // regions are labelled; then one walk field a turn is rebuilt with the
+    // entry as a root (pocket_field_step()), and every group's field gets
+    // the pockets' inside tiles (pocket_patch()).
+    bool pockets_ready = false;
+    std::vector<int> pocket_groups;
+    std::size_t pocket_cursor = 0;
+    void prepare_pockets();
+    void pocket_field_step();
+    void pocket_patch(std::size_t group);
+    // The steps our dash covers (0 without one).
+    int dash_steps() const;
+    // move_to() with no walk to the goals: into a pocket the goals are in
+    // (to its entry, then the dash in) or out of the one we stand in (to its
+    // landing, then the dash out). 1 acted, 0 waiting (the dash cooling, the
+    // landing occupied), -1 no pocket concerned.
+    int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
+    bool cast_dash_to(vec2 to);
     bool ally_draws_attacks(const CampGroup &g) const;
     bool worker_skirmish();
     // The fight decision against the hidden record alone (nothing in view).
