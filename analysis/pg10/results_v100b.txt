@@ -1,0 +1,24 @@
+  02arena                finished  loss  gems           4d954697-db31-4f62-9743-78bd20406d0e
+  02famine               finished  win   gems           24cb2ccb-3f5d-40b0-ba61-f0c005ec42bc
+  03honeycomb            finished  loss  gems           4f1ddcf6-4a48-447e-aa6a-3cfe985bf474
+  01gold_rush            finished  loss  tiebreak_gems  abbc4c90-ca2e-4800-8863-ac3d8806b380
+  00happy_halloween      finished  loss  gems           404dade8-a140-4715-a0ee-3fb85eb7b05b
+6fe1ecc5 Tokenmaxxing 1/5
+  00vault                finished  loss  gems           ec4eee38-db20-4b6b-a136-8adedf756e4a
+  01big_world            finished  loss  gems           1e7b9b6a-25dd-48bf-82f6-cb1059a164af
+  03membrane             finished  loss  gems           1a3c6943-af51-4d10-bf01-5d856c6087f2
+  00gemfight             finished  win   gems           15aee48d-617a-4924-bdcd-fb33d8df847d
+  02the_pond             finished  loss  gems           1b6be916-21d6-4e88-81cb-e6d59979cb3a
+2c97d7f5 Ding 1/5
+  02tangle               finished  loss  gems           e47d632b-1288-45b3-8b7d-eef0fb2201de
+  03showdown             finished  win   gems           b5bb1952-84b8-497d-81f9-f3bde87c2fe0
+  00gem_fields           finished  loss  gems           a16e9c38-1f58-4941-ada7-9fb93ca1c565
+  02treasure_box         finished  win   gems           007f5d66-d959-4d5b-aa2c-bf3a5c2ddf0b
+  03contours             finished  loss  gems           75bd0868-492e-4140-b34e-490baa0e374b
+d12d725f 0xDEADBEEF 2/5
+  00galaxy               finished  win   gems           23f54bbc-0112-405f-aa20-59c91a4bba3c
+  00gem_fields           finished  loss  gems           e5ab111c-3427-47a8-8698-dea80b5b758c
+  00fragment             finished  win   gems           2959ab34-3745-4bbf-8881-d1ca266623dc
+  00corners              finished  win   gems           44db9c29-2158-4d63-98e8-5b7d53540c3f
+  01elk_arena            finished  loss  gems           97e3ef17-b527-4fd1-b83c-5220cd3d1bb5
+ecaab897 SkibidiSloppers 3/5

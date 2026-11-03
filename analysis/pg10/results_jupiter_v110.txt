@@ -1,0 +1,6 @@
+01concentrated_wealth finished win gems 581e7cbb-8643-4174-8dde-3da3640d4485
+02famine finished loss gems 06853d49-a796-4376-b245-05cafc4d0457
+01gold_rush finished win gems 0c880366-ccdd-4b7e-8d99-a9cb32c38ed0
+00gemfight finished loss gems 658a5eec-34e5-452e-8ba9-cf6567a45193
+00eight finished win gems 57c51ea2-b23a-40d3-836a-a2bb039949be
+DONE
