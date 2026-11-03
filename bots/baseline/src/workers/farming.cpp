@@ -231,12 +231,14 @@ int Bot::worker_choose_group(int excluded) {
         // whether the clear is planned as a spell-range siege.
         float *run_reward, *run_time;
         std::int32_t *run_won, *siege_won;
+        // The death-site multiplier (strategy.h death_site_penalty).
+        float *death;
     };
     static Lanes lanes;
     if (lanes.padded != padded) {
         lanes.padded = padded;
         lanes.ints.reset(new std::int32_t[10 * padded]);
-        lanes.floats.reset(new float[24 * padded]);
+        lanes.floats.reset(new float[25 * padded]);
         std::int32_t *next_int = lanes.ints.get();
         for (auto **lane : {&lanes.gem, &lanes.enemy_side, &lanes.status, &lanes.respawn, &lanes.path,
                             &lanes.siege_open, &lanes.marks, &lanes.sighted, &lanes.run_won, &lanes.siege_won}) {
@@ -248,10 +250,13 @@ int Bot::worker_choose_group(int excluded) {
                             &lanes.pressure, &lanes.claims, &lanes.scores, &lanes.striker_work, &lanes.reach_share,
                             &lanes.claim_rate, &lanes.claim_eta, &lanes.front_range, &lanes.front_first,
                             &lanes.front_visit, &lanes.front_count, &lanes.factor, &lanes.camp_count, &lanes.home,
-                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief, &lanes.cohesion}) {
+                            &lanes.reach, &lanes.run_reward, &lanes.run_time, &lanes.belief, &lanes.cohesion,
+                            &lanes.death}) {
             *lane = next_float;
             next_float += padded;
         }
+        for (std::size_t i = count; i < padded; ++i)
+            lanes.death[i] = 1.0f;
         for (std::size_t i = count; i < padded; ++i) {
             for (auto *lane : {lanes.gem, lanes.enemy_side, lanes.status, lanes.respawn, lanes.siege_open,
                                lanes.marks})
@@ -374,6 +379,16 @@ int Bot::worker_choose_group(int excluded) {
             splash[i] = g.splash;
             pressure[i] = g.spawn_strike && spawn_siege_map() ? 0.0f : g.pressure;
             claim[i] = float(claims[i]);
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            int deaths = 0;
+            if (i < group_death_last.size()) {
+                deaths += int(round) - group_death_last[i] <= policy::death_site_memory;
+                deaths += int(round) - group_death_prev[i] <= policy::death_site_memory;
+            }
+            lanes.death[i] = deaths == 0 ? 1.0f
+                             : deaths == 1 ? policy::death_site_penalty
+                                           : policy::death_site_penalty * policy::death_site_penalty;
         }
         for (std::size_t i = 0; i < count; ++i)
             lanes.sighted[i] = i < enemy_seen_near.size() &&
@@ -782,6 +797,8 @@ int Bot::worker_choose_group(int excluded) {
             // sighting (worker_sighting_memory).
             factor = pick(wasm_f32x4_mul(factor, splat(policy::worker_sighting_penalty)), factor,
                           wasm_v128_load(&lanes.sighted[i]));
+            // Deaths near the group lately (strategy.h death_site_penalty).
+            factor = wasm_f32x4_mul(factor, wasm_v128_load(&lanes.death[i]));
             // While the squad is depleted, converge on the allies still on
             // the map instead of spreading out and feeding into a grouped
             // enemy one at a time.

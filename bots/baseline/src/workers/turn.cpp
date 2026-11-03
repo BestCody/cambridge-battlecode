@@ -62,6 +62,10 @@ void Bot::play_worker_turn() {
     }
     if (!me.is_alive()) {
         note_activity(Activity::dead);
+        if (!own_death_noted && last_life.round >= 0) {
+            own_death_noted = true;
+            note_death_site(last_life.position);
+        }
         recall_tile = {-1, -1};
         publish(TeamMemory::unavailable);
         shared.set_attacked(slot, false);
@@ -94,6 +98,8 @@ void Bot::play_worker_turn() {
     // only when struck.
     camp_bound = me.health() < before ? camp_reach_damage() : 0.0f;
     observe();
+    own_death_noted = false;
+    track_deaths();
     hit = health < before;
     taken_last = std::max(0.0f, before - health);
     // A chase ends once no enemy can reach us, and a stun means deciding it

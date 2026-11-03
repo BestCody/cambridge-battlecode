@@ -223,6 +223,15 @@ inline constexpr float spawn_siege_score = 10.0f;
 // captures by round 600 on big_world, where we take none. A champion with a
 // dash of the entry's steps prices the group at its walk to the entry plus
 // pocket_rounds (the dash in and the cooldown before the dash out).
+// Death sites (Bot::note_death_site()): a group within death_site_range of
+// where we or a teammate in view died in the last death_site_memory rounds
+// is worth death_site_penalty of its value per death (two at most). Starfish
+// against a top team: 50 deaths, 26 of them on the land bridge out of our
+// spawn by the first gold group, their Vesper and Marcella standing there
+// all game; the sighting memory (9 rounds) forgets them between respawns.
+inline constexpr int death_site_range = 6;
+inline constexpr int death_site_memory = 250;
+inline constexpr float death_site_penalty = 1.0f; // 0.5: 26/48 against 27/48 on eight fight maps, deaths 920 against 902, contest 0/6 against 3/6 (its only gems sit where we die). Off.
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental

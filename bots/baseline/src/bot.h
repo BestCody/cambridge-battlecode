@@ -1098,6 +1098,16 @@ class Bot {
     // landing occupied), -1 no pocket concerned.
     int pocket_move(const bc::bitboard &goals, bool urgent, int engaged_group);
     bool cast_dash_to(vec2 to);
+    // Death sites (strategy.h death_site_*): the rounds of the last two
+    // deaths near each group, ours and teammates' in view (tracked from the
+    // roster's life and the last tile each was seen on).
+    std::vector<int> group_death_last, group_death_prev;
+    std::array<std::uint8_t, TeamMemory::slots> ally_was_alive{};
+    std::array<int, TeamMemory::slots> ally_seen_round{};
+    std::array<vec2, TeamMemory::slots> ally_seen_pos{};
+    bool own_death_noted = false;
+    void note_death_site(vec2 p);
+    void track_deaths();
     // The chain search (pocket_search_step()): a group at a time, breadth
     // first over the walking regions from the pocket's, linked where a
     // 2-step dash lands in another, until a landing with a walk from spawn;
