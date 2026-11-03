@@ -19,8 +19,10 @@ namespace policy {
 // linearly to late_gold_value by half the game. Set to willow best girl's
 // choice of gold-only groups (20% of their captures before round 300, 15% to
 // round 800, 30% after, counted from the round dumps); 0.65 / 0.10 gave ours
-// 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%.
-inline constexpr float early_gold_value = 0.17645f;
+// 54 / 30 / 20%, 0.25 / 0.20 gave 31 / 25 / 22%. The early value came up from
+// 0.176 with the rule that stays on our side while a body down (bodies_down()):
+// together 92 of 140 and 128 of 200 generated-map games against 91 and 117.
+inline constexpr float early_gold_value = 0.20518f;
 inline constexpr float late_gold_value = 0.1f;
 // A hurt runner below this share of its health is followed into fog
 // (worker_pursue()).

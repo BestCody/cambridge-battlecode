@@ -150,8 +150,12 @@ bool Bot::worker_reinforce() {
     if (!requested)
         return false;
     std::array<bool, TeamMemory::slots> alive{};
-    for (unsigned s = 0; s < count; ++s)
+    int living = 0;
+    for (unsigned s = 0; s < count; ++s) {
         alive[s] = roster[s].is_alive();
+        living += alive[s];
+    }
+    const bool hold_home = bodies_down(living);
     const float horizon = std::max(float(range + 1), opening.spacing);
     int selected = -1;
     float best = -1;
@@ -162,6 +166,9 @@ bool Bot::worker_reinforce() {
             !TeamMemory::requested_force(shared.get(leader), groups.size()))
             continue;
         const int group = TeamMemory::fight_group(shared.get(leader), groups.size());
+        // A body down, no walk to a fight on the enemy side of the map.
+        if (hold_home && groups[group].enemy_distance < groups[group].home_distance)
+            continue;
         const vec2 place = groups[group].centre;
         const unsigned demand = fight_demand(place);
         vec2 rally = place;

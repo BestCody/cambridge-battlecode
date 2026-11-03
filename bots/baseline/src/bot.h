@@ -1029,6 +1029,9 @@ class Bot {
     // near it within policy::worker_sighting_memory rounds.
     bool teammate_claims(int group) const;
     bool enemy_near_lately(int group) const;
+    // Fewer of ours alive (the count given) than of theirs, on a map with
+    // several altars. Both counts are exact: the rosters, no estimate.
+    bool bodies_down(int ours) const;
     // The run's next member is open by the time we walk there from here.
     bool run_continues() const;
     float basic_damage() const;

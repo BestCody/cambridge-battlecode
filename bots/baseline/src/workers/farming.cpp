@@ -94,6 +94,13 @@ int Bot::worker_choose_group(int excluded) {
         }
     const auto living = [&](unsigned s) { return s < 64 && (alive >> s & 1); };
     const bool depleted = float(alive_allies) <= float(roster.size()) * policy::depleted_alive_fraction;
+    // A body down, a champion out of contact stays on our side of the map: no
+    // group nearer the enemy spawn. One body down our deaths per champion-round
+    // fell a fifth with kills level (3.63 to 2.79 a thousand, 0.47 to 0.58 kills
+    // a death). Holding back further loses: a line at 0.8 of the enemy walk 80
+    // of 140 against 91, gathering on the spawn 61-79. Farming is worth more
+    // than those deaths, so the rule stops at the walks into the enemy half.
+    const bool hold_home = bodies_down(alive_allies);
     // Per group, from one pass over the claims and the units in view:
     // teammates' claims (each claimant can supply the next clear's damage, so
     // each claim is also a partner), and an ally or an enemy standing on it.
@@ -548,6 +555,8 @@ int Bot::worker_choose_group(int excluded) {
                                        wasm_v128_andnot(wasm_v128_andnot(ally_here, is_here), enemy_here));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(excluded)));
             skip = wasm_v128_or(skip, wasm_i32x4_eq(index, splat_int(walled)));
+            if (hold_home)
+                skip = wasm_v128_or(skip, wasm_v128_load(&lanes.enemy_side[i]));
             v128_t travel_steps = wasm_i32x4_max(wasm_i32x4_sub(path, splat_int(our_range)), no_bits);
             travel_steps = pick(path, travel_steps, is_held); // Holding means standing on a tile.
             const v128_t splash = wasm_v128_load(&lanes.splash[i]),
@@ -1725,6 +1734,17 @@ bool Bot::teammate_claims(int group) const {
         if (mate_claim(s) == group)
             return true;
     return false;
+}
+
+bool Bot::bodies_down(int ours) const {
+    // Not on a one-altar map: its economy is at its centre (16 of 30 with the
+    // rule, 20 without).
+    if (altars.size() < 2)
+        return false;
+    int theirs = 0;
+    for (const int respawn : enemy_respawn)
+        theirs += respawn < 0;
+    return ours < theirs;
 }
 
 bool Bot::enemy_near_lately(int group) const {
