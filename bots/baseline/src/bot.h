@@ -613,6 +613,11 @@ class Bot {
     bool harvest_map = false, harvest_ready = false, harvest_gate_alone = false; // the harvest species (strategy.h harvest_*)
     float harvest_own_gold_now = 0; // the gold on our half, as the species' map class counts it
     bool harvesting() const { return harvest_map && !harvest_ready; }
+    // The twin pick's bodies fight only for a kill or with a teammate near
+    // (strategy.h twin_cautious).
+    bool twin_cautious() const {
+        return policy::twin_cautious && (type == bc::champion_type::cassi || type == bc::champion_type::issac);
+    }
     // The spawn-strike rules (policy::spawn_siege) apply only where the only
     // gems sit behind fortresses (homonoliths): on every map, a wolf or elk
     // group beside spawn priced free cost 88/140 to 78 (spawn_140).

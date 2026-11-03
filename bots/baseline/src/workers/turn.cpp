@@ -196,7 +196,7 @@ void Bot::play_worker_turn() {
     // played as if healthy. Hurt, no chase.
     retreating = retreating || hurt_turn;
     worker_update_formation();
-    if (worker_skirmish() || (!hurt_turn && !harvesting() && worker_pursue())) {
+    if (worker_skirmish() || (!hurt_turn && !harvesting() && !twin_cautious() && worker_pursue())) {
         note_activity(Activity::fight);
         return;
     }

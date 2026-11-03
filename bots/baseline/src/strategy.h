@@ -244,6 +244,11 @@ inline constexpr float health_repeat_ratio = 1.0f;
 inline constexpr int death_site_range = 6;
 inline constexpr int death_site_memory = 250;
 inline constexpr float death_site_penalty = 1.0f; // 0.5: 26/48 against 27/48 on eight fight maps, deaths 920 against 902, contest 0/6 against 3/6 (its only gems sit where we die). Off.
+// The twin pick (Cassi 600 health, Issac 900; one dies, both die): no fight
+// that is not a kill or a finish unless a healthy teammate is within
+// harvest_alone_range, and no pursuit (the harvest species' gate). v122's
+// losses: Cassi and Issac dead together three and five times a game.
+inline constexpr bool twin_cautious = true;
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental

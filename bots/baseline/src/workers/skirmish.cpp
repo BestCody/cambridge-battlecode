@@ -135,13 +135,14 @@ bool Bot::worker_skirmish() {
     // The harvest species, not ready (strategy.h harvest_*): no fight that is
     // not a kill or a finish; in an enemy's reach it breaks contact, otherwise
     // it farms on.
-    if (harvesting() && !kill && !finish) {
+    if ((harvesting() || twin_cautious()) && !kill && !finish) {
         // Alone (no healthy teammate within harvest_alone_range) only: with
         // teammates near, the micro below fights as usual. gemfight against
         // Tokenmaxxing's five-champion dive: v106 fought back and killed the
-        // Twins three times; the gate on every fight fed 20 deaths.
+        // Twins three times; the gate on every fight fed 20 deaths. The twin
+        // pick's bodies (twin_cautious) always test for a teammate near.
         bool alone = true;
-        if (harvest_gate_alone)
+        if (harvest_gate_alone || !harvesting())
             for (const auto &a : allies)
                 if (!a.channel && a.health >= a.max_health * policy::retreat_health &&
                     distance(position, a.position) <= policy::harvest_alone_range)
