@@ -20,15 +20,18 @@ struct Entry {
     Mask picks;
     constexpr unsigned size() const { return std::popcount(picks); }
 };
-// One roster per pick count: print dont int's (ladder #6, 80 ranked games,
-// 2026-10-29): Heart of Ruin, Marcella and Vesper at 3 picks, Vendetta joins
-// at 4 and Ryth at 5. Mite (#3) and print both draft Vesper, Vendetta, Heart
-// of Ruin and Marcella; neither drafts Prism or Willow.
+// One roster per pick count. The twin pick (Cassi and Issac, two bodies for
+// one pick) is in every top team's draft on 2026-11-03 (Mite, Intercontinental
+// Fish, Ad Astra, newer team), and in their games Cassi and Issac clear as
+// many camps each as Vesper or Heart of Ruin (228 and 220 clears to 191 and
+// 238 over 33 games). At 5 picks it replaces Ryth; at 4, Vendetta; at 3,
+// Marcella.
 inline constexpr Mask core_picks = roster(Pick::heart_of_ruin, Pick::marcella, Pick::vesper_vale);
 inline constexpr std::array rosters{
-    Entry{"HeartOfRuin/Marcella/Vesper", core_picks},
-    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta", Mask(core_picks | bit(Pick::vendetta))},
-    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta/Ryth", Mask(core_picks | roster(Pick::vendetta, Pick::ryth))}};
+    Entry{"HeartOfRuin/Vesper/Cassi&Issac", roster(Pick::heart_of_ruin, Pick::vesper_vale, Pick::cassi_and_issac)},
+    Entry{"HeartOfRuin/Marcella/Vesper/Cassi&Issac", Mask(core_picks | bit(Pick::cassi_and_issac))},
+    Entry{"HeartOfRuin/Marcella/Vesper/Vendetta/Cassi&Issac",
+          Mask(core_picks | roster(Pick::vendetta, Pick::cassi_and_issac))}};
 static_assert(rosters[0].size() == 3 && rosters[1].size() == 4 && rosters[2].size() == 5);
 
 // The roster for this pick count, or the largest one for an unsupported count.

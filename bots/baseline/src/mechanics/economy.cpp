@@ -102,6 +102,10 @@ Build full_build_for(bc::champion_type type) {
                       {Item::durability_shard_of_health, 5}}},  // r506-789, 4/8
                     2,
                     Item::monster_shard_of_strength};           // 1.9 a game
+        case bc::champion_type::cassi: // The twin pick's caster: Marcella's build.
+            return full_build_for(bc::champion_type::marcella);
+        case bc::champion_type::issac: // The twin pick's melee: Vendetta's build.
+            return full_build_for(bc::champion_type::vendetta);
         default: // Not drafted.
             return {{}, 0, Item::power_shard_of_strength};
     }

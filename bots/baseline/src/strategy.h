@@ -584,20 +584,20 @@ inline Spell describe(const bc::ability &a) {
     return s;
 }
 
-// Fixed wire format. Slots are allied champion handles in ascending order: five
-// 11-bit fields (our rosters have at most five bodies: no twin pick), each a
-// 10-bit claim and one flag. The flag of a fight request is set while an enemy
+// Fixed wire format. Slots are allied champion handles in ascending order: six
+// 10-bit fields (the twin pick, Cassi and Issac, makes six bodies of five
+// picks: every top team drafts it), each a 9-bit claim and one flag. The flag of a fight request is set while an enemy
 // can hit that champion next round (attacked); of any other claim, while it
 // rides a capture's recall home (leaving: its claim kept, so teammates leave
 // the capture to it). Readers ask for attacked only with a request and for
 // leaving only of a recalling holder's claim, so one bit holds both.
 // Zero is idle; the top codes are unavailable/bank/recall, never camp identifiers.
 struct TeamMemory {
-    static constexpr unsigned bits = 10, mask = (1u << bits) - 1;
+    static constexpr unsigned bits = 9, mask = (1u << bits) - 1;
     static constexpr unsigned field = bits + 1, field_mask = (1u << field) - 1;
     static constexpr unsigned bank = mask - 1, recall = mask;
     static constexpr unsigned unavailable = mask - 2;
-    static constexpr unsigned slots = 5;
+    static constexpr unsigned slots = 6;
     // Normal objective claims retain their original codes. Extra codes carry
     // an observed fight's nearest objective and the squad it takes to beat the
     // enemies the reporter sees, or identify a champion travelling to that

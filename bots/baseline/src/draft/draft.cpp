@@ -9,13 +9,14 @@
 #include <memory>
 
 namespace {
-// Shared memory has a slot per body: every roster fits, and none has the twin
-// pick's second body.
+// Shared memory has a slot per body: every roster's bodies (the twin pick's
+// two counted) fit.
 constexpr bool rosters_fit() {
-    for (const auto &entry : compositions::rosters)
-        if (entry.size() > TeamMemory::slots ||
-            (entry.picks & compositions::bit(compositions::Pick::cassi_and_issac)))
+    for (const auto &entry : compositions::rosters) {
+        const unsigned twin = (entry.picks & compositions::bit(compositions::Pick::cassi_and_issac)) ? 1 : 0;
+        if (entry.size() + twin > TeamMemory::slots)
             return false;
+    }
     return true;
 }
 static_assert(rosters_fit());
