@@ -1,25 +1,45 @@
-// Dispatch draft and gameplay; a failed turn is logged and still yields.
-#include "bot.h"
-#include "draft/draft.h"
+// Two engines in one bot: v119 (eng_a) plays from the start; if the team is
+// behind in banked gems from mid-game on, main's baseline (eng_b) takes over.
+#include "a/bot.h"
+#include "a/draft/draft.h"
+#include "b/bot.h"
+#include "b/draft/draft.h"
 #include <cambc.h>
 #include <iostream>
 
+namespace {
+constexpr int switch_from = 400;
+constexpr int switch_gap = 100;
+
+bool behind() {
+    const int ours = int(cambc::global_submitted_gems(cambc::team::ally));
+    const int theirs = int(cambc::global_submitted_gems(cambc::team::enemy));
+    return theirs - ours >= switch_gap;
+}
+}  // namespace
+
 int main() {
-    Bot bot;
+    eng_a::Bot first;
+    eng_b::Bot *other = nullptr;
     while (true) {
         const auto start_round = cambc::round_number();
         const bool drafting = cambc::is_draft();
         try {
-            if (cambc::is_draft())
-                play_draft();
-            else
-                bot.play_turn();
+            if (drafting)
+                eng_a::play_draft();
+            else {
+                if (!other && int(start_round) >= switch_from && behind())
+                    other = new eng_b::Bot();
+                if (other)
+                    other->play_turn();
+                else
+                    first.play_turn();
+            }
         } catch (const std::exception &error) {
             std::cout << "bot error: " << error.what() << std::endl;
         } catch (...) {
             std::cout << "bot error: unknown exception" << std::endl;
         }
-
         if (!drafting && cambc::round_number() != start_round)
             std::cout << "FUEL_OVERRUN started=" << start_round << " ended=" << cambc::round_number()
                       << " type=" << int(cambc::self().champion_name()) << '\n';
