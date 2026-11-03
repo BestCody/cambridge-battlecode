@@ -148,7 +148,7 @@ inline constexpr int bank_nearby = 3;
 // with 47 (Jupiter 114, Ding 100-172), for the same clear counts: half our
 // trips carry the walk home and back for 20 gems. Hurt, emblem-gold,
 // winning and deadline trips are unchanged.
-inline constexpr unsigned bank_min_bag = 40;
+inline constexpr unsigned bank_min_bag = 0; // 40 (v123): 25/50 against v119 28/50 on the wide block, same hour (seven flips to wins, ten to losses), after 62/96 to 58/96 locally. Off.
 // A winning bag channels under fire only when the channel is this short (tribute.cpp).
 inline constexpr int win_channel_turns = 4;
 inline constexpr bool bank_nearby_clear = true; // the nearby trip only with no enemy in view (tribute.cpp)
