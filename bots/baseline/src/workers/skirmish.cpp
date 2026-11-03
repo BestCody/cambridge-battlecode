@@ -91,6 +91,25 @@ bool Bot::worker_skirmish() {
                                      ? basic_damage()
                                      : 0);
     bool kill = victim.health + victim.shield <= burst * victim.mitigation;
+    // The enemy started this round: we act again before it does (bot.h
+    // we_first), so a victim we reach next turn falls to this turn's burst
+    // and the next's (a basic hit, and a slot at cooldown one, ready by
+    // then) before it can answer.
+    if (!we_first && !kill && distance(position, victim.position) <= range + int(stats.base_move_speed)) {
+        float next = basic_damage();
+        float soon = 0;
+        for (unsigned i = 0; i < 2; ++i) {
+            if (abilities[i].cooldown() != 1)
+                continue;
+            if (spells[i].kind == bc::ability_kind::attack_reset)
+                soon = std::max(soon, basic_damage());
+            else if ((spells[i].kind == bc::ability_kind::damage || spells[i].kind == bc::ability_kind::cc ||
+                      spells[i].kind == bc::ability_kind::aoe_damage) &&
+                     distance(position, victim.position) <= spells[i].range + spells[i].radius)
+                soon = std::max(soon, focus * spells[i].modifier);
+        }
+        kill = victim.health + victim.shield <= (burst + next + soon) * victim.mitigation;
+    }
     // A channelling victim (recalling or banking: not fighting back) our hit
     // and our teammates' still to come this round would finish holds us
     // (the window, as stun_follow_up() counts it); one still trading has
@@ -511,7 +530,12 @@ bool Bot::worker_skirmish() {
             s.dealt = struck_here.dealt;
         } else
             aims(tile, tile != position, s);
-        const float dealt = s.dealt;
+        // Our team started this round: taken counts the enemy's two actions
+        // before our next turn (bot.h we_first), and our next turn comes
+        // before its action after that, so the trade over the window is two
+        // of ours against its two. One of ours against its two read every
+        // even trade as a losing tile and the champion hovered out of reach.
+        const float dealt = we_first ? 2 * s.dealt : s.dealt;
         const int nearest =
             alive_count ? nearest_of(alive_x, alive_y, alive_count, tile) : std::numeric_limits<int>::max();
         s.strike = nothing_ready || dealt > 0;
@@ -616,15 +640,22 @@ bool Bot::worker_skirmish() {
     // to the best tile, our champion alone beside an enemy Heart of Ruin with
     // four more coming struck from tiles of class 1 for four rounds and died
     // (00lost-world r223-229).
+    // A champion farming (it struck its camp in the last two rounds) farms
+    // on while no enemy is in its strike and the enemy's window on its tile
+    // (bot.h we_first: two actions in a round we started) is not lethal:
+    // willow best girl's farmers, the nearest enemy 4-6 tiles away, keep
+    // hitting their camp in 49% of rounds. Held by the micro instead, ours
+    // stopped clearing as soon as an enemy came near (captures by r300 8.8
+    // to 7.5); judged by the tile class with the two-action window, they
+    // stopped two tiles further off again (gems collected -12%, standoff
+    // rounds +10%, 2026-11-03). Outnumbered by power but not in danger of
+    // its life, a farmer farms; the sides decide fights, not clears.
+    if (!contested_altar && !hurt_turn && here.taken < life && here.safety >= 1 && !(here.strike && !nothing_ready) &&
+        target >= 0 && groups[target].attacked >= int(round) - 2)
+        return false;
     if (best_score.safety < 2 && !best_score.kills && !kill && !finish)
         return leave_fight(victim.position);
-    // A champion farming (it struck its camp in the last two rounds) farms
-    // on from a safe tile while no enemy is in its strike: willow best
-    // girl's farmers, the nearest enemy 4-6 tiles away, keep hitting their
-    // camp in 49% of rounds. Held by the micro instead, ours stopped
-    // clearing as soon as an enemy came near (captures by r300 8.8 to 7.5;
-    // 65% of the micro's turns had no strike from any tile in reach).
-    if (!hurt_turn && here.safety == 2 && !(here.strike && !nothing_ready) && target >= 0 &&
+    if (contested_altar && !hurt_turn && here.safety == 2 && !(here.strike && !nothing_ready) && target >= 0 &&
         groups[target].attacked >= int(round) - 2)
         return false;
     if (stand != position) {

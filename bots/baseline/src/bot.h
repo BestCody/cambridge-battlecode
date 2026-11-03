@@ -150,6 +150,14 @@ struct ObservedUnit {
     bool reset_ready = false;
     // The ability slots off cooldown, a bit each (exit_damage()).
     std::uint8_t slot_ready = 0;
+    // Its second action in a row (two before our next turn when our team
+    // started the round): the best slot left at cooldown one or less after
+    // the first action's cast (a reset's hit or a spell's burst), and the
+    // reach it lands from after two moves (a spell that excludes walking:
+    // one move, then the cast). A held unit skips its first action: the
+    // best slot at cooldown one or less, after one move.
+    float blow2 = 0, blow_held = 0;
+    int blow2_reach = -1, blow_held_reach = -1;
     int move_speed = 1;
     int spell_reach = 0;
     int range = 0, group = -1, gems = 0, stun_time = -1;
@@ -378,6 +386,14 @@ class Bot {
     // an enemy in a bush), and where our last recall started.
     bool hit = false;
     vec2 recall_tile{-1, -1};
+    // Our team started this round: the enemy acts at its end and again at
+    // the start of the next, twice before our next turn (the starting team
+    // swaps each round). Otherwise it does not act before our next turn.
+    bool we_first = false;
+    // One altar on the map: the game is the brawl around it (world.cpp
+    // initialise()). There the base's play holds: one enemy action in the
+    // danger model, farming on by the tile class.
+    bool contested_altar = false;
     // Fuel at the start of this turn: the work done since is the same at any
     // budget, so the background pacing uses it (turn_work()), never the fuel
     // left.
@@ -542,8 +558,8 @@ class Bot {
     // spell; its hit, a ready reset's second hit and its ready burst.
     // Padding reaches no tile.
     struct EnemyLanes {
-        std::vector<std::int32_t> x, y, reach, lunge, melee, spell;
-        std::vector<float> hit, reset, burst;
+        std::vector<std::int32_t> x, y, reach, lunge, melee, spell, hit2_reach, blow2_reach;
+        std::vector<float> hit, reset, burst, blow2;
         std::size_t lanes = 0;
         std::uint32_t revision = 0;
     };
@@ -557,8 +573,8 @@ class Bot {
     // them could deal (each burst, and a hit for every round of its reach
     // and a stunned one) and their hits in one round.
     struct ExitLanes {
-        std::vector<std::int32_t> x, y, held, reach, lunge, reach_a, reach_b, stun;
-        std::vector<float> hit, burst_a, burst_b;
+        std::vector<std::int32_t> x, y, held, reach, lunge, reach_a, reach_b, stun, reach_c;
+        std::vector<float> hit, burst_a, burst_b, burst_c;
         std::size_t lanes = 0;
         float most = 0, hits = 0;
         std::uint32_t revision = 0;

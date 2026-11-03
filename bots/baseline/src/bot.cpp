@@ -14,6 +14,10 @@ void Bot::play_turn() {
 void Bot::take_turn() {
     turn_start_fuel = bc::fuel_remaining();
     round = bc::round_number();
+    {
+        static const bool team_a = read_champion(bc::self()).team == 0;
+        we_first = !contested_altar && team_a == (round % 2 == 1); // Team A starts odd rounds.
+    }
     // Per-turn flags: a turn cut short (ChampionGone) leaves them set.
     walked = placed = false;
     if (!initialised) {

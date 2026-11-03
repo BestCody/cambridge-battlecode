@@ -297,12 +297,26 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
     }
     read_buffs(*this);
     damage_rate = strength;
+    // Per slot, for the second action (bot.h blow2): its hit's worth, the
+    // reach it lands from after two moves, its cooldown.
+    std::array<float, 2> slot_value{};
+    std::array<int, 2> slot_reach2{-1, -1}, slot_reach1{-1, -1}, slot_cooldown{99, 99};
     for (unsigned ability_slot = 0; ability_slot < kit.spells.size(); ++ability_slot) {
         const auto &s = kit.spells[ability_slot];
         std::int32_t cooldown = 0;
         bc::detail::check(bc::detail::sdk_champion_cooldown(handle, ability_slot, &cooldown));
         // Castable at its next action: a slot at 1 is not (measured).
         const bool ready = cooldown <= 0;
+        slot_cooldown[ability_slot] = cooldown;
+        if (s.kind == bc::ability_kind::attack_reset) {
+            slot_value[ability_slot] = strength;
+            slot_reach2[ability_slot] = range + (range <= 1 ? 2 : 1) * move_speed;
+            slot_reach1[ability_slot] = range + (range <= 1 ? 1 : 0) * move_speed;
+        } else if (damage::damaging(s)) {
+            slot_value[ability_slot] = focus * s.modifier;
+            slot_reach2[ability_slot] = damage::cast_reach(s) + move_speed + (s.exclusive ? 0 : move_speed);
+            slot_reach1[ability_slot] = damage::cast_reach(s) + (s.exclusive ? 0 : move_speed);
+        }
         slot_ready = std::uint8_t(slot_ready | unsigned(ready) << ability_slot);
         const bool cast = cooldown >= s.cooldown - 2;
         if (cast && s.kind == bc::ability_kind::attack_reset)
@@ -342,6 +356,30 @@ ObservedUnit::ObservedUnit(const bc::champion &c, const bc::detail::champion_inf
             dash_wait = std::int8_t(std::clamp(cooldown, 0, 100));
             dash_cooldown = std::int8_t(std::clamp(s.cooldown, 1, 100));
             dash_walks = !s.exclusive;
+        }
+    }
+    {
+        // The first action casts its best ready slot; the second the best
+        // slot left at cooldown one or less (one cast an action, a cast slot
+        // goes to its full cooldown). Held, the first is skipped.
+        int used = -1;
+        float best = 0;
+        for (unsigned k = 0; k < 2; ++k)
+            if (slot_cooldown[k] <= 0 && slot_value[k] > best) {
+                best = slot_value[k];
+                used = int(k);
+            }
+        for (unsigned k = 0; k < 2; ++k) {
+            if (slot_cooldown[k] > 1 || slot_value[k] <= 0)
+                continue;
+            if (int(k) != used && slot_value[k] > blow2) {
+                blow2 = slot_value[k];
+                blow2_reach = slot_reach2[k];
+            }
+            if (slot_value[k] > blow_held) {
+                blow_held = slot_value[k];
+                blow_held_reach = slot_reach1[k];
+            }
         }
     }
     if (type == bc::champion_type::heart_of_ruin) {
@@ -480,6 +518,7 @@ void Bot::initialise() {
     const auto tiles = std::size_t(map_width) * std::size_t(map_height);
     begin_regions();
     altars = bc::map::altars().positions();
+    contested_altar = altars.size() == 1;
     altar_goals = altar_goals_of(altars, static_blocked);
     const auto search_start = turn_work();
     home_field.compute(static_blocked, bc::map::spawn_region(bc::team::ally), search_visited);
@@ -1819,32 +1858,52 @@ __attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) con
         packed.revision = threat_revision;
         const std::size_t room = (enemies.size() + 3) & ~std::size_t{3};
         if (packed.x.size() < room) {
-            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.melee, &packed.spell})
+            for (auto *lanes : {&packed.x, &packed.y, &packed.reach, &packed.lunge, &packed.melee, &packed.spell,
+                                &packed.hit2_reach, &packed.blow2_reach})
                 lanes->resize(room);
-            for (auto *lanes : {&packed.hit, &packed.reset, &packed.burst})
+            for (auto *lanes : {&packed.hit, &packed.reset, &packed.burst, &packed.blow2})
                 lanes->resize(room);
         }
         std::size_t n = 0;
         for (const auto &e : enemies) {
             // A recall or tribute can be cancelled to strike, a teleport not.
             const bool teleporting = e.channel && !e.recalling && !e.tributing;
-            if (e.health <= 0 || damage::held(e) || teleporting)
+            if (e.health <= 0 || teleporting)
+                continue;
+            const bool held = damage::held(e);
+            // A held enemy acts only at the second action of a round we
+            // started, after one move; it takes none before our next turn
+            // in a round it started.
+            if (held && !we_first)
                 continue;
             packed.x[n] = e.position.x;
             packed.y[n] = e.position.y;
-            packed.reach[n] = e.range;
-            packed.lunge[n] = damage::lunge_reach(e);
+            packed.reach[n] = held ? -1 : e.range;
+            packed.lunge[n] = held ? -1 : damage::lunge_reach(e);
             packed.melee[n] = damage::melee_lane(e);
-            packed.spell[n] = e.spell_reach;
+            packed.spell[n] = held ? -1 : e.spell_reach;
             packed.hit[n] = e.strength;
-            packed.reset[n] = damage::reset_hit(e);
-            packed.burst[n++] = e.spell_burst;
+            packed.reset[n] = held ? 0.0f : damage::reset_hit(e);
+            packed.burst[n] = held ? 0.0f : e.spell_burst;
+            // The second action (bot.h we_first): a second hit after a
+            // second move (a ranged one walks, then shoots), and the best
+            // slot left.
+            if (we_first) {
+                packed.hit2_reach[n] = e.range + (e.range <= 1 ? 2 : 1) * e.move_speed - (held ? e.move_speed : 0);
+                packed.blow2[n] = held ? e.blow_held : e.blow2;
+                packed.blow2_reach[n] = held ? e.blow_held_reach : e.blow2_reach;
+            } else {
+                packed.hit2_reach[n] = -1;
+                packed.blow2[n] = 0;
+                packed.blow2_reach[n] = -1;
+            }
+            ++n;
         }
         packed.lanes = (n + 3) & ~std::size_t{3};
         for (; n < packed.lanes; ++n) {
             packed.x[n] = packed.y[n] = packed.melee[n] = 0;
-            packed.reach[n] = packed.lunge[n] = packed.spell[n] = -1;
-            packed.hit[n] = packed.reset[n] = packed.burst[n] = 0;
+            packed.reach[n] = packed.lunge[n] = packed.spell[n] = packed.hit2_reach[n] = packed.blow2_reach[n] = -1;
+            packed.hit[n] = packed.reset[n] = packed.burst[n] = packed.blow2[n] = 0;
         }
     }
     // The most the tile can take from them next turn, as XSquare's micro
@@ -1866,13 +1925,20 @@ __attribute__((always_inline)) inline float Bot::incoming_enemies(vec2 tile) con
         const v128_t full = wasm_v128_or(wasm_i32x4_le(d, wasm_v128_load(&packed.reach[k])),
                                          wasm_v128_and(near, wasm_v128_load(&packed.melee[k])));
         const v128_t cast = wasm_i32x4_le(d, wasm_v128_load(&packed.spell[k]));
-        if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(full, near), cast)))
+        const v128_t again = wasm_i32x4_le(d, wasm_v128_load(&packed.hit2_reach[k]));
+        const v128_t again_cast = wasm_i32x4_le(d, wasm_v128_load(&packed.blow2_reach[k]));
+        if (!wasm_v128_any_true(wasm_v128_or(wasm_v128_or(wasm_v128_or(full, near), cast),
+                                             wasm_v128_or(again, again_cast))))
             continue;
         const v128_t hit = wasm_v128_load(&packed.hit[k]);
         const v128_t spell = wasm_v128_bitselect(wasm_v128_load(&packed.burst[k]), none, cast);
-        const v128_t taken = wasm_v128_bitselect(
+        v128_t taken = wasm_v128_bitselect(
             wasm_f32x4_add(hit, wasm_f32x4_max(wasm_v128_load(&packed.reset[k]), spell)),
             wasm_v128_bitselect(wasm_f32x4_max(hit, spell), spell, near), full);
+        // The second action: its hit where its second move reaches, its
+        // best slot left where that lands.
+        taken = wasm_f32x4_add(taken, wasm_f32x4_add(wasm_v128_and(hit, again),
+                                                     wasm_v128_and(wasm_v128_load(&packed.blow2[k]), again_cast)));
         damage += wasm_f32x4_extract_lane(taken, 0);
         damage += wasm_f32x4_extract_lane(taken, 1);
         damage += wasm_f32x4_extract_lane(taken, 2);
@@ -1977,9 +2043,9 @@ const Bot::ExitLanes &Bot::exit_packed() const {
         const std::size_t room = (enemies.size() + ghosts.size() + 3) & ~std::size_t{3};
         if (packed.x.size() < room) {
             for (auto *lanes : {&packed.x, &packed.y, &packed.held, &packed.reach, &packed.lunge, &packed.reach_a,
-                                &packed.reach_b, &packed.stun})
+                                &packed.reach_b, &packed.stun, &packed.reach_c})
                 lanes->resize(room);
-            for (auto *lanes : {&packed.hit, &packed.burst_a, &packed.burst_b})
+            for (auto *lanes : {&packed.hit, &packed.burst_a, &packed.burst_b, &packed.burst_c})
                 lanes->resize(room);
         }
         packed.most = packed.hits = 0;
@@ -2025,28 +2091,34 @@ const Bot::ExitLanes &Bot::exit_packed() const {
                             stun = std::max(stun, cast);
                     }
                 }
+                // Our team started the round: a second move before our
+                // next turn lengthens every reach by one, and the best slot
+                // left lands at the second action (bot.h we_first).
+                const int extra = we_first ? e.move_speed : 0;
                 packed.x[n] = e.position.x;
                 packed.y[n] = e.position.y;
                 packed.held[n] = damage::exit_held(e);
-                packed.reach[n] = damage::exit_reach(e);
-                packed.lunge[n] = lunge;
-                packed.reach_a[n] = reach[0];
-                packed.reach_b[n] = reach[1];
-                packed.stun[n] = stun;
+                packed.reach[n] = damage::exit_reach(e) + extra;
+                packed.lunge[n] = lunge + extra;
+                packed.reach_a[n] = reach[0] >= 0 ? reach[0] + extra : -1;
+                packed.reach_b[n] = reach[1] >= 0 ? reach[1] + extra : -1;
+                packed.stun[n] = stun >= 0 ? stun + extra : -1;
+                packed.burst_c[n] = we_first ? (unseen ? 0.0f : e.blow2) : 0.0f;
+                packed.reach_c[n] = we_first && !unseen ? e.blow2_reach : -1;
                 packed.hit[n] = e.strength;
                 packed.burst_a[n] = burst[0];
                 packed.burst_b[n] = burst[1];
                 // A hit a round over its reach, one more for a stun on us
                 // (reach is at least 2: every champion walks).
-                packed.most += burst[0] + burst[1] + e.strength * float(packed.reach[n] + 1);
+                packed.most += burst[0] + burst[1] + packed.burst_c[n] + e.strength * float(packed.reach[n] + 1);
                 packed.hits += e.strength;
                 ++n;
             }
         packed.lanes = (n + 3) & ~std::size_t{3};
         for (; n < packed.lanes; ++n) {
             packed.x[n] = packed.y[n] = packed.held[n] = 0;
-            packed.reach[n] = packed.lunge[n] = packed.reach_a[n] = packed.reach_b[n] = packed.stun[n] = -1;
-            packed.hit[n] = packed.burst_a[n] = packed.burst_b[n] = 0;
+            packed.reach[n] = packed.lunge[n] = packed.reach_a[n] = packed.reach_b[n] = packed.stun[n] = packed.reach_c[n] = -1;
+            packed.hit[n] = packed.burst_a[n] = packed.burst_b[n] = packed.burst_c[n] = 0;
         }
     }
     return packed;
@@ -2143,6 +2215,10 @@ Bot::ExitDamage Bot::exit_damage(vec2 tile, bool immune, vec2 without, float cam
                                               wasm_v128_and(a, wasm_i32x4_le(next, reach_a)));
         damage = wasm_f32x4_add(damage, wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(hits), hit),
                                                        wasm_v128_and(wasm_f32x4_max(a_first, b_first), keep)));
+        // The second action's slot, landing a tile further on as we walk.
+        damage = wasm_f32x4_add(damage, wasm_v128_and(wasm_v128_and(wasm_v128_load(&packed.burst_c[k]),
+                                                                    wasm_i32x4_le(next, wasm_v128_load(&packed.reach_c[k]))),
+                                                      keep));
         const v128_t hitting = wasm_i32x4_gt(hits, zero), within = wasm_i32x4_le(d, reach);
         round_hits = wasm_f32x4_add(round_hits, wasm_v128_and(hit, hitting));
         held = wasm_f32x4_add(held, wasm_v128_and(hit, within));
