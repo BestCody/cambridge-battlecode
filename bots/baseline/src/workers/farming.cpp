@@ -764,7 +764,7 @@ int Bot::worker_choose_group(int excluded) {
             const v128_t without_value = wasm_v128_and(
                 claimed, wasm_f32x4_div(wasm_f32x4_div(kept, wasm_f32x4_pmax(one, time_kept_without)),
                                         wasm_f32x4_add(one, wasm_f32x4_mul(time_kept_without, splat(policy::plan_hazard)))));
-            v128_t value = wasm_f32x4_sub(with_value, without_value);
+            v128_t value = wasm_f32x4_sub(with_value, wasm_f32x4_mul(without_value, splat(policy::join_share)));
             value = pick(zero, value, wasm_f32x4_gt(time_with, splat(rounds_left)));
             // A cluster group's run (gather_run) is one plan: the group's
             // reward and time with its members', under the same hazard. The
