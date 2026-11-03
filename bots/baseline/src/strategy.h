@@ -271,7 +271,7 @@ inline constexpr bool twin_gate_alone = true; // false (flee unless the duel is 
 // the choice's own.
 inline constexpr int reach_at_start = 10000; // 24 with first_turn_paths false: the first turn fits, but 82/144 against 88/144 locally (test-bot 39/72 to 46/72); old behaviour kept
 inline constexpr int reach_per_turn = 4;
-inline constexpr bool first_turn_paths = true; // true: the second-bound path search on the first turn, as before
+inline constexpr bool first_turn_paths = false; // true: the second-bound path search on the first turn, as before (v119); false: the first choice searches its own walks on turn 2, the same result (see take_turn), and the first turn ends a round earlier on big maps (tangle, big_world, corners: four champions lose one round instead of two)
 inline constexpr bool pocket_entries = true;
 inline constexpr int pocket_rounds = 3;
 // A chain of dashes over stepping stones (the-pond's island: Intercontinental
